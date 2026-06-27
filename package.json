@@ -1,0 +1,14 @@
+{
+  "name": "vnstock-frontend",
+  "version": "1.0.0",
+  "description": "VN Stock Market frontend - lightweight test harness (vitest + fast-check)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "fast-check": "^3.23.2",
+    "vitest": "^2.1.9"
+  }
+}

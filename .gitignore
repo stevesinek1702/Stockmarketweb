@@ -1,0 +1,51 @@
+# ============================================================
+#  VN Stock Market Dashboard — .gitignore
+#  QUAN TRỌNG: file này ngăn rò rỉ secret khi đẩy lên GitHub.
+# ============================================================
+
+# ---- Dependencies ----
+node_modules/
+**/node_modules/
+
+# ---- SECRETS / CREDENTIALS — TUYỆT ĐỐI KHÔNG commit ----
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+Thu thap du lieu/api_keys.txt
+**/api_keys.txt
+
+# ---- Dữ liệu cache / sinh tự động lúc chạy ----
+server/data/*.json
+temp_api.json
+*.tmp
+
+# ---- Artifacts debug / ảnh chụp ----
+server/debug_*.png
+server/debug_*.js
+**/debug_*.png
+
+# ---- File dữ liệu lớn / sinh ra ----
+Thu thap du lieu/data/*.xlsx
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- Script tạm (probe/test thủ công) ----
+server/_*.js
+
+# ---- File làm việc cục bộ chứa truy vấn/cookie (KHÔNG push lên repo) ----
+All Query Board*.txt
+*.xlsm
+
+# ---- Script chứa token nhúng (FireAnt JWT) — KHÔNG push lên repo ----
+Thu thap du lieu/fireant_dashboard.py

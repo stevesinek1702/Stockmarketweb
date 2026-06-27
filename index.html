@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VN Stock Market Data | Dữ Liệu Thị Trường Chứng Khoán Việt Nam</title>
+    <meta name="description"
+        content="Trang web phân tích dữ liệu thị trường chứng khoán Việt Nam - Bảng giá, Dòng tiền, Breakout Trendline">
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Gridstack.js - Drag & Drop / Resize dashboard panels -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <span class="logo-icon">📊</span>
+                <span class="logo-text">VN<span class="highlight">Stock</span></span>
+            </div>
+            <nav class="nav">
+                <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+                <button class="nav-btn" data-tab="price-board">Bảng Giá</button>
+                <button class="nav-btn" data-tab="stock-filter">Bộ Lọc CP</button>
+                <button class="nav-btn" data-tab="industry">Phân Tích Ngành</button>
+                <button class="nav-btn" data-tab="breakout">Breakout</button>
+                <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
+                <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
+
+            </nav>
+            <div class="header-actions">
+                <button class="refresh-btn" id="refreshBtn">
+                    <span class="refresh-icon">🔄</span> Cập Nhật
+                </button>
+                <span class="update-time" id="updateTime">--:--:--</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Dashboard Tab -->
+        <section class="tab-content active" id="dashboard">
+            <!-- Market Overview Cards -->
+            <div class="market-overview">
+                <div class="index-card vnindex" id="panel-vnindex">
+                    <div class="index-header">
+                        <h3>VNINDEX</h3>
+                        <span class="index-exchange">HOSE</span>
+                    </div>
+                    <div class="index-main-row">
+                        <div class="index-info-left">
+                            <div class="index-value" id="vnindex-value">--</div>
+                            <div class="index-change" id="vnindex-change">
+                                <span class="change-value">--</span>
+                                <span class="change-percent"></span>
+                            </div>
+                        </div>
+                        <div class="index-breadth-right">
+                            <div class="breadth-stats-mini">
+                                <div class="breadth-col positive">
+                                    <span class="b-val" id="vnindex-advance">--</span>
+                                    <span class="b-lbl">Tăng</span>
+                                </div>
+                                <div class="breadth-col warning">
+                                    <span class="b-val" id="vnindex-unchanged">--</span>
+                                    <span class="b-lbl">Đứng</span>
+                                </div>
+                                <div class="breadth-col negative">
+                                    <span class="b-val" id="vnindex-decline">--</span>
+                                    <span class="b-lbl">Giảm</span>
+                                </div>
+                            </div>
+                            <div class="breadth-bar-mini">
+                                <div class="bar-seg positive" id="vnindex-bar-advance" style="width: 48%"></div>
+                                <div class="bar-seg warning" id="vnindex-bar-unchanged" style="width: 17%"></div>
+                                <div class="bar-seg negative" id="vnindex-bar-decline" style="width: 35%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="index-stats">
+                        <div class="stat">
+                            <span class="stat-label">KLGD</span>
+                            <span class="stat-value" id="vnindex-volume">--</span>
+                            <span class="stat-change" id="vnindex-volume-change"></span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">GTGD</span>
+                            <span class="stat-value" id="vnindex-value-traded">--</span>
+                            <span class="stat-change" id="vnindex-value-change"></span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Lực cầu</span>
+                            <span class="stat-value" id="vnindex-demand">--</span>
+                        </div>
+                    </div>
+
+                    <div class="index-chart-mini">
+                        <canvas id="vnindex-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="index-card vn30" id="panel-vn30">
+                    <div class="index-header">
+                        <h3>VN30</h3>
+                        <span class="index-exchange">HOSE</span>
+                    </div>
+                    <div class="index-main-row">
+                        <div class="index-info-left">
+                            <div class="index-value" id="vn30-value">--</div>
+                            <div class="index-change" id="vn30-change">
+                                <span class="change-value">--</span>
+                                <span class="change-percent"></span>
+                            </div>
+                        </div>
+                        <div class="index-breadth-right">
+                            <div class="breadth-stats-mini">
+                                <div class="breadth-col positive">
+                                    <span class="b-val" id="vn30-advance">--</span>
+                                    <span class="b-lbl">Tăng</span>
+                                </div>
+                                <div class="breadth-col warning">
+                                    <span class="b-val" id="vn30-unchanged">--</span>
+                                    <span class="b-lbl">Đứng</span>
+                                </div>
+                                <div class="breadth-col negative">
+                                    <span class="b-val" id="vn30-decline">--</span>
+                                    <span class="b-lbl">Giảm</span>
+                                </div>
+                            </div>
+                            <div class="breadth-bar-mini">
+                                <div class="bar-seg positive" id="vn30-bar-advance" style="width: 60%"></div>
+                                <div class="bar-seg warning" id="vn30-bar-unchanged" style="width: 16%"></div>
+                                <div class="bar-seg negative" id="vn30-bar-decline" style="width: 24%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="index-stats">
+                        <div class="stat">
+                            <span class="stat-label">KLGD</span>
+                            <span class="stat-value" id="vn30-volume">--</span>
+                            <span class="stat-change" id="vn30-volume-change"></span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">GTGD</span>
+                            <span class="stat-value" id="vn30-value-traded">--</span>
+                            <span class="stat-change" id="vn30-value-change"></span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Lực cầu</span>
+                            <span class="stat-value" id="vn30-demand">--</span>
+                        </div>
+                    </div>
+
+                    <div class="index-chart-mini">
+                        <canvas id="vn30-chart"></canvas>
+                    </div>
+                </div>
+
+
+
+            </div>
+
+            <!-- Dashboard Charts Section -->
+            <div class="dashboard-charts-section">
+                <h2 class="section-title">📊 Phân Tích Thị Trường</h2>
+
+                <!-- Row 1: Two Bubble Charts -->
+                <div class="charts-row" id="charts-row-1">
+                    <!-- Bubble Chart: Industry Movement -->
+                    <div class="chart-card" id="card-industry-bubble">
+                        <div class="chart-header">
+                            <h3>🏢 Chuyển Động Ngành</h3>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="industry-show-labels" onchange="toggleBubbleLabels('industry')">
+                                <span>Hiện nhãn</span>
+                            </label>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="industry-show-force" onchange="toggleBubbleLabels('industry')">
+                                <span>Lực cầu</span>
+                            </label>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="industry-show-table" onchange="toggleBubbleTable('industry')">
+                                <span>Bảng</span>
+                            </label>
+                            <div class="industry-dropdown" id="industry-dropdown-header">
+                                <button class="industry-dropdown-btn" onclick="event.stopPropagation();this.parentElement.classList.toggle('open')">Chọn ngành ▾</button>
+                                <div class="industry-dropdown-list" id="industry-dropdown-list"></div>
+                            </div>
+                            <span class="chart-date" id="industry-chart-date"></span>
+                        </div>
+                        <div class="chart-legend-info">
+                            <span>X: Lực Cầu (%) | Y: % CP > MA10</span>
+                        </div>
+                        <div class="bubble-chart-container">
+                            <canvas id="industry-bubble-chart"></canvas>
+                        </div>
+                        <div class="chart-reference-lines">
+                            <span class="ref-line-50">Mốc 50% - Cân bằng</span>
+                        </div>
+                        <div id="industry-table-container" class="bubble-table-container" style="display:none;"></div>
+                    </div>
+
+                    <!-- Bubble Chart: Market Cap -->
+                    <div class="chart-card" id="card-marketcap-bubble">
+                        <div class="chart-header">
+                            <h3>💰 Vốn Hóa</h3>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="marketcap-show-labels" onchange="toggleBubbleLabels('marketcap')">
+                                <span>Hiện nhãn</span>
+                            </label>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="marketcap-show-force" onchange="toggleBubbleLabels('marketcap')">
+                                <span>Lực cầu</span>
+                            </label>
+                            <label class="label-toggle">
+                                <input type="checkbox" id="marketcap-show-table" onchange="toggleBubbleTable('marketcap')">
+                                <span>Bảng</span>
+                            </label>
+                            <span class="chart-legend-compact">
+                                <span class="legend-item small">Small</span>
+                                <span class="legend-item mid">Mid</span>
+                                <span class="legend-item large">Large</span>
+                                <span class="legend-item super">Super</span>
+                            </span>
+                        </div>
+                        <div class="chart-legend-info">
+                            <span>X: Lực Cầu (%) | Y: % CP > MA10</span>
+                        </div>
+                        <div class="bubble-chart-container">
+                            <canvas id="marketcap-bubble-chart"></canvas>
+                        </div>
+                        <div class="chart-reference-lines">
+                            <span class="ref-line-50" style="cursor:pointer; color: var(--accent-blue);">💡 Click vào bubble để xem danh sách CP</span>
+                        </div>
+                        <div id="marketcap-table-container" class="bubble-table-container" style="display:none;"></div>
+                    </div>
+                </div>
+
+                <!-- Row 2: VNINDEX + VN30 Lực Cầu Line Charts -->
+                <div class="charts-row" id="charts-row-2">
+                    <!-- VNINDEX & Lực Cầu -->
+                    <div class="chart-card" id="card-vnindex-demand">
+                        <div class="chart-header">
+                            <h3>📈 VNINDEX & Lực Cầu</h3>
+                            <div class="chart-legend-inline">
+                                <span class="legend-vnindex">— VNINDEX</span>
+                                <span class="legend-luccau">— Lực Cầu</span>
+                            </div>
+                        </div>
+                        <div class="line-chart-container">
+                            <canvas id="vnindex-demand-chart"></canvas>
+                        </div>
+                        <div class="chart-reference-lines-horizontal">
+                            <span class="ref-line-35">Mốc 35% - Cảnh báo</span>
+                            <span class="ref-line-50">Mốc 50% - Cân bằng</span>
+                        </div>
+                    </div>
+
+                    <!-- VN30 & Lực Cầu -->
+                    <div class="chart-card" id="card-vn30-demand">
+                        <div class="chart-header">
+                            <h3>📊 VN30 & Lực Cầu</h3>
+                            <div class="chart-legend-inline">
+                                <span class="legend-vn30">— VN30</span>
+                                <span class="legend-luccau">— Lực Cầu</span>
+                            </div>
+                        </div>
+                        <div class="line-chart-container">
+                            <canvas id="vn30-demand-chart"></canvas>
+                        </div>
+                        <div class="chart-reference-lines-horizontal">
+                            <span class="ref-line-35">Mốc 35% - Cảnh báo</span>
+                            <span class="ref-line-50">Mốc 50% - Cân bằng</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Two Column Layout -->
+            <div class="dashboard-grid">
+                <!-- Left Column: Foreign Flow & Industry Flow -->
+                <div class="dashboard-column">
+                    <!-- Foreign Net Buy/Sell -->
+                    <div class="card" id="panel-foreign-flow">
+                        <div class="card-header">
+                            <h3>🌍 Khối Ngoại Mua/Bán Ròng</h3>
+                            <span class="card-badge">Hôm nay</span>
+                        </div>
+                        <div class="foreign-flow">
+                            <div class="flow-item">
+                                <span class="flow-label">Mua</span>
+                                <span class="flow-value positive" id="foreign-buy-val">--</span>
+                            </div>
+                            <div class="flow-item">
+                                <span class="flow-label">Bán</span>
+                                <span class="flow-value negative" id="foreign-sell-val">--</span>
+                            </div>
+                            <div class="flow-item">
+                                <span class="flow-label">Ròng</span>
+                                <span class="flow-value" id="foreign-net-val">--</span>
+                            </div>
+                            <div class="flow-chart">
+                                <canvas id="foreign-flow-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Top Industries -->
+                    <div class="card" id="panel-top-industries">
+                        <div class="card-header">
+                            <h3>🏢 Top 5 Ngành Mua/Bán Ròng</h3>
+                            <span class="card-badge" title="Dòng tiền ròng của Tổ chức + Tự doanh + Nước ngoài">Dòng tiền lớn</span>
+                        </div>
+                        <div class="industry-lists">
+                            <div class="industry-column">
+                                <h4 class="positive">📈 Mua Ròng</h4>
+                                <ul class="industry-list" id="industry-buy-list">
+                                    <li><span class="industry-name">Ngân hàng</span><span
+                                            class="industry-value positive">+523.4 tỷ</span></li>
+                                    <li><span class="industry-name">Bất động sản</span><span
+                                            class="industry-value positive">+312.1 tỷ</span></li>
+                                    <li><span class="industry-name">Công nghệ</span><span
+                                            class="industry-value positive">+156.7 tỷ</span></li>
+                                    <li><span class="industry-name">Thép</span><span
+                                            class="industry-value positive">+89.2 tỷ</span></li>
+                                    <li><span class="industry-name">Dầu khí</span><span
+                                            class="industry-value positive">+67.8 tỷ</span></li>
+                                </ul>
+                            </div>
+                            <div class="industry-column">
+                                <h4 class="negative">📉 Bán Ròng</h4>
+                                <ul class="industry-list" id="industry-sell-list">
+                                    <li><span class="industry-name">Chứng khoán</span><span
+                                            class="industry-value negative">-234.5 tỷ</span></li>
+                                    <li><span class="industry-name">Dệt may</span><span
+                                            class="industry-value negative">-123.4 tỷ</span></li>
+                                    <li><span class="industry-name">Xây dựng</span><span
+                                            class="industry-value negative">-98.7 tỷ</span></li>
+                                    <li><span class="industry-name">Thủy sản</span><span
+                                            class="industry-value negative">-56.3 tỷ</span></li>
+                                    <li><span class="industry-name">Bảo hiểm</span><span
+                                            class="industry-value negative">-34.2 tỷ</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Top Stocks -->
+                <div class="dashboard-column">
+                    <!-- Top Stocks -->
+                    <div class="card" id="panel-top-stocks">
+                        <div class="card-header" style="flex-direction: column; align-items: center; gap: 8px;">
+                            <h3>🔥 Top Cổ Phiếu Mua/Bán Ròng</h3>
+                            <div class="top-net-tabs">
+                                <button class="top-net-tab active" data-period="daily" onclick="renderTopNetStocksList('daily')">1 Ngày</button>
+                                <button class="top-net-tab" data-period="tenDay" onclick="renderTopNetStocksList('tenDay')">10 Ngày</button>
+                                <button class="top-net-tab" data-period="monthly" onclick="renderTopNetStocksList('monthly')">1 Tháng</button>
+                                <button class="top-net-tab" data-period="quarterly" onclick="renderTopNetStocksList('quarterly')">3 Tháng</button>
+                            </div>
+                        </div>
+                        <div class="top-stocks-grid">
+                            <div class="stock-column">
+                                <h4 class="positive">📈 Top Mua Ròng</h4>
+                                <ul class="stock-list" id="top-buy-stocks">
+                                </ul>
+                            </div>
+                            <div class="stock-column">
+                                <h4 class="negative">📉 Top Bán Ròng</h4>
+                                <ul class="stock-list" id="top-sell-stocks">
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Market Influential Stocks -->
+            <div class="card full-width" id="panel-influential">
+                <div class="card-header">
+                    <h3>📊 Mã Tác Động Thị Trường</h3>
+                    <span class="card-badge">VNINDEX</span>
+                </div>
+                <div class="influential-stocks-grid">
+                    <div class="influential-column positive">
+                        <h4 class="positive">📈 Tác Động Tích Cực</h4>
+                        <table class="data-table compact" id="positive-stocks-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã</th>
+                                    <th>Điểm</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positive-stocks-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="influential-column negative">
+                        <h4 class="negative">📉 Tác Động Tiêu Cực</h4>
+                        <table class="data-table compact" id="negative-stocks-table">
+                            <thead>
+                                <tr>
+                                    <th>Mã</th>
+                                    <th>Điểm</th>
+                                </tr>
+                            </thead>
+                            <tbody id="negative-stocks-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phân Tích Lệnh - Dòng tiền 4 nhóm NĐT (Fiintrade) -->
+            <div class="card full-width" id="panel-investor-flow">
+                <div class="card-header">
+                    <h3>🧮 Phân Tích Lệnh - Dòng Tiền 4 Nhóm NĐT</h3>
+                    <span class="card-badge">Fiintrade · Khớp lệnh (tỷ)</span>
+                </div>
+                <div class="investor-flow-wrapper">
+                    <table class="data-table" id="investor-flow-table">
+                        <thead>
+                            <tr>
+                                <th>Nhóm Nhà Đầu Tư</th>
+                                <th>Mua (Hôm Nay)</th>
+                                <th>Bán (Hôm Nay)</th>
+                                <th>Ròng (Hôm Nay)</th>
+                                <th>Ròng 5 Phiên</th>
+                                <th>Ròng 20 Phiên</th>
+                            </tr>
+                        </thead>
+                        <tbody id="investor-flow-tbody">
+                            <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Đang tải dữ liệu...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Top CP Theo Dòng Tiền NĐT (Fiintrade) -->
+            <div class="card full-width" id="panel-investor-top">
+                <div class="card-header" style="flex-direction: column; align-items: center; gap: 8px;">
+                    <h3>🏆 Top CP Theo Dòng Tiền NĐT</h3>
+                    <div class="top-net-tabs" id="investor-top-toggle">
+                        <button class="top-net-tab active" data-group="foreign" onclick="renderInvestorTop('foreign')">Nước ngoài</button>
+                        <button class="top-net-tab" data-group="proprietary" onclick="renderInvestorTop('proprietary')">Tự doanh</button>
+                        <button class="top-net-tab" data-group="institution" onclick="renderInvestorTop('institution')">Tổ chức</button>
+                        <button class="top-net-tab" data-group="individual" onclick="renderInvestorTop('individual')">Cá nhân</button>
+                    </div>
+                </div>
+                <div class="top-stocks-grid">
+                    <div class="stock-column">
+                        <h4 class="positive">📈 Top Mua Ròng</h4>
+                        <ul class="stock-list" id="investor-top-buy">
+                            <li><span class="stock-code">--</span><span class="stock-value" style="color:var(--text-muted)">Đang tải...</span></li>
+                        </ul>
+                    </div>
+                    <div class="stock-column">
+                        <h4 class="negative">📉 Top Bán Ròng</h4>
+                        <ul class="stock-list" id="investor-top-sell">
+                            <li><span class="stock-code">--</span><span class="stock-value" style="color:var(--text-muted)">Đang tải...</span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dòng tiền thông minh theo mã (Fiintrade GetPriceData) -->
+            <div class="card full-width" id="panel-stock-investor-flow">
+                <div class="card-header" style="flex-wrap:wrap; gap:10px;">
+                    <h3>💼 Dòng Tiền Thông Minh Theo Mã</h3>
+                    <div class="stock-flow-controls">
+                        <input type="text" id="stock-flow-symbol" class="stock-flow-input" placeholder="Nhập mã (vd HPG)" maxlength="10" value="HPG">
+                        <button class="stock-flow-search-btn" id="stock-flow-search-btn">Xem</button>
+                        <div class="top-net-tabs" id="stock-flow-freq">
+                            <button class="top-net-tab active" data-freq="Daily">Ngày</button>
+                            <button class="top-net-tab" data-freq="Weekly">Tuần</button>
+                            <button class="top-net-tab" data-freq="Monthly">Tháng</button>
+                        </div>
+                        <span class="card-badge">Fiintrade · GT ròng (tỷ)</span>
+                    </div>
+                </div>
+                <div class="stock-flow-status" id="stock-flow-status" style="font-size:12px;color:var(--text-muted);margin:4px 0;"></div>
+                <div class="line-chart-container" style="position:relative;height:340px;">
+                    <canvas id="stock-investor-flow-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Breakout Signals -->
+            <div class="card full-width" id="panel-breakout">
+                <div class="card-header">
+                    <h3>⚡ Tín Hiệu Breakout Trendline</h3>
+                    <span class="card-badge pulse">Mới nhất</span>
+                </div>
+                <div class="breakout-table-wrapper">
+                    <table class="data-table" id="breakout-table">
+                        <thead>
+                            <tr>
+                                <th>Ngày</th>
+                                <th>Mã CP</th>
+                                <th>Giá Break</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>KLGD</th>
+                                <th>% Tăng</th>
+                                <th>Lợi Nhuận</th>
+                                <th>Tín Hiệu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakout-tbody">
+                            <tr>
+                                <td>27/12/2024</td>
+                                <td class="stock-code">HPG</td>
+                                <td>25,450</td>
+                                <td>26,200</td>
+                                <td>12,456,700</td>
+                                <td class="positive">+2.94%</td>
+                                <td class="positive">+2.94%</td>
+                                <td><span class="signal-badge">Break Trendline</span></td>
+                            </tr>
+                            <tr>
+                                <td>27/12/2024</td>
+                                <td class="stock-code">VNM</td>
+                                <td>72,300</td>
+                                <td>73,500</td>
+                                <td>3,245,600</td>
+                                <td class="positive">+1.66%</td>
+                                <td class="positive">+1.66%</td>
+                                <td><span class="signal-badge">Break Trendline</span></td>
+                            </tr>
+                            <tr>
+                                <td>26/12/2024</td>
+                                <td class="stock-code">FPT</td>
+                                <td>128,500</td>
+                                <td>131,200</td>
+                                <td>2,567,800</td>
+                                <td class="positive">+2.10%</td>
+                                <td class="positive">+2.10%</td>
+                                <td><span class="signal-badge">Break Trendline</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Price Board Tab -->
+        <section class="tab-content" id="price-board">
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>📋 Bảng Giá Cổ Phiếu</h3>
+                    <div class="price-board-controls">
+                        <div class="search-box">
+                            <input type="text" id="stock-search" placeholder="Tìm mã CP..." class="search-input">
+                        </div>
+                        <div class="exchange-tabs">
+                            <button class="exchange-tab active" data-exchange="HSX">HSX <span
+                                    id="hsx-count">0</span></button>
+                            <button class="exchange-tab" data-exchange="HNX">HNX <span id="hnx-count">0</span></button>
+                            <button class="exchange-tab" data-exchange="UPCOM">UpCom <span
+                                    id="upcom-count">0</span></button>
+                        </div>
+                        <button class="btn-clear-price-filters" id="btn-clear-price-filters" onclick="clearAllPriceFilters()" style="display:none;">Xóa lọc</button>
+                        <span class="loading-indicator" id="price-loading"></span>
+                    </div>
+                </div>
+                <div class="price-table-wrapper">
+                    <table class="data-table price-table sortable-table" id="price-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="symbol">Mã CP <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="price">Giá <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="change">Thay Đổi <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="changePercent">% Thay Đổi <span
+                                        class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="volume">KLGD <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="volRatio">% KL/TB <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="value">GTGD <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="ma10">MA10 <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="ma20">MA20 <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="ma45">MA45 <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="demandStrength">Lực Cầu <span class="sort-icon">⇅</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="price-tbody">
+                            <!-- Data loaded via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- STOCK FILTER TAB -->
+        <section class="tab-content" id="stock-filter">
+            <div class="filter-controls-container">
+                <div class="filter-presets-bar">
+                    <select id="filter-preset-select">
+                        <option value="">-- Chọn bộ lọc đã lưu --</option>
+                    </select>
+                    <button class="action-btn save-btn" id="btn-save-preset">💾 Lưu</button>
+                    <button class="action-btn rename-btn" style="background-color: #ff9800; color: white;"
+                        id="btn-rename-preset">✏️ Sửa tên</button>
+                    <button class="action-btn delete-btn" id="btn-delete-preset">🗑️ Xóa</button>
+                </div>
+
+                <div class="filter-main-layout">
+                    <div class="filter-builder">
+                        <div id="filter-conditions-list">
+                            <!-- Conditions added here -->
+                        </div>
+                        <button class="btn-add-condition" id="btn-add-condition">+ Thêm điều kiện</button>
+                    </div>
+
+                    <div class="filter-actions-bar">
+                        <button class="run-filter-btn" id="btn-run-filter">🚀 Lọc Cổ Phiếu</button>
+                        <button class="action-btn" id="btn-clear-all-filters">Xóa hết</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-results-info">
+                Tìm thấy <span id="filter-result-count">0</span> cổ phiếu thỏa mãn.
+            </div>
+
+            <div class="price-table-wrapper">
+                <table class="data-table price-table" id="filter-results-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="symbol">Mã CP ↕</th>
+                            <th class="sortable" data-sort="exchange">Sàn ↕</th>
+                            <th class="sortable" data-sort="price">Giá ↕</th>
+                            <th class="sortable" data-sort="change">Thay Đổi ↕</th>
+                            <th class="sortable" data-sort="changePercent">% Thay Đổi ↕</th>
+                            <th class="sortable" data-sort="volume">KLGD ↕</th>
+                            <th class="sortable" data-sort="volRatio">% KL/TB ↕</th>
+                            <th class="sortable" data-sort="value">GTGD ↕</th>
+                            <th class="sortable" data-sort="ma10">MA10 ↕</th>
+                            <th class="sortable" data-sort="ma20">MA20 ↕</th>
+                            <th class="sortable" data-sort="ma45">MA45 ↕</th>
+                            <th class="sortable" data-sort="demandStrength">Lực Cầu ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody id="filter-results-tbody">
+                        <!-- Filter results -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Industry Analysis Tab -->
+
+        <section class="tab-content" id="industry">
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>🏢 Phân Tích Dòng Tiền Theo Ngành</h3>
+                    <div class="industry-timerange-controls">
+                        <button class="industry-timerange-btn active" data-range="1">Hôm Nay</button>
+                        <button class="industry-timerange-btn" data-range="5">5 Phiên</button>
+                        <button class="industry-timerange-btn" data-range="20">20 Phiên</button>
+                        <button class="industry-timerange-btn" data-range="0">Từ Đầu Năm</button>
+                        <span class="card-badge">Fiintrade</span>
+                    </div>
+                </div>
+
+                <!-- Net flow by investor group chart -->
+                <div class="industry-chart-section">
+                    <div class="chart-controls">
+                        <div class="chart-title">📊 Dòng Tiền Ròng Theo Ngành (Tổ chức + Tự doanh + Nước ngoài)</div>
+                        <span class="industry-date-range" id="industry-date-range"></span>
+                    </div>
+
+                    <!-- Net flow chart -->
+                    <div class="industry-cumulative-chart">
+                        <canvas id="industry-cumulative-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Industry performance heatmap (Hiệu suất ngành) -->
+                <div class="industry-heatmap-section">
+                    <div class="chart-controls">
+                        <div class="chart-title">🔥 Hiệu Suất Ngành</div>
+                        <span class="industry-heatmap-hint">Màu theo % thay đổi chỉ số ngành · sắp theo % giảm dần</span>
+                    </div>
+                    <div class="industry-heatmap" id="industry-heatmap"></div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="industry-table-wrapper">
+                    <table class="data-table sortable-table" id="industry-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" data-sort="name">Ngành <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="closeIndex">Chỉ Số <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="percentChange">% <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="caNhan">Cá Nhân <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="toChuc">Tổ Chức <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="tuDoanh">Tự Doanh <span class="sort-icon">⇅</span></th>
+                                <th class="sortable" data-sort="nuocNgoai">Nước Ngoài <span class="sort-icon">⇅</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="industry-tbody">
+                            <!-- Will be populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Breakout Tab -->
+        <section class="tab-content" id="breakout">
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>⚡ Breakout Trendline Scanner</h3>
+                    <div class="filter-group">
+                        <select id="breakout-period" class="filter-select">
+                            <option value="today">Hôm nay</option>
+                            <option value="week">7 ngày</option>
+                            <option value="month">30 ngày</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="breakout-stats">
+                    <div class="stat-card">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-number" id="total-signals">15</span>
+                        <span class="stat-label">Tổng Tín Hiệu</span>
+                    </div>
+                    <div class="stat-card positive">
+                        <span class="stat-icon">📈</span>
+                        <span class="stat-number" id="profitable-signals">12</span>
+                        <span class="stat-label">Có Lợi Nhuận</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">🎯</span>
+                        <span class="stat-number" id="win-rate">80%</span>
+                        <span class="stat-label">Tỷ Lệ Thắng</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">💰</span>
+                        <span class="stat-number positive" id="avg-profit">+2.45%</span>
+                        <span class="stat-label">TB Lợi Nhuận</span>
+                    </div>
+                </div>
+                <div class="breakout-table-wrapper">
+                    <table class="data-table" id="breakout-full-table">
+                        <thead>
+                            <tr>
+                                <th>Ngày Break</th>
+                                <th>Mã CP</th>
+                                <th>Giá tại ngày Break</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>KLGD (ngày break)</th>
+                                <th>% Tăng Giá (ngày break)</th>
+                                <th>Giá Break</th>
+                                <th>Lợi Nhuận</th>
+                                <th>Loại Tín Hiệu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakout-full-tbody">
+                            <!-- Data loaded via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Potential Stocks Tab -->
+        <section class="tab-content" id="potential-stocks">
+            <div class="card full-width">
+                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <h3>⭐ Danh Sách Cổ Phiếu Tiềm Năng (RS &gt; 55)</h3>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button class="run-filter-btn" id="btn-scan-potential" style="padding: 8px 16px; margin: 0; font-size: 13px; cursor: pointer; border-radius: 4px; border: none; font-weight: 500;">
+                            ⚡ Quét Tín Hiệu Mới
+                        </button>
+                        <span id="potential-last-update" style="color: var(--text-muted); font-size: 13px;">Cập nhật: --</span>
+                    </div>
+                </div>
+                
+                <div class="breakout-stats" style="margin: 20px 0;">
+                    <div class="stat-card positive">
+                        <span class="stat-icon">🟢</span>
+                        <span class="stat-number" id="potential-uptrend-count">0</span>
+                        <span class="stat-label">RS Đang Uptrend</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">🟡</span>
+                        <span class="stat-number" id="potential-sideways-count">0</span>
+                        <span class="stat-label">RS Tích Lũy / Sideways</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-icon">📊</span>
+                        <span class="stat-number" id="potential-total-count">0</span>
+                        <span class="stat-label">Tổng Cổ Phiếu Đạt Tiêu Chí</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #4caf50; font-size: 18px;">🟢</span>
+                    <h4 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin: 0;">Cổ Phiếu RS Đang Uptrend (Tiềm Năng Cao)</h4>
+                </div>
+                <div class="breakout-table-wrapper" style="margin-bottom: 30px;">
+                    <table class="data-table price-table" id="potential-uptrend-table">
+                        <thead>
+                            <tr>
+                                <th>Mã CP</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>Thay Đổi</th>
+                                <th>% Thay Đổi</th>
+                                <th>Điểm RS</th>
+                                <th>MA20</th>
+                                <th>Khoảng cách MA20</th>
+                                <th>MA50</th>
+                                <th>Khối Lượng</th>
+                                <th>Vol Ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="potential-uptrend-tbody">
+                            <tr>
+                                <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                    Đang tải dữ liệu cổ phiếu tiềm năng...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 30px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #ffc107; font-size: 18px;">🟡</span>
+                    <h4 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin: 0;">Cổ Phiếu RS Sideways / Tích Lũy</h4>
+                </div>
+                <div class="breakout-table-wrapper">
+                    <table class="data-table price-table" id="potential-sideways-table">
+                        <thead>
+                            <tr>
+                                <th>Mã CP</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>Thay Đổi</th>
+                                <th>% Thay Đổi</th>
+                                <th>Điểm RS</th>
+                                <th>MA20</th>
+                                <th>Khoảng cách MA20</th>
+                                <th>MA50</th>
+                                <th>Khối Lượng</th>
+                                <th>Vol Ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="potential-sideways-tbody">
+                            <tr>
+                                <td colspan="10" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                    Đang tải dữ liệu cổ phiếu tiềm năng...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 35px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: var(--accent-blue); font-size: 18px;">📊</span>
+                    <h4 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin: 0;">Tín Hiệu Giao Dịch MACD Crossover (Hôm Nay)</h4>
+                </div>
+                <div class="breakout-table-wrapper" style="margin-bottom: 30px;">
+                    <table class="data-table price-table" id="macd-signals-table">
+                        <thead>
+                            <tr>
+                                <th>Mã CP</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>Thay Đổi</th>
+                                <th>% Thay Đổi</th>
+                                <th>Tín Hiệu</th>
+                                <th>Mô Tả Tín Hiệu</th>
+                                <th>Khối Lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody id="macd-signals-tbody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                    Đang tải tín hiệu giao dịch MACD...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 35px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #ff9800; font-size: 18px;">📈</span>
+                    <h4 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin: 0;">Tín Hiệu Giao Dịch RSI Crossover (Hôm Nay)</h4>
+                </div>
+                <div class="breakout-table-wrapper" style="margin-bottom: 30px;">
+                    <table class="data-table price-table" id="rsi-signals-table">
+                        <thead>
+                            <tr>
+                                <th>Mã CP</th>
+                                <th>Giá Hiện Tại</th>
+                                <th>Thay Đổi</th>
+                                <th>% Thay Đổi</th>
+                                <th>Tín Hiệu</th>
+                                <th>Mô Tả Tín Hiệu</th>
+                                <th>Khối Lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rsi-signals-tbody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                                    Đang tải tín hiệu giao dịch RSI...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 24px; padding: 16px; background-color: rgba(255, 255, 255, 0.02); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); font-size: 13px; color: var(--text-muted);">
+                    <p style="margin: 0 0 8px 0; font-weight: 600; color: var(--text-main);">💡 Tiêu chí lọc Cổ Phiếu Tiềm Năng:</p>
+                    <ul style="list-style-type: disc; margin: 0; padding-left: 20px; line-height: 1.6;">
+                        <li>Giá nằm trên MA20 và MA50 (Xu hướng tăng ngắn & trung hạn).</li>
+                        <li>Đường MA20 nằm trên MA50 (Cấu trúc Golden Cross - Xu hướng tăng bền vững).</li>
+                        <li>Chỉ số Sức mạnh giá (RS) &gt;= 55 (Cổ phiếu mạnh hơn thị trường chung).</li>
+                        <li>Khoảng cách từ giá hiện tại đến MA20 không quá xa (&lt; 8%) để đảm bảo điểm mua an toàn, tránh mua đuổi.</li>
+                        <li>Khối lượng giao dịch bình quân 20 phiên đạt tối thiểu 200,000 cổ phiếu (Đảm bảo thanh khoản).</li>
+                        <li>Nến ngày là nến xanh hoặc giá đóng cửa cao hơn ngày hôm trước.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- News Tab -->
+        <section class="tab-content" id="news">
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>📰 Tin Tức Tài Chính - Chứng Khoán</h3>
+                    <div class="filter-group">
+                        <select id="news-category" class="filter-select">
+                            <option value="all">Tất cả</option>
+                            <option value="Chứng khoán">Chứng khoán</option>
+                            <option value="Doanh nghiệp">Doanh nghiệp</option>
+                            <option value="Ngân hàng">Ngân hàng</option>
+                            <option value="Bất động sản">Bất động sản</option>
+                            <option value="Kinh tế vĩ mô">Vĩ mô</option>
+                            <option value="Cổ tức">Cổ tức</option>
+                        </select>
+                        <button class="refresh-btn" id="refreshNewsBtn">🔄 Cập Nhật</button>
+                    </div>
+                </div>
+                <div class="news-grid" id="news-grid">
+                    <!-- News items loaded via JavaScript -->
+                    <div class="news-item">
+                        <div class="news-category">Chứng khoán</div>
+                        <h4 class="news-title"><a href="#" target="_blank">VN-Index vượt mốc 1,250 điểm trong phiên giao
+                                dịch hôm nay</a></h4>
+                        <div class="news-meta">
+                            <span class="news-source">VnExpress</span>
+                            <span class="news-time">10 phút trước</span>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <div class="news-category">Doanh nghiệp</div>
+                        <h4 class="news-title"><a href="#" target="_blank">Vinamilk công bố kết quả kinh doanh quý
+                                4/2024</a></h4>
+                        <div class="news-meta">
+                            <span class="news-source">CafeF</span>
+                            <span class="news-time">25 phút trước</span>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <div class="news-category">Ngân hàng</div>
+                        <h4 class="news-title"><a href="#" target="_blank">NHNN duy trì lãi suất điều hành ở mức
+                                thấp</a></h4>
+                        <div class="news-meta">
+                            <span class="news-source">Vietstock</span>
+                            <span class="news-time">1 giờ trước</span>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <div class="news-category">Bất động sản</div>
+                        <h4 class="news-title"><a href="#" target="_blank">Giá đất tại TP.HCM tiếp tục tăng mạnh</a>
+                        </h4>
+                        <div class="news-meta">
+                            <span class="news-source">Báo Đầu Tư</span>
+                            <span class="news-time">2 giờ trước</span>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <div class="news-category">Cổ tức</div>
+                        <h4 class="news-title"><a href="#" target="_blank">HPG chốt quyền trả cổ tức bằng tiền mặt tỷ lệ
+                                10%</a></h4>
+                        <div class="news-meta">
+                            <span class="news-source">Vietstock</span>
+                            <span class="news-time">3 giờ trước</span>
+                        </div>
+                    </div>
+                    <div class="news-item">
+                        <div class="news-category">Kinh tế vĩ mô</div>
+                        <h4 class="news-title"><a href="#" target="_blank">GDP Việt Nam năm 2024 tăng trưởng ấn tượng
+                                7.2%</a></h4>
+                        <div class="news-meta">
+                            <span class="news-source">VnExpress</span>
+                            <span class="news-time">4 giờ trước</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="news-sources">
+                    <p><strong>Nguồn tin:</strong> Vietstock, CafeF, VnExpress, Báo Đầu Tư, CafeBiz</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 VNStock - Dữ Liệu Thị Trường Chứng Khoán Việt Nam</p>
+            <p class="disclaimer">Dữ liệu chỉ mang tính chất tham khảo. Không phải khuyến nghị đầu tư.</p>
+        </div>
+    </footer>
+
+    <!-- TradingView Modal -->
+    <div id="tv-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="tv-modal-container" style="height: 500px; width: 100%;"></div>
+        </div>
+    </div>
+
+    <!-- html2canvas for image export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="js/cache.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/ui-state.js"></script>
+    <!-- TradingView Lightweight Charts: pure adapters (ESM module) + indicators + chart manager -->
+    <script type="module" src="js/tv-adapter.js"></script>
+    <script src="js/tv-indicators.js"></script>
+    <script src="js/tv-chart.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/grid-manager.js"></script>
+    <!-- TradingView Widget Script -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+</body>
+
+</html>
+```

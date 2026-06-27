@@ -1,0 +1,48 @@
+{
+ "Công nghệ phần mềm": {
+  "FPT": {
+   "m": "P/E (ngành)",
+   "e": 0.0168,
+   "oos": 0.0755,
+   "n": "CTCP FPT",
+   "w": {
+    "P/E (ngành)": 0.5365,
+    "P/S (ngành)": 0.1534,
+    "P/B (ngành)": 0.115,
+    "P/B hữu hình (ngành)": 0.1068,
+    "EV/EBITDA (ngành)": 0.0641,
+    "P/E (LS)": 0.0242
+   }
+  }
+ },
+ "Ngân hàng": {
+  "MBB": {
+   "m": "P/B (ngành)",
+   "e": 0.2022,
+   "oos": 0.079,
+   "n": "Ngân hàng TMCP Quân Đội",
+   "w": {
+    "P/B (ngành)": 0.1851,
+    "P/B hữu hình (ngành)": 0.1694,
+    "P/B (LS)": 0.1673,
+    "P/S (LS)": 0.1654,
+    "P/B hữu hình (LS)": 0.1639,
+    "P/S (ngành)": 0.1489
+   }
+  },
+  "TCB": {
+   "m": "P/B hữu hình (ngành)",
+   "e": 0.2576,
+   "oos": 0.1591,
+   "n": "Ngân hàng TMCP Kỹ thương Việt Nam",
+   "w": {
+    "P/S (ngành)": 0.1905,
+    "P/B hữu hình (ngành)": 0.168,
+    "P/B (ngành)": 0.1673,
+    "P/S (LS)": 0.1618,
+    "P/E (LS)": 0.1577,
+    "Justified P/B": 0.1547
+   }
+  }
+ }
+}

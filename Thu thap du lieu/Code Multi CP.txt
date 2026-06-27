@@ -1,0 +1,587 @@
+/**
+ * @OnlyCurrentDoc
+ *
+ * SCRIPT LẤY DỮ LIỆU DÒNG TIỀN (PHIÊN BẢN TÁCH BIỆT CHỨC NĂNG + ĐẢO NGƯỢC DỮ LIỆU)
+ *
+ * Các chức năng:
+ * - Dữ liệu được sắp xếp theo thời gian MỚI NHẤT -> CŨ NHẤT.
+ * - Chức năng 1: Lấy dữ liệu theo danh sách mã cổ phiếu riêng lẻ ở Cột B.
+ * - Chức năng 2: Lấy dữ liệu theo danh sách các ngành được chọn ở Cột D.
+ * - Tự động tạo menu dropdown để chọn ngành.
+ * - Tự động xóa các sheet cũ trước mỗi lần chạy.
+ * - Tự động lấy và cache OrganCode từ API.
+ * - Tạo sheet chi tiết và vẽ 3 biểu đồ (Daily, Weekly, Monthly) cho mỗi mã.
+ * - Tự động tạo và cập nhật sheet "Summary" tổng hợp.
+ */
+
+// ================== CẤU HÌNH CHUNG ==================
+var DASHBOARD_SHEET_NAME = "Dashboard";
+var SUMMARY_SHEET_NAME = "Summary";
+
+// Endpoint gốc FiinTrade (wl-*) chỉ cần header "origin" = iboard SSI là chạy.
+// (KHÔNG cần đăng nhập / token / x-fiin-*). Không để br/zstd để UrlFetchApp giải nén được.
+var FII_HEADERS = {
+  "accept": "application/json",
+  "origin": "https://iboard.ssi.com.vn",
+  "referer": "https://iboard.ssi.com.vn/",
+  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+};
+
+var HEADER_STYLE = {
+  backgroundColor: "#4472C4",
+  fontColor: "#FFFFFF",
+  fontWeight: "bold",
+  horizontalAlignment: "center"
+};
+var POSITIVE_COLOR = "#008000";
+var NEGATIVE_COLOR = "#FF0000";
+
+// DANH SÁCH CÁC CỔ PHIẾU TIÊU BIỂU SÀN HSX THEO NGÀNH
+var INDUSTRY_TICKER_MAPPING = {
+    'Ngân hàng': ['VCB', 'BID', 'CTG', 'TCB', 'MBB', 'VPB', 'HDB', 'ACB', 'VIB', 'EIB', 'OCB', 'SHB', 'STB', 'LPB', 'MSB', 'SSB'],
+    'Bất động sản': ['VHM', 'VIC', 'VRE', 'NVL', 'PDR', 'KDH', 'DIG', 'NLG', 'DXG', 'CEO', 'HDG', 'CRE', 'IJC', 'ITC','HDC', 'NTL','CII', 'KBC'],
+    'Chứng khoán': ['SSI', 'VND', 'HCM', 'VCI', 'SHS', 'MBS', 'FTS', 'BSI', 'VDS', 'AGR', 'CTS', 'VIX', 'TVB', 'TVS'],
+    'Thép': ['HPG', 'HSG', 'NKG', 'POM', 'TLH', 'VGS', 'SMC'],
+    'Bán lẻ': ['MWG', 'PNJ', 'FRT', 'DGW', 'PET', 'VTP'],
+    'Dầu khí': ['GAS', 'PLX', 'PVD', 'PVS', 'PVT','PVB', 'BSR', 'OIL'],
+    'Hóa chất & Phân bón': ['DGC', 'GVR', 'DCM','BFC', 'DPM', 'CSV', 'PHR', 'DPR', 'LAS'],
+    'Thực phẩm & Đồ uống': ['VNM', 'MSN', 'SAB', 'KDC', 'SBT', 'PAN', 'DBC', 'HAG', 'VHC', 'ANV', 'MPC'],
+    'Xây dựng & Vật liệu': ['VCG', 'CII', 'LCG', 'FCN', 'HHV', 'HT1', 'BCC', 'PLC', 'CTD', 'HBC'],
+    'Năng lượng & Điện': ['POW', 'PGV', 'GEG', 'REE', 'NT2', 'PC1', 'HDG'],
+    'Hàng không & Vận tải': ['VJC', 'HVN', 'GMD', 'HAH', 'VSC', 'VOS'],
+};
+
+/*******************************************************************************
+ * PHẦN 1: HÀM KHỞI TẠO VÀ CÁC HÀM CHÍNH
+ *******************************************************************************/
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Smart Money')
+    .addItem('1. Lấy Dữ Liệu Cổ Phiếu (Cột B)', 'mainProcessIndividual')
+    .addItem('2. Lấy Dữ Liệu Ngành theo mã (Cột D)', 'mainProcessIndustry')
+    .addItem('3. Dòng tiền theo NGÀNH (toàn thị trường)', 'mainProcessSector')
+    .addSeparator()
+    .addItem('4. Cài đặt Dropdown Ngành', 'setupIndustryDropdowns')
+    .addItem('Xóa Cache OrganCode', 'clearOrganCodeCache')
+    .addToUi();
+}
+
+function mainProcessIndividual() {
+    var tickers = getIndividualTickersFromDashboard();
+    if (tickers.length === 0) {
+        SpreadsheetApp.getUi().alert('Không tìm thấy mã cổ phiếu nào ở Cột B.');
+        return;
+    }
+    runDataFetchingEngine(tickers);
+}
+
+function mainProcessIndustry() {
+    var tickers = getIndustryTickersFromDashboard();
+    if (tickers.length === 0) {
+        SpreadsheetApp.getUi().alert('Không có ngành nào được chọn ở Cột D.');
+        return;
+    }
+    runDataFetchingEngine(tickers);
+}
+
+function runDataFetchingEngine(tickers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast('Bắt đầu quá trình...', 'Trạng thái', -1);
+  var dash = ss.getSheetByName(DASHBOARD_SHEET_NAME);
+  var fromD = dash ? fmtDate_(dash.getRange('F1').getValue()) : '';   // Từ ngày (tuỳ chọn)
+  var toD   = dash ? fmtDate_(dash.getRange('F2').getValue()) : '';   // Đến ngày (tuỳ chọn)
+  try {
+    deleteOldTickerSheets(ss, tickers);
+    ss.toast('Đang tải danh sách OrganCode...', 'Trạng thái', -1);
+    var organCodeMap = fetchAndCacheOrganCodeMap();
+    if (Object.keys(organCodeMap).length === 0) throw new Error('Không thể tải danh sách OrganCode.');
+    var summarySheet = setupSummarySheet(ss);
+    var summaryData = [];
+    for (var i = 0; i < tickers.length; i++) {
+      var ticker = tickers[i];
+      var isIndex = !organCodeMap[ticker];             // không có trong DS cổ phiếu -> là chỉ số
+      var organCode = organCodeMap[ticker] || ticker;
+      ss.toast(`Đang xử lý ${ticker} (${i + 1}/${tickers.length})`, 'Trạng thái', -1);
+      var dailySums = processSingleStock(ss, ticker, organCode, fromD, toD, isIndex);
+      if (dailySums) {
+        summaryData.push({
+          ticker: ticker,
+          industry: getIndustryForTicker(ticker),
+          sums: dailySums
+        });
+      }
+    }
+    if (summaryData.length > 0) {
+      ss.toast('Đang hoàn thiện sheet Summary...', 'Trạng thái', -1);
+      writeSummaryData(summarySheet, summaryData);
+      createSummaryChart(summarySheet, summaryData.length + 1);
+    }
+    ss.toast('Hoàn tất!', 'Thành công', 10);
+  } catch (e) {
+    Logger.log(`Lỗi nghiêm trọng: ${e.toString()}\nStack: ${e.stack}`);
+    SpreadsheetApp.getUi().alert(`Đã xảy ra lỗi: ${e.message}`);
+  }
+}
+
+/*******************************************************************************
+ * PHẦN 2: XỬ LÝ DỮ LIỆU VÀ BIỂU ĐỒ CHI TIẾT
+ *******************************************************************************/
+ 
+function processSingleStock(ss, ticker, organCode, fromD, toD, isIndex) {
+  var sheet = ss.getSheetByName(ticker) || ss.insertSheet(ticker);
+  sheet.clear();
+  removeChartsFromSheet(sheet);
+  sheet.setColumnWidths(1, 13, 110);
+  var currentRow = 1;
+  var dailySums = null;
+  var wrote = false;
+  var frequencies = ['Daily', 'Weekly', 'Monthly'];
+  for (var i = 0; i < frequencies.length; i++) {
+    var freq = frequencies[i];
+    var title = `Thống kê giá & dòng tiền ${ticker}${freq === 'Daily' ? '' : ' - ' + freq}`;
+    var apiData = fetchDataForFrequency(ticker, freq, fromD, toD);  // dùng GetPriceData (KL+GT)
+    if (apiData && apiData.length > 0) {
+      wrote = true;
+      var dataPackage = processApiData(apiData, isIndex);
+      if (freq === 'Daily') { dailySums = dataPackage.sums; }
+      var endRow = writeDataToSheet(sheet, dataPackage.displayData, title, currentRow);
+      var chartDataRange = sheet.getRange(currentRow + 1, 1, dataPackage.displayData.length - 1, dataPackage.displayData[0].length);
+      createLineChart(sheet, chartDataRange, title, `N${currentRow}`);
+      currentRow = endRow + 3;
+    }
+  }
+  if (!wrote) { ss.deleteSheet(sheet); return null; }  // mã/chỉ số không có dữ liệu -> xoá sheet rỗng
+  return dailySums;
+}
+
+function createLineChart(sheet, fullDataRange, title, position) {
+  var numRows = fullDataRange.getNumRows();
+  // Vẽ 4 đường GT khớp ròng (cột 9..12 trong bảng: GT CN/TC/TD/NN)
+  var dateRange = fullDataRange.offset(0, 0, numRows, 1);
+  var cnRange   = fullDataRange.offset(0, 8, numRows, 1);  // GT Cá nhân
+  var tcRange   = fullDataRange.offset(0, 9, numRows, 1);  // GT Tổ chức
+  var tdRange   = fullDataRange.offset(0, 10, numRows, 1); // GT Tự doanh
+  var nnRange   = fullDataRange.offset(0, 11, numRows, 1); // GT Nước ngoài
+
+  var chartBuilder = sheet.newChart()
+    .setChartType(Charts.ChartType.LINE)
+    .addRange(dateRange).addRange(cnRange).addRange(tcRange).addRange(tdRange).addRange(nnRange)
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+    .setTransposeRowsAndColumns(false)
+    .setNumHeaders(1)
+    .setPosition(parseInt(position.substring(1)), 14, 0, 0)
+    .setOption('title', title + ' (GT khớp ròng, tỷ đồng)')
+    .setOption('legend', { position: 'right' })
+    .setOption('height', 350).setOption('width', 760)
+    .setOption('series', {
+      0: { color: '#FFA500' }, // Cá Nhân
+      1: { color: '#7030A0' }, // Tổ Chức
+      2: { color: '#92D050' }, // Tự Doanh
+      3: { color: '#00B0F0' }  // Nước Ngoài
+    });
+  sheet.insertChart(chartBuilder.build());
+}
+
+// =========================================================================================
+// ==================== ĐÂY LÀ HÀM ĐÃ ĐƯỢC SỬA LẠI LOGIC TÍNH TOÁN =======================
+// =========================================================================================
+// =========================================================================================
+// ==== XỬ LÝ DỮ LIỆU: bảng 12 cột (KL + GT khớp ròng 4 nhóm) - đúng bảng FiinTrade ========
+// =========================================================================================
+// Đơn vị hiển thị: Giá ÷1.000 · KL ÷1.000 · GT ÷1.000.000 (giống FiinTrade).
+// Tổ chức (TCTN) = -(Cá nhân + Tự doanh + Nước ngoài)  [thị trường khớp lệnh zero-sum;
+// field localInstitutional* của FiinTrade đã gộp tự doanh nên không dùng trực tiếp].
+function processApiData(apiItems, isIndex) {
+  var result = [['Ngày', '+/-', '% +/-', 'Đóng Cửa',
+                 'KL Cá Nhân', 'KL Tổ Chức', 'KL Tự Doanh', 'KL Nước Ngoài',
+                 'GT Cá Nhân (tỷ)', 'GT Tổ Chức (tỷ)', 'GT Tự Doanh (tỷ)', 'GT Nước Ngoài (tỷ)']];
+  var sums = { nuocNgoai: 0, caNhan: 0, tuDoanh: 0, toChuc: 0 };   // GT, đơn vị TỶ (cho Summary)
+  var kl = { cn: 0, tc: 0, td: 0, nn: 0 };                         // KL net (số cổ phiếu, raw)
+  // Giá: cổ phiếu chia 1.000 (ra nghìn đồng); CHỈ SỐ để nguyên (điểm, vd 1.791,65). GT ÷1 tỷ. KL giữ nguyên.
+  var P = isIndex ? 1 : 1000, G = 1e9;
+  function nz(x) { return x ? Number(x) : 0; }
+
+  apiItems.forEach(function (item) {
+    // GT (giá trị) khớp ròng - đơn vị tỷ
+    var gtCN = (nz(item.localIndividualBuyMatchValue)        - nz(item.localIndividualSellMatchValue))        / G;
+    var gtTD = (nz(item.proprietaryTotalMatchBuyTradeValue)  - nz(item.proprietaryTotalMatchSellTradeValue))  / G;
+    var gtNN = (nz(item.foreignBuyValueMatched)              - nz(item.foreignSellValueMatched))              / G;
+    var gtTC = -(gtCN + gtTD + gtNN);
+    // KL (khối lượng) khớp ròng - số cổ phiếu thực
+    var klCN = (nz(item.localIndividualBuyMatchVolume)       - nz(item.localIndividualSellMatchVolume));
+    var klTD = (nz(item.proprietaryTotalMatchBuyTradeVolume) - nz(item.proprietaryTotalMatchSellTradeVolume));
+    var klNN = (nz(item.foreignBuyVolumeMatched)             - nz(item.foreignSellVolumeMatched));
+    var klTC = -(klCN + klTD + klNN);
+
+    sums.caNhan += gtCN; sums.toChuc += gtTC; sums.tuDoanh += gtTD; sums.nuocNgoai += gtNN;
+    kl.cn += klCN; kl.tc += klTC; kl.td += klTD; kl.nn += klNN;
+
+    result.push([
+      Utilities.formatDate(new Date(item.tradingDate), "GMT+7", "dd/MM/yyyy"),
+      nz(item.valueChange) / P, nz(item.percentValueChange) * 100, nz(item.closeValue) / P,
+      klCN, klTC, klTD, klNN,
+      gtCN, gtTC, gtTD, gtNN
+    ]);
+  });
+
+  var displayData = result.slice();
+  displayData.push(['Tổng', '', '', '',
+                    kl.cn, kl.tc, kl.td, kl.nn,
+                    sums.caNhan, sums.toChuc, sums.tuDoanh, sums.nuocNgoai]);
+  return { displayData: displayData, sums: sums };
+}
+
+
+/*******************************************************************************
+ * PHẦN 3: XỬ LÝ SHEET SUMMARY VÀ BIỂU ĐỒ TỔNG HỢP
+ *******************************************************************************/
+
+function setupSummarySheet(ss) {
+  var sheet = ss.getSheetByName(SUMMARY_SHEET_NAME);
+  if (sheet) {
+    sheet.clear();
+    removeChartsFromSheet(sheet);
+  } else {
+    sheet = ss.insertSheet(SUMMARY_SHEET_NAME, 0);
+  }
+  var headers = ['Mã CK', 'Ngành', 'Tổng Khối Ngoại', 'Tổng Cá Nhân', 'Tổng Tự Doanh', 'Tổng TCTN'];
+  sheet.getRange("A1:F1").setValues([headers])
+    .setFontWeight('bold').setBackground(HEADER_STYLE.backgroundColor)
+    .setFontColor(HEADER_STYLE.fontColor).setHorizontalAlignment('center');
+  sheet.setColumnWidths(1, 2, 120).setColumnWidths(3, 6, 150);
+  return sheet;
+}
+
+function writeSummaryData(sheet, summaryData) {
+  var outputData = summaryData.map(function(item) {
+    return [item.ticker, item.industry, item.sums.nuocNgoai, item.sums.caNhan, item.sums.tuDoanh, item.sums.toChuc];
+  });
+  if (outputData.length > 0) {
+    var dataRange = sheet.getRange(2, 1, outputData.length, 6);
+    dataRange.setValues(outputData).setNumberFormat("#,##0.00");
+    applyConditionalFormatting(sheet, sheet.getRange(2, 3, outputData.length, 4), POSITIVE_COLOR, NEGATIVE_COLOR);
+  }
+  var totalRow = outputData.length + 2;
+  sheet.getRange(totalRow, 1).setValue("TỔNG").setFontWeight('bold');
+  ['C', 'D', 'E', 'F'].forEach(function(col, index) {
+    var formula = `=SUM(${col}2:${col}${totalRow - 1})`;
+    sheet.getRange(totalRow, 3 + index).setFormula(formula).setFontWeight('bold').setNumberFormat("#,##0.00");
+  });
+  sheet.getRange(totalRow, 1, 1, 6).setBackground("#d9d9d9");
+}
+
+function createSummaryChart(sheet, lastDataRow) {
+  if (lastDataRow < 2) return;
+  var chartBuilder = sheet.newChart()
+    .setChartType(Charts.ChartType.COLUMN)
+    .addRange(sheet.getRange(1, 1, lastDataRow, 1))
+    .addRange(sheet.getRange(1, 3, lastDataRow, 4))
+    .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS)
+    .setTransposeRowsAndColumns(false).setNumHeaders(1)
+    .setPosition(2, 8, 0, 0)
+    .setOption('title', 'Tổng Dòng Tiền Theo Nhà Đầu Tư')
+    .setOption('height', 400).setOption('width', 800)
+    .setOption('legend', { position: 'top', maxLines: 3 })
+    .setOption('isStacked', true);
+  sheet.insertChart(chartBuilder.build());
+}
+
+/*******************************************************************************
+ * PHẦN 4: CÁC HÀM HỖ TRỢ
+ *******************************************************************************/
+
+function setupIndustryDropdowns() {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var dashboardSheet = ss.getSheetByName(DASHBOARD_SHEET_NAME);
+    if (!dashboardSheet) {
+        SpreadsheetApp.getUi().alert(`Không tìm thấy sheet '${DASHBOARD_SHEET_NAME}'.`);
+        return;
+    }
+    var sh = dashboardSheet;
+    // Dropdown chọn ngành ở cột D
+    var rule = SpreadsheetApp.newDataValidation().requireValueInList(Object.keys(INDUSTRY_TICKER_MAPPING)).build();
+    sh.getRange('D2:D100').setDataValidation(rule);
+
+    // Nhãn cột nhập
+    sh.getRange('B1').setValue('Mã CK (nhập từ B2)').setFontWeight('bold');
+    sh.getRange('D1').setValue('Ngành (chọn từ D2)').setFontWeight('bold');
+
+    // Bảng điều khiển: khoảng ngày cổ phiếu + tham số ngành
+    sh.getRange('E1').setValue('Từ ngày:').setFontWeight('bold');
+    sh.getRange('E2').setValue('Đến ngày:').setFontWeight('bold');
+    sh.getRange('E4').setValue('TimeRange ngành (1/5/20/0):').setFontWeight('bold');
+    sh.getRange('E5').setValue('Cấp ngành (1 hoặc 2):').setFontWeight('bold');
+    sh.getRange('G1').setValue('(để trống Từ/Đến = 60 phiên gần nhất; ngày dạng 2026-05-01)').setFontColor('#6b7280');
+
+    sh.getRange('F1:F2').setNumberFormat('yyyy-mm-dd').setBackground('#fff7cc');
+    sh.getRange('F4:F5').setBackground('#fff7cc');
+    var ruleDate = SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).build();
+    sh.getRange('F1:F2').setDataValidation(ruleDate);
+
+    SpreadsheetApp.getUi().alert('Đã cài đặt: dropdown ngành (cột D) + ô Từ/Đến (F1/F2) + tham số ngành (F4/F5).');
+}
+
+function getIndividualTickersFromDashboard() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DASHBOARD_SHEET_NAME);
+  if (!sheet) throw new Error(`Không tìm thấy sheet '${DASHBOARD_SHEET_NAME}'`);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  return sheet.getRange("B2:B" + lastRow).getValues().flat()
+    .map(function(t) { return t.toString().trim().toUpperCase(); })
+    .filter(function(t) { return t !== ""; });
+}
+
+function getIndustryTickersFromDashboard() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DASHBOARD_SHEET_NAME);
+  if (!sheet) throw new Error(`Không tìm thấy sheet '${DASHBOARD_SHEET_NAME}'`);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var industryTickers = [];
+  var selectedIndustries = sheet.getRange("D2:D" + lastRow).getValues().flat()
+    .filter(function(i) { return i !== ""; });
+  
+  selectedIndustries.forEach(function(industryName) {
+    if (INDUSTRY_TICKER_MAPPING[industryName]) {
+      industryTickers = industryTickers.concat(INDUSTRY_TICKER_MAPPING[industryName]);
+    }
+  });
+  return [...new Set(industryTickers)];
+}
+
+function deleteOldTickerSheets(ss, newTickers) {
+    var allSheets = ss.getSheets();
+    var newTickerSet = new Set(newTickers);
+    var protectedSheets = new Set([DASHBOARD_SHEET_NAME, SUMMARY_SHEET_NAME]);
+    allSheets.forEach(function(sheet) {
+        var sheetName = sheet.getName();
+        if (!newTickerSet.has(sheetName) && !protectedSheets.has(sheetName)) {
+            ss.deleteSheet(sheet);
+        }
+    });
+}
+
+function getIndustryForTicker(ticker) {
+  for (var industry in INDUSTRY_TICKER_MAPPING) {
+    if (INDUSTRY_TICKER_MAPPING[industry].indexOf(ticker) !== -1) return industry;
+  }
+  return "Khác";
+}
+
+function writeDataToSheet(sheet, data, title, startRow) {
+  var numRows = data.length, numCols = data[0].length;
+  sheet.getRange(startRow, 1, 1, numCols).merge().setValue(title)
+    .setBackground(HEADER_STYLE.backgroundColor).setFontColor(HEADER_STYLE.fontColor)
+    .setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.setRowHeight(startRow, 30);
+  var dataStartRow = startRow + 1;
+  sheet.getRange(dataStartRow, 1, numRows, numCols).setValues(data);
+  sheet.getRange(dataStartRow, 1, 1, numCols).setFontWeight('bold').setHorizontalAlignment('center').setWrap(true);
+  var numberFormat = "#,##0.00";
+  // Định dạng số cột 2..numCols cho các dòng dữ liệu (trừ header & dòng Tổng)
+  if (numRows > 2) {
+    sheet.getRange(dataStartRow + 1, 2, numRows - 2, numCols - 1).setNumberFormat(numberFormat);
+    sheet.getRange(dataStartRow + 1, 5, numRows - 2, 4).setNumberFormat('#,##0');  // KL: số cổ phiếu nguyên
+  }
+  sheet.getRange(dataStartRow, 1, numRows, 1).setHorizontalAlignment('center');
+  // Dòng Tổng (dòng cuối): các cột net 5..numCols
+  var sumRow = startRow + numRows;
+  sheet.getRange(sumRow, 1, 1, numCols).setFontWeight('bold');
+  sheet.getRange(sumRow, 5, 1, numCols - 4).setNumberFormat(numberFormat);
+  sheet.getRange(sumRow, 5, 1, 4).setNumberFormat('#,##0');                        // KL tổng nguyên
+  // Tô màu xanh/đỏ cho 8 cột net (KL + GT)
+  if (numRows > 2) {
+    applyConditionalFormatting(sheet, sheet.getRange(dataStartRow + 1, 5, numRows - 2, numCols - 4), POSITIVE_COLOR, NEGATIVE_COLOR);
+  }
+  return startRow + numRows;
+}
+
+function applyConditionalFormatting(sheet, range, positiveColor, negativeColor) {
+  var rules = sheet.getConditionalFormatRules();
+  rules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor(positiveColor).setRanges([range]).build());
+  rules.push(SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setFontColor(negativeColor).setRanges([range]).build());
+  sheet.setConditionalFormatRules(rules);
+}
+
+function fetchAndCacheOrganCodeMap() {
+  var cache = CacheService.getScriptCache();
+  var cachedKey = 'ORGAN_CODE_MAP_V2';
+  var cachedData = cache.get(cachedKey);
+  if (cachedData != null) return JSON.parse(cachedData);
+  var url = "https://wl-core.fiintrade.vn/Master/GetListOrganization?language=vi";
+  var options = { 'method': 'get', 'headers': FII_HEADERS, 'muteHttpExceptions': true };
+  var response = UrlFetchApp.fetch(url, options);
+  if (response.getResponseCode() !== 200) throw new Error("Lỗi API GetListOrganization: " + response.getContentText());
+  var items = JSON.parse(response.getContentText()).items;
+  var map = {};
+  items.forEach(function(item) { if (item.ticker && item.organCode) map[item.ticker.toUpperCase()] = item.organCode; });
+  cache.put(cachedKey, JSON.stringify(map), 21600); // cache 6 tiếng
+  return map;
+}
+
+function clearOrganCodeCache() {
+  CacheService.getScriptCache().remove('ORGAN_CODE_MAP_V2');
+  SpreadsheetApp.getUi().alert('Đã xóa cache OrganCode.');
+}
+
+function removeChartsFromSheet(sheet) {
+  var charts = sheet.getCharts();
+  charts.forEach(function(chart) { sheet.removeChart(chart); });
+}
+
+// ===== Helper: chuẩn hoá ngày về yyyy-MM-dd ('' nếu trống) =====
+function fmtDate_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(v).trim();
+}
+
+// ===== Quy đổi tên chỉ số (API phân biệt hoa/thường) =====
+var INDEX_CODE_FIX = { 'HNXINDEX': 'HNXIndex', 'UPCOMINDEX': 'UpcomIndex' };
+
+// ===== Lấy dữ liệu giá + dòng tiền (GetPriceData) cho 1 mã, 1 tần suất =====
+// Có KL (khối lượng) + GT (giá trị) khớp ròng. Trả items MỚI->CŨ. Tự phân trang khi có From/To.
+function fetchDataForFrequency(code, frequency, fromD, toD) {
+  code = INDEX_CODE_FIX[code] || code;   // sửa tên chỉ số HNX/Upcom nếu cần
+  var PAGE = 60, MAX = 3000;
+  var useRange = (fromD && toD);
+  var out = [], page = 1;
+  try {
+    while (true) {
+      var url = 'https://wl-technical.fiintrade.vn/PriceData/GetPriceData'
+              + '?language=vi&Code=' + encodeURIComponent(code)
+              + '&Frequently=' + encodeURIComponent(frequency)
+              + '&Page=' + page + '&PageSize=' + PAGE;
+      if (useRange) url += '&From=' + fromD + '&To=' + toD;
+      var res = UrlFetchApp.fetch(url, { method: 'get', headers: FII_HEADERS, muteHttpExceptions: true });
+      if (res.getResponseCode() !== 200) {
+        Logger.log('Lỗi API ' + code + ' (' + frequency + '): ' + res.getResponseCode());
+        break;
+      }
+      var data = JSON.parse(res.getContentText());
+      var items = data.items || [];
+      out = out.concat(items);
+      var limit = useRange ? (data.totalCount || out.length) : PAGE;
+      if (limit > MAX) limit = MAX;
+      if (items.length < PAGE || out.length >= limit) break;
+      page++;
+      if (page > Math.ceil(MAX / PAGE)) break;
+    }
+  } catch (e) {
+    Logger.log('Lỗi fetch ' + code + ' (' + frequency + '): ' + e.toString());
+    return null;
+  }
+  if (out.length === 0) return null;
+  // Sắp xếp MỚI -> CŨ
+  out.sort(function (a, b) { return new Date(b.tradingDate) - new Date(a.tradingDate); });
+  return out;
+}
+
+
+/*******************************************************************************
+ * PHẦN 5: DÒNG TIỀN THEO NGÀNH (toàn thị trường) - GetSectorStatisticbyInvestor
+ *  Net khớp ròng theo từng nhóm NĐT cho mỗi ngành (icbLevel 1 hoặc 2).
+ *  Endpoint trả sẵn net 4 nhóm (có Tổ chức riêng) nên KHÔNG cần tính zero-sum.
+ *******************************************************************************/
+
+// ===== CẤU HÌNH NGÀNH =====
+var SECTOR_SHEET_NAME = "Dòng tiền Ngành";
+var SECTOR_ICB_LEVEL  = 2;   // 1 = 10 ngành cấp 1 · 2 = 18 ngành cấp 2
+// Mặc định menu 3 xuất CẢ 4 khoảng: 1 ngày · 5 ngày · 20 ngày · từ đầu năm.
+// Muốn chỉ 1 khoảng (kèm biểu đồ): nhập số vào ô F4 trên Dashboard (1/5/20/0).
+
+function mainProcessSector() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var level = SECTOR_ICB_LEVEL;
+  var periods = [1, 5, 20, 0];   // mặc định: xuất CẢ 4 khoảng (1 ngày · 5 ngày · 20 ngày · từ đầu năm)
+
+  // Ghi đè bằng ô Dashboard: F4 = timeRange (nếu nhập -> chỉ khoảng đó) · F5 = icbLevel
+  var dash = ss.getSheetByName(DASHBOARD_SHEET_NAME);
+  if (dash) {
+    var g = dash.getRange('F5').getValue();
+    if (g !== '' && !isNaN(g)) level = Number(g);
+    var f = dash.getRange('F4').getValue();
+    if (f !== '' && !isNaN(f)) periods = [Number(f)];
+  }
+
+  var sheet = ss.getSheetByName(SECTOR_SHEET_NAME);
+  if (sheet) { sheet.clear(); removeChartsFromSheet(sheet); }
+  else { sheet = ss.insertSheet(SECTOR_SHEET_NAME); }
+  sheet.clearConditionalFormatRules();
+  sheet.setColumnWidth(1, 190);
+  sheet.setColumnWidths(2, 6, 115);
+
+  var withChart = (periods.length === 1);   // 1 khoảng -> kèm biểu đồ; nhiều khoảng -> chỉ bảng cho gọn
+  var row = 1, done = 0;
+  for (var i = 0; i < periods.length; i++) {
+    ss.toast('Đang tải ngành: ' + sectorLabel_(periods[i]) + ' ...', 'Trạng thái', -1);
+    var items = fetchSector_(level, periods[i]);
+    if (!items || items.length === 0) continue;
+    row = writeSectorBlock_(sheet, items, level, periods[i], row, withChart) + 3; // chừa 2 dòng trống
+    done++;
+  }
+  if (done === 0) { SpreadsheetApp.getUi().alert('Không tải được dữ liệu ngành.'); return; }
+  ss.toast('Đã tạo "' + SECTOR_SHEET_NAME + '" với ' + done + ' khoảng thời gian.', 'Thành công', 8);
+}
+
+function sectorLabel_(tr) { return (tr === 0 ? 'Từ đầu năm (YTD)' : (tr + ' ngày')); }
+
+function fetchSector_(level, tr) {
+  var url = "https://wl-market.fiintrade.vn/SectorIndepth/GetSectorStatisticbyInvestor"
+          + "?icbLevel=" + level + "&timeRange=" + tr + "&language=vi";
+  var res = UrlFetchApp.fetch(url, { method: 'get', headers: FII_HEADERS, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) { Logger.log('Lỗi API ngành tr=' + tr + ': ' + res.getResponseCode()); return null; }
+  return (JSON.parse(res.getContentText()).items) || [];
+}
+
+// Ghi 1 bảng ngành (1 khoảng thời gian) bắt đầu từ startRow; trả dòng cuối đã ghi.
+function writeSectorBlock_(sheet, items, level, tr, startRow, withChart) {
+  var rows = items.map(function (it) {
+    var ten = String(it.icbName || '').replace(/\s*L\d+\s*$/, '').trim();
+    return [ten, Number(it.closeIndex || 0), Number(it.percentIndexChange || 0),
+            Number(it.netIndividualMatchValue || 0) / 1e6, Number(it.netInstitutionMatchValue || 0) / 1e6,
+            Number(it.netProprietaryMatchValue || 0) / 1e6, Number(it.netForeignMatchValue || 0) / 1e6];
+  });
+  rows.sort(function (a, b) { return b[6] - a[6]; });
+
+  var fromD = items[0].fromDate ? items[0].fromDate.toString().slice(0, 10) : '';
+  var toD   = items[0].toDate ? items[0].toDate.toString().slice(0, 10) : '';
+  var label = sectorLabel_(tr);
+
+  sheet.getRange(startRow, 1, 1, 7).merge()
+       .setValue('DÒNG TIỀN NGÀNH (cấp ' + level + ') · ' + label + ' · ' + fromD + ' → ' + toD
+                 + ' · triệu đồng (khớp ròng)')
+       .setFontWeight('bold').setFontSize(12).setBackground('#d9e1f2').setHorizontalAlignment('center');
+
+  var hdrRow = startRow + 1;
+  var hdr = ['Ngành', 'Chỉ số', '% thay đổi', 'Net Cá nhân', 'Net Tổ chức', 'Net Tự doanh', 'Net Nước ngoài'];
+  sheet.getRange(hdrRow, 1, 1, hdr.length).setValues([hdr]).setFontWeight('bold')
+       .setBackground(HEADER_STYLE.backgroundColor).setFontColor(HEADER_STYLE.fontColor).setHorizontalAlignment('center');
+
+  var dataRow = hdrRow + 1;
+  sheet.getRange(dataRow, 1, rows.length, hdr.length).setValues(rows);
+  sheet.getRange(dataRow, 2, rows.length, 1).setNumberFormat('#,##0.00');
+  sheet.getRange(dataRow, 3, rows.length, 1).setNumberFormat('0.00%');
+  sheet.getRange(dataRow, 4, rows.length, 4).setNumberFormat('#,##0.00');
+  applyConditionalFormatting(sheet, sheet.getRange(dataRow, 4, rows.length, 4), POSITIVE_COLOR, NEGATIVE_COLOR);
+
+  if (withChart) {
+    var chart = sheet.newChart().setChartType(Charts.ChartType.BAR)
+      .addRange(sheet.getRange(hdrRow, 1, rows.length + 1, 1))
+      .addRange(sheet.getRange(hdrRow, 4, rows.length + 1, 4))
+      .setMergeStrategy(Charts.ChartMergeStrategy.MERGE_COLUMNS).setNumHeaders(1)
+      .setPosition(startRow, 9, 0, 0)
+      .setOption('title', 'Net khớp ròng theo ngành (triệu) · ' + label)
+      .setOption('height', Math.max(320, 26 * rows.length + 120)).setOption('width', 820)
+      .setOption('legend', { position: 'top' })
+      .setOption('colors', ['#FFA500', '#7030A0', '#92D050', '#00B0F0'])
+      .build();
+    sheet.insertChart(chart);
+  }
+  return dataRow + rows.length - 1;
+}
