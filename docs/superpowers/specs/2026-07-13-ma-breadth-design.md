@@ -15,6 +15,7 @@ Cho phép người dùng nhìn thấy **số lượng cổ phiếu nằm trên c
 
 Yêu cầu cốt lõi:
 - **Xem được quá khứ tới 1.5 năm** (~370 ngày giao dịch) mà không cần load lại dữ liệu mỗi lần.
+- **Chọn khoảng ngày cụ thể** (Từ ngày → Đến ngày) thay vì chỉ preset — vd xem 01/03/2026 → 01/06/2026. Có thêm preset nhanh (1T/3T/6T/1N/1.5N/Tất cả).
 - **Mở web phải cực nhanh** — frontend chỉ đọc file cache, không tính toán nặng.
 - **Load lần đầu có thể chậm**, nhưng các lần sau (và khi mở web) phải nhanh.
 - Checkbox toggle từng MA (MA10/20/50/100/200) để tự chọn đường hiển thị.
@@ -233,7 +234,11 @@ function computeMAWithPrefix(closes, n) {
 **Query params:**
 - `scope` = `market` | `industry` (mặc định `market`)
 - `industryCode` = ICB2 code (vd `8300`) — chỉ dùng khi `scope=industry`
-- `days` = số ngày gần nhất (mặc định 370, max 370)
+- `fromDate` = `YYYY-MM-DD` (mặc định: ngầy đầu có dữ liệu trong cache)
+- `toDate` = `YYYY-MM-DD` (mặc định: ngày cuối có dữ liệu trong cache)
+- `days` = số ngày gần nhất (mặc định: tất cả; dùng thay cho `fromDate`/`toDate` khi chỉ cần "N ngày gần nhất" — mutually exclusive với fromDate/toDate)
+
+Server tự clamp `fromDate`/`toDate` vào khoảng dữ liệu thực tế có trong cache (không lỗi nếu user chọn ngày ngoài phạm vi, chỉ trả phần giao).
 
 **Response:**
 ```jsonc
@@ -242,10 +247,12 @@ function computeMAWithPrefix(closes, n) {
   "scope": "industry",
   "industryCode": "8300",
   "industryName": "Ngân hàng",
-  "meta": { "lastUpdated": "2026-07-13", "historyDays": 370, "total": 28 },
+  "meta": { "lastUpdated": "2026-07-13", "historyDays": 370, "total": 28,
+            "firstDate": "2025-01-02", "lastDate": "2026-07-13",
+            "fromDate": "2026-03-01", "toDate": "2026-06-01" },  // echo lại range thực trả
   "series": [
-    { "date": "2025-01-02", "ma10": 18, "ma20": 16, "ma50": 14, "ma100": 9, "ma200": 5 },
-    // ... 370 phần tử
+    { "date": "2026-03-02", "ma10": 18, "ma20": 16, "ma50": 14, "ma100": 9, "ma200": 5 },
+    // ... các ngày giao dịch trong [fromDate, toDate]
   ]
 }
 ```
@@ -319,13 +326,19 @@ Thêm 1 section mới trong `<section id="industry">` (line ~714, sau `industry-
         <label><input type="checkbox" id="ma-cb-100"> MA100</label>
         <label><input type="checkbox" id="ma-cb-200"> MA200</label>
       </div>
-      <select id="ma-breadth-range" class="filter-select">
-        <option value="30">1 tháng</option>
-        <option value="90">3 tháng</option>
-        <option value="180" selected>6 tháng</option>
-        <option value="365">1 năm</option>
-        <option value="540">1.5 năm</option>
-      </select>
+      <!-- Chọn khoảng ngày cụ thể (from/to) + phím tắt preset -->
+      <div class="ma-date-range-group">
+        <label>Từ <input type="date" id="ma-breadth-from"></label>
+        <label>Đến <input type="date" id="ma-breadth-to"></label>
+        <div class="ma-range-presets">
+          <button type="button" class="ma-preset-btn" data-preset="1m">1T</button>
+          <button type="button" class="ma-preset-btn" data-preset="3m">3T</button>
+          <button type="button" class="ma-preset-btn" data-preset="6m">6T</button>
+          <button type="button" class="ma-preset-btn" data-preset="1y">1N</button>
+          <button type="button" class="ma-preset-btn" data-preset="1.5y">1.5N</button>
+          <button type="button" class="ma-preset-btn" data-preset="all">Tất cả</button>
+        </div>
+      </div>
       <button id="ma-breadth-refresh" class="btn-secondary">↻ Cập nhật hôm nay</button>
       <button id="ma-breadth-build" class="btn-secondary">📅 Tải dữ liệu lịch sử</button>
     </div>
@@ -341,24 +354,27 @@ Thêm 1 section mới trong `<section id="industry">` (line ~714, sau `industry-
 
 ```js
 const MABreadthState = {
-  data: null,        // full series từ /api/ma-breadth (1 scope)
+  data: null,        // series từ /api/ma-breadth cho scope + range hiện tại
   chart: null,       // Chart.js instance
   scope: 'market',   // 'market' | ICB2 code
-  range: 180,        // số ngày
+  fromDate: null,    // 'YYYY-MM-DD' hoặc null (= từ đầu cache)
+  toDate: null,      // 'YYYY-MM-DD' hoặc null (= đến cuối cache)
   visibleMAs: { ma10: true, ma20: true, ma50: true, ma100: false, ma200: false },
   loaded: false
 };
 ```
 
-localStorage key: `vnstock_ma_breadth_prefs` — lưu `{scope, range, visibleMAs}` để giữ tùy chọn giữa các session.
+localStorage key: `vnstock_ma_breadth_prefs` — lưu `{scope, fromDate, toDate, visibleMAs}` để giữ tùy chọn giữa các session.
 
 ### 7.3. Hàm chính (`js/app.js`)
 
-- `initMABreadth()` — bind events, load prefs từ localStorage, render dropdown ngành (lấy từ ICB2_MAP hoặc hardcode).
-- `loadMABreadth()` — fetch `/api/ma-breadth?scope=...&days=...` → `MABreadthState.data` → `renderMABreadthChart()`.
+- `initMABreadth()` — bind events, load prefs từ localStorage, render dropdown ngành (lấy từ ICB2_MAP hoặc hardcode), set min/max cho 2 date input theo `meta.firstDate/lastDate` từ cache.
+- `loadMABreadth()` — fetch `/api/ma-breadth?scope=...&fromDate=...&toDate=...` → `MABreadthState.data` → `renderMABreadthChart()`.
 - `renderMABreadthChart()` — vẽ Chart.js line, dataset theo `visibleMAs` (lọc local, KHÔNG fetch lại).
-- `onScopeChange() / onRangeChange()` → `loadMABreadth()`.
-- `onMAToggle(maKey)` → cập nhật `visibleMAs` → `renderMABreadthChart()` (re-render local).
+- `onScopeChange()` → `loadMABreadth()`.
+- `onDateChange()` — khi user sửa date input (from/to) → debounce 300ms → `loadMABreadth()`. Validate `fromDate <= toDate`, nếu sai → toast nhẹ + tự hoán đổi.
+- `onPresetClick(preset)` — tính `fromDate`/`toDate` theo preset (1m/3m/6m/1y/1.5y = N tháng gần nhất / all = toàn bộ cache) → set 2 date input → `loadMABreadth()`.
+- `onMAToggle(maKey)` → cập nhật `visibleMAs` → `renderMABreadthChart()` (re-render local, KHÔNG fetch).
 - `onRefreshClick()` — POST `/refresh`, spinner, toast kết quả, reload chart.
 - `onBuildClick()` — confirm dialog → modal progress → POST `/build-history` → reload chart.
 
@@ -385,6 +401,9 @@ Dùng token hiện có (`.chart-controls`, `.filter-select`, `.btn-secondary`, `
 - `.ma-breadth-section` — margin-top, padding, border-top để tách section.
 - `.ma-breadth-controls` — flex wrap, gap.
 - `.ma-checkbox-group` — inline-flex, mỗi label có ô checkbox nhỏ.
+- `.ma-date-range-group` — inline-flex, gap, chứa 2 date input + preset buttons.
+- `.ma-date-range-group input[type="date"]` — styled theo dark theme (background `var(--bg-card)`, border, color picker icon invert).
+- `.ma-range-presets` — inline-flex các nút preset nhỏ (`.ma-preset-btn`: padding nhỏ, font-size nhỏ, hover highlight).
 - `.ma-breadth-chart-container` — height 400px (như các chart khác).
 - `.ma-breadth-meta` — text nhỏ, muted.
 
@@ -407,6 +426,10 @@ Dùng token hiện có (`.chart-controls`, `.filter-select`, `.btn-secondary`, `
 | Server restart | Đọc lại file cache khi `require('breadth-history.js')` (load-once). Không mất dữ liệu. |
 | Ngày lễ / T7 CN | Không có snapshot (không có giao dịch). Chart tự gap (Chart.js skip null date). |
 | User đổi scope khi đang load | Hủy request cũ (AbortController) nếu đang flight. |
+| User chọn `fromDate > toDate` | UI tự hoán đổi 2 giá trị + toast nhẹ "Đã hoán đổi từ/đến". KHÔNG lỗi. |
+| User chọn ngày ngoài phạm vi cache (vd `fromDate` trước `firstDate`) | Server clamp vào khoảng thực, trả phần giao. `meta.fromDate/toDate` echo lại range thực để UI hiển thị đúng. |
+| User chọn `toDate` trong tương lai | Server clamp về `lastDate` trong cache. |
+| Khoảng [from,to] không chứa ngày giao dịch nào | Trả `series: []` + UI show "Không có dữ liệu trong khoảng đã chọn". |
 | Job nền chạy trùng với nút manual | Dùng flag lock trong module (`_building`) để tránh concurrent build. |
 | File JSON quá lớn (> 1.5 năm) | Tự trim: giữ MAX_HISTORY_DAYS = 550 (~1.5 năm + buffer). Trim `history` khi save (như `industry-history.js`). Close cache giữ MAX_CLOSE_WINDOW = 620 ngày (đủ cho MA200 + history window). |
 
@@ -437,8 +460,9 @@ Test pure function (không cần mock network):
 2. Bấm "Tải dữ liệu lịch sử" → modal progress → xong → chart hiện 5 đường (nếu checkbox on).
 3. Toggle từng MA checkbox → đường ẩn/hiện ngay.
 4. Đổi dropdown ngành → chart cập nhật.
-5. Đổi range 1 tháng / 1.5 năm → chart zoom.
-6. Bấm "Cập nhật hôm nay" → spinner → toast "Đã cập nhật 13/07/2026".
+5. **Gõ ngày cụ thể** vào ô Từ (`01/03/2026`) và Đến (`01/06/2026`) → chart tự zoom đúng khoảng đó.
+6. Bấm preset "3T" → 2 ô date tự fill khoảng 3 tháng gần nhất → chart zoom.
+7. Bấm "Cập nhật hôm nay" → spinner → toast "Đã cập nhật 13/07/2026".
 7. Reload page → vẫn còn prefs (localStorage) + data (file cache).
 
 ---
