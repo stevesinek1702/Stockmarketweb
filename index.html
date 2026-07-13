@@ -423,7 +423,6 @@
             <div class="card full-width" id="panel-investor-flow">
                 <div class="card-header">
                     <h3>🧮 Phân Tích Lệnh - Dòng Tiền 4 Nhóm NĐT</h3>
-                    <span class="card-badge">Fiintrade · Khớp lệnh (tỷ)</span>
                 </div>
                 <div class="investor-flow-wrapper">
                     <table class="data-table" id="investor-flow-table">
@@ -483,7 +482,6 @@
                             <button class="top-net-tab" data-freq="Weekly">Tuần</button>
                             <button class="top-net-tab" data-freq="Monthly">Tháng</button>
                         </div>
-                        <span class="card-badge">Fiintrade · GT ròng (tỷ)</span>
                     </div>
                 </div>
                 <div class="stock-flow-status" id="stock-flow-status" style="font-size:12px;color:var(--text-muted);margin:4px 0;"></div>
@@ -666,7 +664,6 @@
                         <button class="industry-timerange-btn" data-range="5">5 Phiên</button>
                         <button class="industry-timerange-btn" data-range="20">20 Phiên</button>
                         <button class="industry-timerange-btn" data-range="0">Từ Đầu Năm</button>
-                        <span class="card-badge">Fiintrade</span>
                     </div>
                 </div>
 
@@ -717,7 +714,6 @@
             <div class="card full-width ma-breadth-section">
                 <div class="card-header">
                     <h3>📈 Độ Rộng Kỹ Thuật (Số CP trên MA)</h3>
-                    <span class="card-badge">FireAnt</span>
                 </div>
                 <div class="chart-controls">
                     <div class="ma-breadth-controls">
@@ -1083,6 +1079,15 @@
         <div class="modal-content">
             <span class="close-modal">&times;</span>
             <div id="tv-modal-container" style="height: 500px; width: 100%;"></div>
+        </div>
+    </div>
+
+    <!-- Modal Top Mã Mua/Bán Ròng theo ngành (TC+TD+NN) -->
+    <div id="industry-topflow-modal" class="modal">
+        <div class="modal-content industry-topflow-content">
+            <span class="close-modal" onclick="closeIndustryTopFlowModal()">&times;</span>
+            <h3 id="industry-topflow-title">Top Mã Mua/Bán Ròng</h3>
+            <div id="industry-topflow-body"></div>
         </div>
     </div>
 

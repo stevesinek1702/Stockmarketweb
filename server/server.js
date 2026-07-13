@@ -1761,6 +1761,95 @@ app.get('/api/industry-top-stocks', async (req, res) => {
 });
 
 /**
+ * GET /api/industry-top-flow?code=8300&top=5
+ * Lấy top mã MUA RÒNG / BÁN RÒNG theo dòng tiền lớn (TC+TD+NN) trong 1 ngành,
+ * cho phiên gần nhất. Dùng FireAnt Quotes để lọc mã theo ngành + Fiintrade
+ * GetPriceData để lấy dòng tiền 4 nhóm per mã.
+ *
+ * Query: code (ICB2), top (số mã top mỗi bên, mặc định 5)
+ * Response: { success, industryCode, industryName, date, topBuy:[], topSell:[], allStocks }
+ */
+app.get('/api/industry-top-flow', async (req, res) => {
+    req.setTimeout(120000); // job nặng: gọi Fiintrade từng mã
+    const industryCode = req.query.code;
+    const top = parseInt(req.query.top) || 5;
+
+    const ICB2_MAP = {
+        '0500':'Dầu khí','1300':'Hóa chất','1700':'Tài nguyên cơ bản','2300':'Xây dựng và VLXD',
+        '2700':'Sản phẩm & DV công nghiệp','3300':'Ôtô và linh kiện','3500':'Thực phẩm và đồ uống',
+        '3700':'Hàng tiêu dùng','4500':'Y tế','5300':'Bán lẻ','5500':'Truyền thông',
+        '5700':'Du lịch và giải trí','6500':'Viễn thông','7500':'Các dịch vụ hạ tầng',
+        '8300':'Ngân hàng','8500':'Bảo hiểm','8600':'Bất động sản','8700':'Dịch vụ tài chính',
+        '8900':'Quỹ','9500':'Công nghệ'
+    };
+
+    if (!industryCode || !ICB2_MAP[industryCode]) {
+        return res.status(400).json({ success: false, error: 'Invalid or missing industry code' });
+    }
+
+    try {
+        // 1. Lấy danh sách mã trong ngành qua FireAnt Quotes
+        const cookie = await getFireAntCookie();
+        const authHeaders = {
+            ...API_CONFIG.fireant.headers,
+            'Cookie': cookie,
+            'Accept-Encoding': 'gzip, deflate'
+        };
+        const batches = require('./breadth-symbols');
+        const icb2Prefix = industryCode.substring(0, 2);
+        const sectorTickers = [];
+        for (let i = 0; i < batches.length; i += 5) {
+            const chunk = batches.slice(i, i + 5);
+            const proms = chunk.map(s =>
+                fetchAPI(`${API_CONFIG.fireant.base}/Markets/Quotes?symbols=${s}`, authHeaders).catch(() => [])
+            );
+            const responses = await Promise.all(proms);
+            responses.forEach(arr => {
+                if (Array.isArray(arr)) {
+                    arr.forEach(q => {
+                        if (q && q.Symbol && (q.IndustryCode || '').substring(0, 2) === icb2Prefix) {
+                            sectorTickers.push(q.Symbol);
+                        }
+                    });
+                }
+            });
+        }
+
+        if (sectorTickers.length === 0) {
+            return res.json({ success: false, error: 'Không tìm thấy mã nào trong ngành này' });
+        }
+
+        console.log(`📊 [industry-top-flow] ${ICB2_MAP[industryCode]}: ${sectorTickers.length} mã, đang tải dòng tiền...`);
+
+        // 2. Gọi Fiintrade GetPriceData từng mã (batch 10 song song)
+        const flows = await fiintrade.getSectorTopStocksFlow(sectorTickers, 10);
+        const date = flows.length > 0 ? flows[0].date : null;
+
+        // 3. Top mua ròng / bán ròng theo netSmart (TC+TD+NN)
+        const sorted = flows.slice().sort((a, b) => b.netSmart - a.netSmart);
+        const topBuy = sorted.filter(s => s.netSmart > 0).slice(0, top);
+        const topSell = sorted.filter(s => s.netSmart < 0).reverse().slice(0, top);
+
+        console.log(`✅ [industry-top-flow] ${ICB2_MAP[industryCode]}: topBuy=${topBuy.length}, topSell=${topSell.length}, date=${date}`);
+
+        res.json({
+            success: true,
+            industryCode,
+            industryName: ICB2_MAP[industryCode],
+            date,
+            totalStocks: sectorTickers.length,
+            stocksWithData: flows.length,
+            topBuy,
+            topSell,
+            allStocks: sorted
+        });
+    } catch (error) {
+        console.error('Industry top flow error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/marketcap-stats
  * Tính % CP > MA10 và Lực Cầu theo nhóm vốn hóa cho Bubble Chart
  */

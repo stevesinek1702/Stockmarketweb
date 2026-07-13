@@ -242,6 +242,49 @@ async function getStockInvestorFlow(ticker, frequency = 'Daily') {
     return { ticker: code, frequency: freq, points };
 }
 
+/**
+ * Lấy dòng tiền ròng (TC+TD+NN) cho ngày mới nhất của nhiều mã trong 1 ngành.
+ * Gọi GetPriceData từng mã (PageSize=2 → lấy 2 ngày gần nhất, dùng ngày mới nhất).
+ * Chạy batch song song (10 mã/lượt) để tối ưu tốc độ.
+ *
+ * @param {string[]} tickers danh sách mã trong ngành
+ * @param {number} batchSize số request song song (mặc định 10)
+ * @param {Function} onProgress callback({done, total, ticker})
+ * @returns {Promise<Array>} [{ticker, date, close, percentChange, caNhan, toChuc, tuDoanh, nuocNgoai, netSmart}]
+ *                           netSmart = toChuc + tuDoanh + nuocNgoai. Bỏ mã lỗi/không có data.
+ */
+async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress) {
+    const valid = (tickers || []).filter(t => t && !INDEX_CODES.has(t.toUpperCase()));
+    const results = [];
+    let done = 0;
+
+    for (let i = 0; i < valid.length; i += batchSize) {
+        const chunk = valid.slice(i, i + batchSize);
+        const proms = chunk.map(t => getStockInvestorFlow(t, 'Daily').catch(() => ({ ticker: t, points: [] })));
+        const responses = await Promise.all(proms);
+        for (const r of responses) {
+            const pts = r && r.points ? r.points : [];
+            if (pts.length > 0) {
+                const latest = pts[pts.length - 1];
+                results.push({
+                    ticker: latest.ticker || r.ticker,
+                    date: latest.date,
+                    close: latest.close,
+                    percentChange: latest.percentChange,
+                    caNhan: latest.caNhan,
+                    toChuc: latest.toChuc,
+                    tuDoanh: latest.tuDoanh,
+                    nuocNgoai: latest.nuocNgoai,
+                    netSmart: round1(latest.toChuc + latest.tuDoanh + latest.nuocNgoai)
+                });
+            }
+            done++;
+            if (onProgress) onProgress({ done, total: valid.length, ticker: r.ticker });
+        }
+    }
+    return results;
+}
+
 module.exports = {
     FII_HEADERS,
     fiinGet,
@@ -250,6 +293,7 @@ module.exports = {
     getForeignStatistic,
     getInvestorStatistic,
     getStockInvestorFlow,
+    getSectorTopStocksFlow,
     INVESTOR_TYPES,
     cleanSectorName,
     round1
