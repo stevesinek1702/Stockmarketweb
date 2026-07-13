@@ -4194,24 +4194,44 @@ button.scanning::after {
 .ma-checkbox-group {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-wrap: wrap;
 }
-.ma-checkbox-group label {
+.ma-line-item {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     font-size: 13px;
     color: var(--text-secondary);
     cursor: pointer;
     user-select: none;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: border-color 0.12s ease;
 }
-.ma-checkbox-group input[type="checkbox"] {
+.ma-line-item:hover { border-color: rgba(255,255,255,0.12); }
+.ma-line-vnindex { border-style: dashed; border-color: rgba(255,255,255,0.2); }
+.ma-line-item input[type="checkbox"] {
     width: 15px;
     height: 15px;
     cursor: pointer;
     accent-color: var(--accent-blue, #3b82f6);
+    margin: 0;
 }
+.ma-color-picker {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+}
+.ma-color-picker::-webkit-color-swatch-wrapper { padding: 2px; }
+.ma-color-picker::-webkit-color-swatch { border: none; border-radius: 3px; }
+.ma-color-picker::-moz-color-swatch { border: none; border-radius: 3px; }
+.ma-line-label { font-weight: 500; }
 .ma-date-range-group {
     display: inline-flex;
     align-items: center;

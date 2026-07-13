@@ -1470,15 +1470,18 @@ function renderIndustryHeatmap(data) {
 
 const MA_BREADTH_PREFS_KEY = 'vnstock_ma_breadth_prefs';
 
-// Màu cho 5 đường MA (dùng design token / hex dự phòng)
-const MA_COLORS = {
-    ma10: '#2ee68a',   // xanh (color-up)
-    ma20: '#3b82f6',   // xanh dương
-    ma50: '#facc15',   // vàng
-    ma100: '#a855f7',  // tím
-    ma200: '#fb923c'   // cam
+// Màu mặc định cho 5 đường MA + VNINDEX overlay (user có thể đổi qua color picker)
+const MA_COLORS_DEFAULT = {
+    ma10: '#2ee68a',     // xanh (color-up)
+    ma20: '#3b82f6',     // xanh dương
+    ma50: '#facc15',     // vàng
+    ma100: '#a855f7',    // tím
+    ma200: '#fb923c',    // cam
+    vnindex: '#ffffff'   // trắng đậm — nổi bật trên nền dark, trục Y phải
 };
-const MA_LABELS = { ma10: 'MA10', ma20: 'MA20', ma50: 'MA50', ma100: 'MA100', ma200: 'MA200' };
+const MA_LABELS = { ma10: 'MA10', ma20: 'MA20', ma50: 'MA50', ma100: 'MA100', ma200: 'MA200', vnindex: 'VNINDEX' };
+// Các key line theo thứ tự hiển thị
+const MA_LINE_KEYS = ['ma10', 'ma20', 'ma50', 'ma100', 'ma200', 'vnindex'];
 
 const MABreadthState = {
     data: null,        // series hiện tại từ /api/ma-breadth
@@ -1487,7 +1490,8 @@ const MABreadthState = {
     scope: 'market',
     fromDate: null,
     toDate: null,
-    visibleMAs: { ma10: true, ma20: true, ma50: true, ma100: false, ma200: false },
+    visibleMAs: { ma10: true, ma20: true, ma50: true, ma100: false, ma200: false, vnindex: true },
+    colors: { ...MA_COLORS_DEFAULT },  // màu hiện tại (user có thể đổi)
     loaded: false,
     initialized: false,
     dateDebounce: null
@@ -1503,6 +1507,7 @@ function loadMABreadthPrefs() {
         if (p.fromDate) MABreadthState.fromDate = p.fromDate;
         if (p.toDate) MABreadthState.toDate = p.toDate;
         if (p.visibleMAs) MABreadthState.visibleMAs = { ...MABreadthState.visibleMAs, ...p.visibleMAs };
+        if (p.colors) MABreadthState.colors = { ...MA_COLORS_DEFAULT, ...p.colors };
     } catch (e) { /* ignore */ }
 }
 
@@ -1513,9 +1518,55 @@ function saveMABreadthPrefs() {
             scope: MABreadthState.scope,
             fromDate: MABreadthState.fromDate,
             toDate: MABreadthState.toDate,
-            visibleMAs: MABreadthState.visibleMAs
+            visibleMAs: MABreadthState.visibleMAs,
+            colors: MABreadthState.colors
         }));
     } catch (e) { /* ignore */ }
+}
+
+/**
+ * Render line controls: cho mỗi MA + VNINDEX, 1 ô chứa:
+ *   [checkbox] [color picker] <label>
+ * User tick để ẩn/hiện line, click màu để đổi màu (re-render local).
+ */
+function renderMALineControls() {
+    const container = document.getElementById('ma-line-controls');
+    if (!container) return;
+    container.innerHTML = '';
+
+    MA_LINE_KEYS.forEach(key => {
+        const wrap = document.createElement('label');
+        wrap.className = 'ma-line-item' + (key === 'vnindex' ? ' ma-line-vnindex' : '');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = MABreadthState.visibleMAs[key];
+        cb.addEventListener('change', () => {
+            MABreadthState.visibleMAs[key] = cb.checked;
+            saveMABreadthPrefs();
+            renderMABreadthChart();
+        });
+
+        const color = document.createElement('input');
+        color.type = 'color';
+        color.className = 'ma-color-picker';
+        color.value = MABreadthState.colors[key];
+        color.title = 'Đổi màu ' + MA_LABELS[key];
+        color.addEventListener('input', () => {
+            MABreadthState.colors[key] = color.value;
+            saveMABreadthPrefs();
+            renderMABreadthChart();
+        });
+
+        const text = document.createElement('span');
+        text.className = 'ma-line-label';
+        text.textContent = MA_LABELS[key];
+
+        wrap.appendChild(cb);
+        wrap.appendChild(color);
+        wrap.appendChild(text);
+        container.appendChild(wrap);
+    });
 }
 
 /** Định dạng ngày YYYY-MM-DD → DD/MM/YY cho hiển thị. */
@@ -1539,10 +1590,9 @@ function initMABreadth() {
     const toEl = document.getElementById('ma-breadth-to');
     if (fromEl && MABreadthState.fromDate) fromEl.value = MABreadthState.fromDate;
     if (toEl && MABreadthState.toDate) toEl.value = MABreadthState.toDate;
-    ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
-        const cb = document.getElementById('ma-cb-' + k.slice(2));
-        if (cb) cb.checked = MABreadthState.visibleMAs[k];
-    });
+
+    // Render line controls (checkbox + color picker) cho từng MA + VNINDEX
+    renderMALineControls();
 
     // Bind events
     if (scopeEl) scopeEl.addEventListener('change', () => {
@@ -1583,16 +1633,6 @@ function initMABreadth() {
     // Preset buttons
     document.querySelectorAll('.ma-preset-btn').forEach(btn => {
         btn.addEventListener('click', () => applyMAPreset(btn.dataset.preset));
-    });
-
-    // MA checkbox toggles (re-render local, KHÔNG fetch lại)
-    ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
-        const cb = document.getElementById('ma-cb-' + k.slice(2));
-        if (cb) cb.addEventListener('change', () => {
-            MABreadthState.visibleMAs[k] = cb.checked;
-            saveMABreadthPrefs();
-            renderMABreadthChart();
-        });
     });
 
     // Refresh + Build buttons
@@ -1726,7 +1766,7 @@ async function loadMABreadth() {
     }
 }
 
-/** Vẽ Chart.js line cho MA breadth. */
+/** Vẽ Chart.js line cho MA breadth. Dual-axis: số CP (trái) + VNINDEX (phải). */
 function renderMABreadthChart() {
     const canvas = document.getElementById('ma-breadth-chart');
     if (!canvas) return;
@@ -1737,21 +1777,42 @@ function renderMABreadthChart() {
     if (MABreadthState.chart) MABreadthState.chart.destroy();
 
     const labels = data.map(d => d.date);
+    const hasVNIndex = data.some(d => d.vnindex != null);
     const datasets = [];
+
+    // Datasets MA (trục Y trái: số CP)
     ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
         if (!MABreadthState.visibleMAs[k]) return;
         datasets.push({
             label: MA_LABELS[k],
             data: data.map(d => d[k]),
-            borderColor: MA_COLORS[k],
-            backgroundColor: MA_COLORS[k] + '20',
+            borderColor: MABreadthState.colors[k],
+            backgroundColor: MABreadthState.colors[k] + '20',
             borderWidth: 2,
             pointRadius: 0,
             pointHoverRadius: 4,
             tension: 0.25,
-            fill: false
+            fill: false,
+            yAxisID: 'y'
         });
     });
+
+    // VNINDEX overlay (trục Y phải) — chỉ khi có data vnindex và user tick
+    if (hasVNIndex && MABreadthState.visibleMAs.vnindex) {
+        datasets.push({
+            label: MA_LABELS.vnindex,
+            data: data.map(d => d.vnindex),
+            borderColor: MABreadthState.colors.vnindex,
+            backgroundColor: 'transparent',
+            borderWidth: 2.5,
+            borderDash: [6, 4],   // nét đứt để phân biệt với MA lines
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.2,
+            fill: false,
+            yAxisID: 'y1'
+        });
+    }
 
     MABreadthState.chart = new Chart(ctx, {
         type: 'line',
@@ -1766,6 +1827,10 @@ function renderMABreadthChart() {
                     callbacks: {
                         title: (items) => formatMADate(items[0].label),
                         label: (ctx) => {
+                            // VNINDEX: hiển thị giá điểm; MA: hiển thị số CP + %
+                            if (ctx.dataset.yAxisID === 'y1') {
+                                return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`;
+                            }
                             const total = data[ctx.dataIndex].total;
                             const pct = total > 0 ? ((ctx.parsed.y / total) * 100).toFixed(1) : '0';
                             return `${ctx.dataset.label}: ${ctx.parsed.y} CP (${pct}%)`;
@@ -1786,10 +1851,21 @@ function renderMABreadthChart() {
                     grid: { color: 'rgba(255,255,255,0.05)' }
                 },
                 y: {
+                    type: 'linear',
+                    position: 'left',
                     beginAtZero: true,
                     ticks: { color: '#888', precision: 0 },
                     grid: { color: 'rgba(255,255,255,0.05)' },
                     title: { display: true, text: 'Số lượng CP', color: '#aaa' }
+                },
+                y1: {
+                    type: 'linear',
+                    position: 'right',
+                    // Chỉ hiện trục Y phải khi có dataset VNINDEX
+                    display: datasets.some(d => d.yAxisID === 'y1'),
+                    grid: { drawOnChartArea: false }, // không vẽ grid trùng với trục trái
+                    ticks: { color: '#bbb' },
+                    title: { display: true, text: 'VNINDEX', color: '#ddd' }
                 }
             }
         }

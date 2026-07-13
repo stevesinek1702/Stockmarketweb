@@ -131,23 +131,27 @@ function countAboveMAForDate(stocks, icb2Map = ICB2_MAP) {
 
 /**
  * Trích chuỗi thời gian của 1 scope (market hoặc 1 industry code) từ history.
- * @param {Object} history object {date: {market, industries}} (sorted keys)
+ * @param {Object} history object {date: {market, industries, vnindex?}} (sorted keys)
  * @param {string} scope 'market' hoặc ICB2 code
- * @returns {Array} [{date, ma10, ma20, ma50, ma100, ma200, total}]
+ * @returns {Array} [{date, ma10, ma20, ma50, ma100, ma200, total, vnindex?}]
  */
 function aggregateByIndustry(history, scope) {
     const dates = Object.keys(history).sort();
     const series = [];
     for (const date of dates) {
+        const snap = history[date];
         const rec = scope === 'market'
-            ? history[date].market
-            : (history[date].industries && history[date].industries[scope]);
+            ? snap.market
+            : (snap.industries && snap.industries[scope]);
         if (!rec) continue;
-        series.push({
+        const point = {
             date,
             ma10: rec.ma10, ma20: rec.ma20, ma50: rec.ma50,
             ma100: rec.ma100, ma200: rec.ma200, total: rec.total
-        });
+        };
+        // Thêm VNINDEX close nếu snapshot có (cho overlay dual-axis)
+        if (snap.vnindex != null) point.vnindex = snap.vnindex;
+        series.push(point);
     }
     return series;
 }
@@ -402,6 +406,21 @@ async function fetchHistory(symbol, days, cookie) {
 }
 
 /**
+ * Fetch giá close VNINDEX theo ngày (cho overlay dual-axis).
+ * Dùng HistoricalQuotes với symbol=VNINDEX (endpoint công khai, không cần cookie).
+ * @param {number} days số ngày cần fetch
+ * @returns {Promise<Object>} map {date: close}
+ */
+async function fetchVNIndexHistory(days) {
+    const data = await fetchHistory('VNINDEX', days, '');
+    const map = {};
+    for (const d of data) {
+        if (d.date && d.close > 0) map[d.date] = d.close;
+    }
+    return map;
+}
+
+/**
  * Tính breadth cho 1 ngày T từ closeCache của tất cả symbol.
  * @param {Object} closeCache {symbol: {dates:[], closes:[]}}
  * @param {Object} symMeta {symbol: {icb2}} industry map
@@ -498,11 +517,17 @@ async function buildHistory({ fetchFn, getCookie, onProgress } = {}, windowDays 
         // Chỉ giữ windowDays ngày gần nhất
         if (dateList.length > windowDays) dateList = dateList.slice(-windowDays);
 
+        // Fetch giá VNINDEX 1 lần để gắn vào mỗi snapshot (overlay dual-axis)
+        const vnindexMap = await fetchVNIndexHistory(fetchDays);
+
         const history = _loadHistory();
         if (!history.history) history.history = {};
         for (const date of dateList) {
             const snap = computeBreadthForDate(closeData.symbols, symMeta, date);
-            if (snap) history.history[date] = snap;
+            if (snap) {
+                if (vnindexMap[date]) snap.vnindex = vnindexMap[date];
+                history.history[date] = snap;
+            }
         }
         _trimHistory(history);
         history.meta = {
@@ -576,6 +601,10 @@ async function buildToday({ fetchFn, getCookie } = {}) {
         if (!snap) {
             return { ok: false, error: 'Không có dữ liệu giá cho ngày hôm nay (có thể chưa có giao dịch).' };
         }
+
+        // 3b. Lấy giá VNINDEX hôm nay (cho overlay dual-axis)
+        const vnindexToday = await fetchVNIndexHistory(5);
+        if (vnindexToday[today] != null) snap.vnindex = vnindexToday[today];
 
         // 4. Append vào history
         const history = existing;
