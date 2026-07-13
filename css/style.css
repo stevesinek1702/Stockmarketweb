@@ -4411,3 +4411,17 @@ button.scanning::after {
     padding: 8px 18px;
     font-size: 13px;
 }
+
+/* Chip dòng tiền lớn trong tiêu đề modal top flow */
+.topflow-title-net { font-size: 16px; font-weight: 700; margin-left: 4px; }
+.topflow-title-net.pos { color: var(--color-up, #2ee68a); }
+.topflow-title-net.neg { color: var(--color-down, #ff5c78); }
+.topflow-title-range {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-muted, #888);
+    margin-left: 8px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border-radius: 10px;
+}

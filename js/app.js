@@ -1395,7 +1395,7 @@ function renderIndustryFlowChart(data) {
                 if (elements.length === 0) return;
                 const idx = elements[0].index;
                 const d = sorted[idx];
-                if (d && d.code) openIndustryTopFlowModal(d.code, d.name);
+                if (d && d.code) openIndustryTopFlowModal(d);
             },
             // Cursor pointer khi hover bar để báo "click được"
             onHover: (evt, elements) => {
@@ -1450,18 +1450,27 @@ const TOPFLOW_CACHE_TTL = 10 * 60 * 1000; // 10 phút
  * @param {string} code ICB2 code (vd '8300')
  * @param {string} name tên ngành hiển thị
  */
-async function openIndustryTopFlowModal(code, name) {
+async function openIndustryTopFlowModal(industry) {
     const modal = document.getElementById('industry-topflow-modal');
     const titleEl = document.getElementById('industry-topflow-title');
     const bodyEl = document.getElementById('industry-topflow-body');
     if (!modal || !titleEl || !bodyEl) return;
 
+    const code = industry.code;
+    const name = industry.name;
     // days = số phiên theo timeRange đang chọn (1/5/20/YTD→20)
     const tr = IndustryFlowState.timeRange || 1;
     const days = tr === 0 ? 20 : (tr === 1 ? 1 : tr); // 0=YTD → 20 cho gọn
     const cacheKey = `${code}|${days}`;
 
-    titleEl.textContent = `Top Mã Mua/Bán Ròng · ${name}${days > 1 ? ` · ${days} phiên` : ''}`;
+    // Tiêu đề có hiển thị con số dòng tiền lớn của ngành (màu xanh/đỏ) để dễ soi.
+    // netSmart/nuocNgoai/toChuc/tuDoanh đã có trong data (tổng N phiên theo timeRange).
+    const f = (v) => (v >= 0 ? '+' : '') + (v || 0).toFixed(1);
+    const net = industry.netSmart;
+    const netCls = (net || 0) >= 0 ? 'pos' : 'neg';
+    const rangeWord = days === 1 ? 'Hôm nay' : (days === 5 ? '1 tuần' : (days === 20 ? '1 tháng' : `${days} phiên`));
+    titleEl.innerHTML = `Top Mã Mua/Bán Ròng · ${name} <span class="topflow-title-net ${netCls}">(${f(net)} tỷ)</span> <span class="topflow-title-range">${rangeWord}</span>`;
+
     modal.style.display = 'block';
 
     // 1. Check cache trước — nếu còn hạn thì render ngay, không load lại
