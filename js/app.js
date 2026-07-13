@@ -1666,6 +1666,20 @@ async function loadMABreadth() {
         if (fromEl) { fromEl.min = meta.firstDate; fromEl.max = meta.lastDate; }
         if (toEl) { toEl.min = meta.firstDate; toEl.max = meta.lastDate; }
 
+        // Auto-fill "Đến" = ngày mới nhất có data nếu đang trống (mặc định hợp lý,
+        // không để placeholder dd/mm/yyyy). User có thể sửa sau.
+        if (meta.lastDate && (!MABreadthState.toDate || MABreadthState.toDate === '')) {
+            MABreadthState.toDate = meta.lastDate;
+            if (toEl) toEl.value = meta.lastDate;
+            saveMABreadthPrefs();
+        }
+        // Nếu toDate đã lưu nhưng vượt quá lastDate (data cũ bị trim) → clamp lại
+        if (meta.lastDate && MABreadthState.toDate && MABreadthState.toDate > meta.lastDate) {
+            MABreadthState.toDate = meta.lastDate;
+            if (toEl) toEl.value = meta.lastDate;
+            saveMABreadthPrefs();
+        }
+
         // Build query
         const params = new URLSearchParams();
         params.set('scope', MABreadthState.scope === 'market' ? 'market' : 'industry');
