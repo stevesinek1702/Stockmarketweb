@@ -797,6 +797,34 @@ h1, h2, h3,
 .ff-chart-wrap canvas,
 .flow-chart { height: 120px; }
 
+/* Trend rows (1/5/20 phiên) — dạng text gọn thay chart cột */
+.ff-trend {
+    background: rgba(255,255,255,0.02);
+    border-radius: var(--radius-md, 10px);
+    padding: 6px 12px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.06));
+}
+.ff-trend-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.ff-trend-row:last-child { border-bottom: none; }
+.ff-trend-label {
+    font-size: 12px;
+    color: var(--text-secondary, #aaa);
+}
+.ff-trend-val {
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Space Grotesk', sans-serif;
+}
+.ff-trend-val.pos { color: var(--accent-green, #2ee68a); }
+.ff-trend-val.neg { color: var(--accent-red, #ff5c78); }
+
 /* Responsive: 3 cards → stack trên mobile */
 @media (max-width: 480px) {
     .ff-stats { grid-template-columns: 1fr; }

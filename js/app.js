@@ -2452,10 +2452,8 @@ async function loadForeignFlow() {
             }
         }
 
-        // Vẽ biểu đồ cột THẬT từ trend (1/5/20 phiên). Guard nếu thiếu dữ liệu.
-        if (window.StockCharts && Array.isArray(trend)) {
-            window.StockCharts.renderForeignFlowChart('foreign-flow-chart', trend);
-        }
+        // Trend 1/5/20 phiên — render dạng text rows gọn (bỏ chart cột xấu)
+        renderForeignTrend(trend);
 
         window._foreignFlowLoaded = true;
         console.log(`✅ Foreign flow (khối ngoại) updated [${result.source}]: Mua ${today.buy ?? '--'} / Bán ${today.sell ?? '--'} / Ròng ${today.net}`);
@@ -2463,11 +2461,31 @@ async function loadForeignFlow() {
         console.error('Failed to load foreign flow:', error);
         if (!window._foreignFlowLoaded) {
             if (buyEl) { buyEl.textContent = '--'; buyEl.className = 'flow-value'; }
-            if (sellEl) { sellEl.textContent = '--'; sellEl.className = 'flow-value'; }
+            if (sellEl) { buyEl.textContent = '--'; buyEl.className = 'flow-value'; }
             if (netEl) { netEl.textContent = '--'; netEl.className = 'flow-value'; }
         }
     }
 }
+
+/**
+ * Render trend khối ngoại (1/5/20 phiên) dạng text rows gọn.
+ * Thay cho chart cột (cột 20 phiên quá lớn làm xấu panel).
+ * @param {Array<{label:string, net:number|null}>} trend
+ */
+function renderForeignTrend(trend) {
+    const wrap = document.getElementById('foreign-trend');
+    if (!wrap || !Array.isArray(trend)) return;
+    const fmt = (v) => (typeof v === 'number' && isFinite(v))
+        ? (v >= 0 ? '+' : '') + v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' tỷ'
+        : '--';
+    const cls = (v) => (typeof v === 'number' && v >= 0) ? 'pos' : 'neg';
+    wrap.innerHTML = trend.map(p => `
+        <div class="ff-trend-row">
+            <span class="ff-trend-label">${p.label}</span>
+            <span class="ff-trend-val ${cls(p.net)}">${fmt(p.net)}</span>
+        </div>`).join('');
+}
+
 
 /**
  * Load and render all dashboard charts
