@@ -295,19 +295,24 @@
                             <span class="card-badge">Hôm nay</span>
                         </div>
                         <div class="foreign-flow">
-                            <div class="flow-item">
-                                <span class="flow-label">Mua</span>
-                                <span class="flow-value positive" id="foreign-buy-val">--</span>
+                            <!-- 3 stat cards cạnh nhau -->
+                            <div class="ff-stats">
+                                <div class="ff-stat ff-buy">
+                                    <span class="ff-stat-label">🟢 Mua</span>
+                                    <span class="ff-stat-value positive" id="foreign-buy-val">--</span>
+                                </div>
+                                <div class="ff-stat ff-sell">
+                                    <span class="ff-stat-label">🔴 Bán</span>
+                                    <span class="ff-stat-value negative" id="foreign-sell-val">--</span>
+                                </div>
+                                <div class="ff-stat ff-net" id="ff-net-card">
+                                    <span class="ff-stat-label">⚖️ Ròng</span>
+                                    <span class="ff-stat-value" id="foreign-net-val">--</span>
+                                </div>
                             </div>
-                            <div class="flow-item">
-                                <span class="flow-label">Bán</span>
-                                <span class="flow-value negative" id="foreign-sell-val">--</span>
-                            </div>
-                            <div class="flow-item">
-                                <span class="flow-label">Ròng</span>
-                                <span class="flow-value" id="foreign-net-val">--</span>
-                            </div>
-                            <div class="flow-chart">
+                            <!-- Chart trend 1/5/20 phiên -->
+                            <div class="ff-chart-wrap">
+                                <div class="ff-chart-title">Xu hướng ròng theo phiên</div>
                                 <canvas id="foreign-flow-chart"></canvas>
                             </div>
                         </div>

@@ -474,6 +474,29 @@ function renderForeignFlowChart(canvasId, trend) {
     const labels = points.map(p => p.label);
     const values = points.map(p => p.net);
     const colors = values.map(v => v >= 0 ? CHART_COLORS.green : CHART_COLORS.red);
+    const fmtT = (v) => (v >= 0 ? '+' : '') + v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' tỷ';
+
+    // Plugin vẽ giá trị trên đỉnh mỗi cột (không cần thư viện ngoài)
+    const valueLabelPlugin = {
+        id: 'ffValueLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx, scales } = chart;
+            const meta = chart.getDatasetMeta(0);
+            ctx.save();
+            ctx.font = '600 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            meta.data.forEach((bar, i) => {
+                const v = values[i];
+                const color = v >= 0 ? CHART_COLORS.green : CHART_COLORS.red;
+                ctx.fillStyle = color;
+                // Vị trí: trên cột nếu dương, dưới cột nếu âm
+                const x = bar.x;
+                const y = v >= 0 ? bar.y - 8 : bar.y + 14;
+                ctx.fillText(fmtT(v), x, y);
+            });
+            ctx.restore();
+        }
+    };
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'bar',
@@ -481,15 +504,18 @@ function renderForeignFlowChart(canvasId, trend) {
             labels,
             datasets: [{
                 data: values,
-                backgroundColor: colors,
+                backgroundColor: colors.map(c => c + 'cc'),
                 borderColor: colors,
-                borderWidth: 1,
-                borderRadius: 4
+                borderWidth: 1.5,
+                borderRadius: 5,
+                barPercentage: 0.55,
+                categoryPercentage: 0.7
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: { padding: { top: 22 } },
             plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -502,7 +528,7 @@ function renderForeignFlowChart(canvasId, trend) {
                     callbacks: {
                         label: function (context) {
                             const value = context.raw;
-                            return (value >= 0 ? '+' : '') + value.toFixed(1) + ' tỷ';
+                            return fmtT(value);
                         }
                     }
                 }
@@ -510,18 +536,23 @@ function renderForeignFlowChart(canvasId, trend) {
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { color: CHART_COLORS.gray }
+                    ticks: { color: CHART_COLORS.gray, font: { size: 11 } }
                 },
                 y: {
-                    grid: { color: 'rgba(42, 42, 85, 0.5)' },
+                    grid: { color: 'rgba(42, 42, 85, 0.4)', drawBorder: false },
                     ticks: {
                         color: CHART_COLORS.gray,
-                        callback: function (value) { return value + ' tỷ'; }
+                        font: { size: 10 },
+                        callback: function (value) {
+                            if (value === 0) return '0';
+                            return (value / 1000).toFixed(1).replace(/\.0$/, '') + 'k tỷ';
+                        }
                     }
                 }
             },
-            animation: { duration: 800, easing: 'easeOutQuart' }
-        }
+            animation: { duration: 600, easing: 'easeOutQuart' }
+        },
+        plugins: [valueLabelPlugin]
     });
 
     return chartInstances[canvasId];

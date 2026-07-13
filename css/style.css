@@ -733,36 +733,73 @@ h1, h2, h3,
    FOREIGN FLOW
    ============================================ */
 
+/* ===== Foreign Flow (Khối Ngoại) — redesigned ===== */
 .foreign-flow {
-    padding: var(--spacing-lg);
-}
-
-.flow-item {
+    padding: var(--spacing-md);
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-md);
+    flex-direction: column;
+    gap: 14px;
 }
-
-.flow-label {
-    color: var(--text-secondary);
+/* 3 stat cards cạnh nhau: Mua | Bán | Ròng */
+.ff-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
 }
-
-.flow-value {
-    font-size: 1.5rem;
+.ff-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 10px;
+    border-radius: var(--radius-md, 10px);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    background: rgba(255,255,255,0.03);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ff-stat:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.25));
+}
+.ff-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary, #aaa);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+.ff-stat-value {
+    font-size: 1.15rem;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-family: 'Space Grotesk', sans-serif;
+    line-height: 1.1;
 }
+.ff-stat-value.positive { color: var(--accent-green, #2ee68a); }
+.ff-stat-value.negative { color: var(--accent-red, #ff5c78); }
+/* Card Ròng nổi bật hơn (border đậm theo dấu) */
+#ff-net-card.is-positive { border-color: rgba(46,230,138,0.4); background: rgba(46,230,138,0.06); }
+#ff-net-card.is-negative { border-color: rgba(255,92,120,0.4); background: rgba(255,92,120,0.06); }
+#ff-net-card.is-positive .ff-stat-value { color: var(--accent-green, #2ee68a); }
+#ff-net-card.is-negative .ff-stat-value { color: var(--accent-red, #ff5c78); }
 
-.flow-value.positive {
-    color: var(--accent-green);
+/* Chart wrap */
+.ff-chart-wrap {
+    background: rgba(255,255,255,0.02);
+    border-radius: var(--radius-md, 10px);
+    padding: 10px 12px 6px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.06));
 }
-
-.flow-value.negative {
-    color: var(--accent-red);
+.ff-chart-title {
+    font-size: 11px;
+    color: var(--text-muted, #888);
+    margin-bottom: 4px;
+    font-weight: 500;
 }
+.ff-chart-wrap canvas,
+.flow-chart { height: 120px; }
 
-.flow-chart {
-    height: 150px;
+/* Responsive: 3 cards → stack trên mobile */
+@media (max-width: 480px) {
+    .ff-stats { grid-template-columns: 1fr; }
 }
 
 /* ============================================

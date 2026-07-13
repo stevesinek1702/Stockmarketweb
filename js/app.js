@@ -2443,6 +2443,15 @@ async function loadForeignFlow() {
         setGross(sellEl, today.sell, 'negative');
         setNet(netEl, today.net);
 
+        // Card Ròng: highlight border theo dấu (xanh nếu mua ròng, đỏ nếu bán ròng)
+        const netCard = document.getElementById('ff-net-card');
+        if (netCard) {
+            netCard.classList.remove('is-positive', 'is-negative');
+            if (typeof today.net === 'number' && isFinite(today.net)) {
+                netCard.classList.add(today.net >= 0 ? 'is-positive' : 'is-negative');
+            }
+        }
+
         // Vẽ biểu đồ cột THẬT từ trend (1/5/20 phiên). Guard nếu thiếu dữ liệu.
         if (window.StockCharts && Array.isArray(trend)) {
             window.StockCharts.renderForeignFlowChart('foreign-flow-chart', trend);
