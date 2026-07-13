@@ -1822,21 +1822,28 @@ app.get('/api/industry-top-flow', async (req, res) => {
         console.log(`📊 [industry-top-flow] ${ICB2_MAP[industryCode]}: ${sectorTickers.length} mã, đang tải dòng tiền...`);
 
         // 2. Gọi Fiintrade GetPriceData từng mã (batch 10 song song)
-        const flows = await fiintrade.getSectorTopStocksFlow(sectorTickers, 10);
+        // days: số phiên gần nhất cần giữ (1=1D, 5=5D, 20=20D, YTD→20 cho gọn)
+        const reqDays = parseInt(req.query.days) || 1;
+        const days = Math.max(1, Math.min(reqDays, 20));
+        const flows = await fiintrade.getSectorTopStocksFlow(sectorTickers, 10, null, days);
         const date = flows.length > 0 ? flows[0].date : null;
+        // Danh sách N ngày (cũ → mới) — lấy từ mã đầu có data
+        const dates = flows.length > 0 && flows[0].days ? flows[0].days.map(d => d.date) : (date ? [date] : []);
 
-        // 3. Top mua ròng / bán ròng theo netSmart (TC+TD+NN)
-        const sorted = flows.slice().sort((a, b) => b.netSmart - a.netSmart);
-        const topBuy = sorted.filter(s => s.netSmart > 0).slice(0, top);
-        const topSell = sorted.filter(s => s.netSmart < 0).reverse().slice(0, top);
+        // 3. Top mua ròng / bán ròng theo netSmart CỘNG DỒN N ngày (netSmartCum)
+        const sorted = flows.slice().sort((a, b) => b.netSmartCum - a.netSmartCum);
+        const topBuy = sorted.filter(s => s.netSmartCum > 0).slice(0, top);
+        const topSell = sorted.filter(s => s.netSmartCum < 0).reverse().slice(0, top);
 
-        console.log(`✅ [industry-top-flow] ${ICB2_MAP[industryCode]}: topBuy=${topBuy.length}, topSell=${topSell.length}, date=${date}`);
+        console.log(`✅ [industry-top-flow] ${ICB2_MAP[industryCode]}: days=${days}, topBuy=${topBuy.length}, topSell=${topSell.length}, date=${date}`);
 
         res.json({
             success: true,
             industryCode,
             industryName: ICB2_MAP[industryCode],
             date,
+            dates,           // danh sách N phiên (cũ → mới)
+            days,
             totalStocks: sectorTickers.length,
             stocksWithData: flows.length,
             topBuy,

@@ -243,17 +243,18 @@ async function getStockInvestorFlow(ticker, frequency = 'Daily') {
 }
 
 /**
- * Lấy dòng tiền ròng (TC+TD+NN) cho ngày mới nhất của nhiều mã trong 1 ngành.
- * Gọi GetPriceData từng mã (PageSize=2 → lấy 2 ngày gần nhất, dùng ngày mới nhất).
+ * Lấy dòng tiền ròng (TC+TD+NN) cho N ngày gần nhất của nhiều mã trong 1 ngành.
+ * Gọi GetPriceData từng mã (1 request/mã, đã chứa 60 ngày) → lấy N ngày gần nhất.
  * Chạy batch song song (10 mã/lượt) để tối ưu tốc độ.
  *
  * @param {string[]} tickers danh sách mã trong ngành
  * @param {number} batchSize số request song song (mặc định 10)
  * @param {Function} onProgress callback({done, total, ticker})
- * @returns {Promise<Array>} [{ticker, date, close, percentChange, caNhan, toChuc, tuDoanh, nuocNgoai, netSmart}]
- *                           netSmart = toChuc + tuDoanh + nuocNgoai. Bỏ mã lỗi/không có data.
+ * @param {number} days số phiên gần nhất cần giữ (mặc định 1)
+ * @returns {Promise<Array>} [{ticker, latest:{date,close,...,netSmart}, days:[{date,netSmart,...}], netSmartCum}]
+ *                           netSmartCum = tổng netSmart N ngày (dùng sort top). days[] cũ→mới.
  */
-async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress) {
+async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress, days = 1) {
     const valid = (tickers || []).filter(t => t && !INDEX_CODES.has(t.toUpperCase()));
     const results = [];
     let done = 0;
@@ -265,7 +266,19 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress) {
         for (const r of responses) {
             const pts = r && r.points ? r.points : [];
             if (pts.length > 0) {
-                const latest = pts[pts.length - 1];
+                // Lấy N ngày gần nhất (cũ → mới)
+                const recent = pts.slice(-Math.max(1, days));
+                const latest = recent[recent.length - 1];
+                // Tổng cộng dồn netSmart N ngày để sort top
+                const netSmartCum = round1(recent.reduce((s, p) => s + p.toChuc + p.tuDoanh + p.nuocNgoai, 0));
+                // Map per-day: mỗi ngày  object gọn
+                const perDay = recent.map(p => ({
+                    date: p.date,
+                    netSmart: round1(p.toChuc + p.tuDoanh + p.nuocNgoai),
+                    nuocNgoai: p.nuocNgoai,
+                    toChuc: p.toChuc,
+                    tuDoanh: p.tuDoanh
+                }));
                 results.push({
                     ticker: latest.ticker || r.ticker,
                     date: latest.date,
@@ -275,7 +288,9 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress) {
                     toChuc: latest.toChuc,
                     tuDoanh: latest.tuDoanh,
                     nuocNgoai: latest.nuocNgoai,
-                    netSmart: round1(latest.toChuc + latest.tuDoanh + latest.nuocNgoai)
+                    netSmart: round1(latest.toChuc + latest.tuDoanh + latest.nuocNgoai),
+                    netSmartCum,
+                    days: perDay
                 });
             }
             done++;

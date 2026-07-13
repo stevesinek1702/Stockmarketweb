@@ -1345,6 +1345,10 @@ async function loadIndustryFlowTab(timeRange) {
         const labelMap = { 1: 'Hôm nay', 5: '5 phiên gần nhất', 20: '20 phiên gần nhất', 0: 'Từ đầu năm' };
         if (rangeEl) rangeEl.textContent = `Dòng tiền ròng khớp lệnh theo nhóm NĐT · ${labelMap[timeRange] || ''} · đơn vị tỷ đồng`;
 
+        // Preload ngầm top flow cho tất cả ngành (theo timeRange hiện tại) để click là ra ngay.
+        // Trì hoãn 3s để không cạnh tranh request với industry-flow vừa load.
+        setTimeout(() => { try { preloadIndustryTopFlow(); } catch (e) {} }, 3000);
+
         console.log(`✅ Industry flow tab loaded: ${data.length} ngành (timeRange=${timeRange})`);
     } catch (error) {
         console.error('Error loading industry flow tab:', error);
@@ -1434,6 +1438,13 @@ function renderIndustryFlowChart(data) {
 }
 
 /**
+ * Cache cho modal top flow: key = `${code}|${days}` → { result, ts }.
+ * Giữ 10 phút (600s). Click lại cùng ngành+cùng timeRange → dùng cache, không load lại.
+ */
+const IndustryTopFlowCache = new Map();
+const TOPFLOW_CACHE_TTL = 10 * 60 * 1000; // 10 phút
+
+/**
  * Mở modal top mã mua/bán ròng (TC+TD+NN) của 1 ngành.
  * Click vào bar ngành trong industry-cumulative-chart sẽ gọi hàm này.
  * @param {string} code ICB2 code (vd '8300')
@@ -1445,22 +1456,77 @@ async function openIndustryTopFlowModal(code, name) {
     const bodyEl = document.getElementById('industry-topflow-body');
     if (!modal || !titleEl || !bodyEl) return;
 
-    titleEl.textContent = `Top Mã Mua/Bán Ròng · ${name}`;
-    bodyEl.innerHTML = '<div class="ma-breadth-empty" style="padding:30px;">⏳ Đang tải dòng tiền từng mã (có thể mất 30-60 giây cho ngành lớn)...</div>';
+    // days = số phiên theo timeRange đang chọn (1/5/20/YTD→20)
+    const tr = IndustryFlowState.timeRange || 1;
+    const days = tr === 0 ? 20 : (tr === 1 ? 1 : tr); // 0=YTD → 20 cho gọn
+    const cacheKey = `${code}|${days}`;
+
+    titleEl.textContent = `Top Mã Mua/Bán Ròng · ${name}${days > 1 ? ` · ${days} phiên` : ''}`;
     modal.style.display = 'block';
 
+    // 1. Check cache trước — nếu còn hạn thì render ngay, không load lại
+    const cached = IndustryTopFlowCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < TOPFLOW_CACHE_TTL) {
+        renderIndustryTopFlowModal(cached.result);
+        return;
+    }
+
+    // 2. Không có cache → show loading + fetch
+    bodyEl.innerHTML = `<div class="ma-breadth-empty" style="padding:30px;">⏳ Đang tải dòng tiền từng mã (${days} phiên)... ngành lớn có thể mất 10-30s</div>`;
+
     try {
-        const res = await fetch(`${SERVER_BASE}/api/industry-top-flow?code=${code}&top=5`);
+        const res = await fetch(`${SERVER_BASE}/api/industry-top-flow?code=${code}&top=5&days=${days}`);
         const result = await res.json();
         if (!result.success) {
             bodyEl.innerHTML = `<div class="ma-breadth-empty">❌ ${result.error || 'Lỗi tải dữ liệu'}</div>`;
             return;
         }
+        // Lưu cache
+        IndustryTopFlowCache.set(cacheKey, { result, ts: Date.now() });
         renderIndustryTopFlowModal(result);
     } catch (err) {
         console.error('Industry top flow modal error:', err);
         bodyEl.innerHTML = '<div class="ma-breadth-empty">❌ Lỗi kết nối server</div>';
     }
+}
+
+/**
+ * Preload ngầm tất cả ngành theo timeRange hiện tại, chạy nền sau khi tab load xong.
+ * Mỗi ngành cách nhau 1s để tránh spike server. Bỏ qua ngành đã có cache còn hạn.
+ * @param {number} days số phiên (mặc định theo IndustryFlowState.timeRange)
+ */
+function preloadIndustryTopFlow(days) {
+    if (preloadIndustryTopFlow._running) return;
+    const tr = IndustryFlowState.timeRange || 1;
+    const d = days || (tr === 0 ? 20 : (tr === 1 ? 1 : tr));
+    // Danh sách 18 ngành ICB2 (đồng bộ server)
+    const codes = ['0500','1300','1700','2300','2700','3300','3500','3700','4500','5300','5500','5700','6500','7500','8300','8500','8600','8700','8900','9500'];
+
+    preloadIndustryTopFlow._running = true;
+    console.log(`[TopFlow] Bắt đầu preload ngầm ${codes.length} ngành (${d} phiên)...`);
+
+    (async () => {
+        for (const code of codes) {
+            const cacheKey = `${code}|${d}`;
+            // Bỏ qua nếu đã có cache còn hạn
+            const cached = IndustryTopFlowCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < TOPFLOW_CACHE_TTL) continue;
+
+            try {
+                const res = await fetch(`${SERVER_BASE}/api/industry-top-flow?code=${code}&top=5&days=${d}`);
+                const result = await res.json();
+                if (result.success) {
+                    IndustryTopFlowCache.set(cacheKey, { result, ts: Date.now() });
+                }
+            } catch (e) {
+                // Bỏ qua lỗi ngành nào đó, tiếp tục ngành khác
+            }
+            // Nghỉ 800ms giữa các ngành để không spike server
+            await new Promise(r => setTimeout(r, 800));
+        }
+        preloadIndustryTopFlow._running = false;
+        console.log(`[TopFlow] Preload xong. Cache có ${IndustryTopFlowCache.size} mục.`);
+    })();
 }
 
 /** Đóng modal top flow. */
@@ -1469,45 +1535,56 @@ function closeIndustryTopFlowModal() {
     if (modal) modal.style.display = 'none';
 }
 
-/** Render nội dung modal: 2 cột Top Mua Ròng / Top Bán Ròng + bảng chi tiết. */
+/**
+ * Render nội dung modal: 2 cột Top Mua Ròng / Top Bán Ròng.
+ * Nếu N>1 phiên: mỗi mã có N cột (netSmart mỗi phiên) + cột tổng.
+ */
 function renderIndustryTopFlowModal(result) {
     const bodyEl = document.getElementById('industry-topflow-body');
     const f = (v) => (v >= 0 ? '+' : '') + (v || 0).toFixed(1);
+    const dates = result.dates || (result.date ? [result.date] : []);
+    const multiDay = dates.length > 1;
+    // Rút gọn ngày DD/MM cho header cột phiên
+    const shortDate = (iso) => { if (!iso) return '-'; const [y,m,d] = iso.split('-'); return `${d}/${m}`; };
 
-    const fmtRow = (s) => `
-        <tr>
-            <td><b>${s.ticker}</b></td>
-            <td class="num">${s.close.toLocaleString('vi-VN')}</td>
-            <td class="num ${(s.percentChange||0) >= 0 ? 'pos' : 'neg'}">${f(s.percentChange)}%</td>
-            <td class="num ${(s.nuocNgoai||0) >= 0 ? 'pos' : 'neg'}">${f(s.nuocNgoai)}</td>
-            <td class="num ${(s.toChuc||0) >= 0 ? 'pos' : 'neg'}">${f(s.toChuc)}</td>
-            <td class="num ${(s.tuDoanh||0) >= 0 ? 'pos' : 'neg'}">${f(s.tuDoanh)}</td>
-            <td class="num ${(s.netSmart||0) >= 0 ? 'pos' : 'neg'}"><b>${f(s.netSmart)}</b></td>
-        </tr>`;
-
+    // Header: Mã | [các cột ngày nếu multiDay] | Tổng(Cum) | Giá | %
+    const dayCols = multiDay ? dates.map(d => `<th>${shortDate(d)}</th>`).join('') : '';
     const tableHead = `<tr>
-        <th>Mã</th><th>Giá</th><th>%</th><th>NN</th><th>TC</th><th>TD</th><th>Dòng tiền lớn</th>
+        <th>Mã</th>${dayCols}<th>Tổng</th><th>Giá</th><th>%</th>
     </tr>`;
 
+    const fmtRow = (s) => {
+        // Các cột per-day netSmart
+        const dayCells = multiDay ? (s.days || []).map(p => {
+            const cls = (p.netSmart || 0) >= 0 ? 'pos' : 'neg';
+            return `<td class="num ${cls}">${f(p.netSmart)}</td>`;
+        }).join('') : '';
+        return `
+        <tr>
+            <td><b>${s.ticker}</b></td>
+            ${dayCells}
+            <td class="num ${(s.netSmartCum||0) >= 0 ? 'pos' : 'neg'}"><b>${f(s.netSmartCum)}</b></td>
+            <td class="num">${(s.close||0).toLocaleString('vi-VN')}</td>
+            <td class="num ${(s.percentChange||0) >= 0 ? 'pos' : 'neg'}">${f(s.percentChange)}%</td>
+        </tr>`;
+    };
+
+    const rangeLabel = multiDay ? `${dates.length} phiên (${shortDate(dates[0])} → ${shortDate(dates[dates.length-1])})` : `Phiên ${result.date || '-'}`;
+
     bodyEl.innerHTML = `
-        <div class="topflow-date">Phiên ${result.date || '-'} · ${result.stocksWithData}/${result.totalStocks} mã có dữ liệu</div>
+        <div class="topflow-date">${rangeLabel} · ${result.stocksWithData}/${result.totalStocks} mã có dữ liệu</div>
         <div class="topflow-columns">
             <div class="topflow-col">
                 <h4 class="topflow-h pos">🟢 Top ${result.topBuy.length} Mua Ròng</h4>
                 <table class="data-table topflow-table"><thead>${tableHead}</thead>
-                <tbody>${result.topBuy.map(fmtRow).join('') || '<tr><td colspan="7">Không có mã mua ròng</td></tr>'}</tbody></table>
+                <tbody>${result.topBuy.map(fmtRow).join('') || '<tr><td colspan="99">Không có mã mua ròng</td></tr>'}</tbody></table>
             </div>
             <div class="topflow-col">
                 <h4 class="topflow-h neg">🔴 Top ${result.topSell.length} Bán Ròng</h4>
                 <table class="data-table topflow-table"><thead>${tableHead}</thead>
-                <tbody>${result.topSell.map(fmtRow).join('') || '<tr><td colspan="7">Không có mã bán ròng</td></tr>'}</tbody></table>
+                <tbody>${result.topSell.map(fmtRow).join('') || '<tr><td colspan="99">Không có mã bán ròng</td></tr>'}</tbody></table>
             </div>
-        </div>
-        <details class="topflow-details">
-            <summary>Tất cả ${result.allStocks.length} mã (click để mở rộng)</summary>
-            <table class="data-table topflow-table"><thead>${tableHead}</thead>
-            <tbody>${result.allStocks.map(fmtRow).join('')}</tbody></table>
-        </details>`;
+        </div>`;
 }
 
 // Click ra ngoài modal hoặc ESC → đóng
