@@ -11,6 +11,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { scanPotential, getCachedSignals } = require('./potential-scanner');
 const fiintrade = require('./fiintrade');
+const breadthHistory = require('./breadth-history');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2286,6 +2287,96 @@ app.post('/api/cookie-sync/force', async (req, res) => {
         res.status(500).json({ status: 'error', message: e.message });
     }
 });
+
+
+// ==========================================
+// MA BREADTH ENDPOINTS (Độ Rộng Kỹ Thuật)
+// Xem docs/superpowers/specs/2026-07-13-ma-breadth-design.md
+// ==========================================
+
+/**
+ * GET /api/ma-breadth
+ * Đọc file cache MA breadth (rất nhanh, không fetch FireAnt).
+ * Query: scope=market|industry, industryCode=8300, fromDate, toDate, days
+ */
+app.get('/api/ma-breadth', (req, res) => {
+    try {
+        const result = breadthHistory.getBreadth({
+            scope: req.query.scope || 'market',
+            industryCode: req.query.industryCode || null,
+            fromDate: req.query.fromDate || null,
+            toDate: req.query.toDate || null,
+            days: parseInt(req.query.days) || 0
+        });
+        res.json(result);
+    } catch (error) {
+        console.error('MA breadth error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/ma-breadth/meta — metadata tóm tắt cho UI (đã có data chưa, range thực).
+ */
+app.get('/api/ma-breadth/meta', (req, res) => {
+    res.json(breadthHistory.getMeta());
+});
+
+/**
+ * POST /api/ma-breadth/refresh — incremental build ngày mới nhất (~3-5s).
+ */
+app.post('/api/ma-breadth/refresh', async (req, res) => {
+    req.setTimeout(30000);
+    try {
+        const result = await breadthHistory.buildToday({
+            fetchFn: fetchAPI,
+            getCookie: getFireAntCookie
+        });
+        res.json(result);
+    } catch (error) {
+        console.error('MA breadth refresh error:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/ma-breadth/build-history — full build lần đầu (~30-90s).
+ * Body: { windowDays?: 370 }
+ */
+app.post('/api/ma-breadth/build-history', async (req, res) => {
+    req.setTimeout(300000);
+    const windowDays = (req.body && req.body.windowDays) || 370;
+    try {
+        const result = await breadthHistory.buildHistory({
+            fetchFn: fetchAPI,
+            getCookie: getFireAntCookie
+        }, windowDays);
+        res.json(result);
+    } catch (error) {
+        console.error('MA breadth build-history error:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// Job nền auto-save snapshot mỗi ngày (15:15-22:00 giờ VN), kiểm tra mỗi 30 phút.
+const BREADTH_CHECK_INTERVAL = 30 * 60 * 1000;
+setInterval(async () => {
+    const vnNow = new Date(Date.now() + 7 * 3600 * 1000);
+    const vnHour = vnNow.getUTCHours();
+    if (vnHour >= 15 && vnHour < 22) {
+        try {
+            if (!breadthHistory.hasToday()) {
+                console.log('[MA Breadth] Auto-building today snapshot...');
+                await breadthHistory.buildToday({
+                    fetchFn: fetchAPI,
+                    getCookie: getFireAntCookie
+                });
+            }
+        } catch (e) {
+            console.error('[MA Breadth] auto-build error:', e.message);
+        }
+    }
+}, BREADTH_CHECK_INTERVAL);
 
 
 app.get('/api/health', (req, res) => {

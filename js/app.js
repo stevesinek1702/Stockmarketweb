@@ -1462,6 +1462,373 @@ function renderIndustryHeatmap(data) {
 //  generateChartColor và renderIndustryChart bản cũ - thuộc luồng "dòng tiền lũy kế"
 //  theo date-picker dùng Fitrade. Nay thay bằng renderIndustryFlowChart + timeRange (Fiintrade).)
 
+
+// ==========================================
+// MA BREADTH — Độ Rộng Kỹ Thuật (Số CP trên MA10/20/50/100/200)
+// Xem docs/superpowers/specs/2026-07-13-ma-breadth-design.md
+// ==========================================
+
+const MA_BREADTH_PREFS_KEY = 'vnstock_ma_breadth_prefs';
+
+// Màu cho 5 đường MA (dùng design token / hex dự phòng)
+const MA_COLORS = {
+    ma10: '#2ee68a',   // xanh (color-up)
+    ma20: '#3b82f6',   // xanh dương
+    ma50: '#facc15',   // vàng
+    ma100: '#a855f7',  // tím
+    ma200: '#fb923c'   // cam
+};
+const MA_LABELS = { ma10: 'MA10', ma20: 'MA20', ma50: 'MA50', ma100: 'MA100', ma200: 'MA200' };
+
+const MABreadthState = {
+    data: null,        // series hiện tại từ /api/ma-breadth
+    meta: null,        // meta từ API (firstDate, lastDate, historyDays...)
+    chart: null,       // Chart.js instance
+    scope: 'market',
+    fromDate: null,
+    toDate: null,
+    visibleMAs: { ma10: true, ma20: true, ma50: true, ma100: false, ma200: false },
+    loaded: false,
+    initialized: false,
+    dateDebounce: null
+};
+
+/** Load prefs từ localStorage. */
+function loadMABreadthPrefs() {
+    try {
+        const raw = localStorage.getItem(MA_BREADTH_PREFS_KEY);
+        if (!raw) return;
+        const p = JSON.parse(raw);
+        if (p.scope) MABreadthState.scope = p.scope;
+        if (p.fromDate) MABreadthState.fromDate = p.fromDate;
+        if (p.toDate) MABreadthState.toDate = p.toDate;
+        if (p.visibleMAs) MABreadthState.visibleMAs = { ...MABreadthState.visibleMAs, ...p.visibleMAs };
+    } catch (e) { /* ignore */ }
+}
+
+/** Lưu prefs vào localStorage. */
+function saveMABreadthPrefs() {
+    try {
+        localStorage.setItem(MA_BREADTH_PREFS_KEY, JSON.stringify({
+            scope: MABreadthState.scope,
+            fromDate: MABreadthState.fromDate,
+            toDate: MABreadthState.toDate,
+            visibleMAs: MABreadthState.visibleMAs
+        }));
+    } catch (e) { /* ignore */ }
+}
+
+/** Định dạng ngày YYYY-MM-DD → DD/MM/YY cho hiển thị. */
+function formatMADate(iso) {
+    if (!iso) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y.slice(2)}`;
+}
+
+/** Khởi tạo MA breadth section (gọi khi switch sang tab industry lần đầu). */
+function initMABreadth() {
+    if (MABreadthState.initialized) return;
+    MABreadthState.initialized = true;
+
+    loadMABreadthPrefs();
+
+    // Apply prefs lên UI controls
+    const scopeEl = document.getElementById('ma-breadth-scope');
+    if (scopeEl) scopeEl.value = MABreadthState.scope;
+    const fromEl = document.getElementById('ma-breadth-from');
+    const toEl = document.getElementById('ma-breadth-to');
+    if (fromEl && MABreadthState.fromDate) fromEl.value = MABreadthState.fromDate;
+    if (toEl && MABreadthState.toDate) toEl.value = MABreadthState.toDate;
+    ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
+        const cb = document.getElementById('ma-cb-' + k.slice(2));
+        if (cb) cb.checked = MABreadthState.visibleMAs[k];
+    });
+
+    // Bind events
+    if (scopeEl) scopeEl.addEventListener('change', () => {
+        MABreadthState.scope = scopeEl.value;
+        saveMABreadthPrefs();
+        loadMABreadth();
+    });
+
+    const onDateChange = () => {
+        clearTimeout(MABreadthState.dateDebounce);
+        MABreadthState.dateDebounce = setTimeout(() => {
+            let from = fromEl ? fromEl.value : '';
+            let to = toEl ? toEl.value : '';
+            // Validate from <= to, tự hoán đổi + toast nhẹ
+            if (from && to && from > to) {
+                if (fromEl) fromEl.value = to;
+                if (toEl) toEl.value = from;
+                const t = from; from = to; to = t;
+                if (typeof showToast === 'function') showToast('Đã hoán đổi Từ/Đến', 'info');
+            }
+            MABreadthState.fromDate = from || null;
+            MABreadthState.toDate = to || null;
+            saveMABreadthPrefs();
+            loadMABreadth();
+        }, 300);
+    };
+    if (fromEl) fromEl.addEventListener('change', onDateChange);
+    if (toEl) toEl.addEventListener('change', onDateChange);
+
+    // Preset buttons
+    document.querySelectorAll('.ma-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyMAPreset(btn.dataset.preset));
+    });
+
+    // MA checkbox toggles (re-render local, KHÔNG fetch lại)
+    ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
+        const cb = document.getElementById('ma-cb-' + k.slice(2));
+        if (cb) cb.addEventListener('change', () => {
+            MABreadthState.visibleMAs[k] = cb.checked;
+            saveMABreadthPrefs();
+            renderMABreadthChart();
+        });
+    });
+
+    // Refresh + Build buttons
+    const refreshBtn = document.getElementById('ma-breadth-refresh');
+    if (refreshBtn) refreshBtn.addEventListener('click', onMABreadthRefresh);
+    const buildBtn = document.getElementById('ma-breadth-build');
+    if (buildBtn) buildBtn.addEventListener('click', onMABreadthBuild);
+
+    // Trigger load đầu tiên
+    loadMABreadth();
+}
+
+/** Áp dụng preset (1m/3m/6m/1y/1.5y/all) → set 2 ô date → load. */
+function applyMAPreset(preset) {
+    const fromEl = document.getElementById('ma-breadth-from');
+    const toEl = document.getElementById('ma-breadth-to');
+    if (!fromEl || !toEl) return;
+
+    const last = MABreadthState.meta && MABreadthState.meta.lastDate;
+    const end = last ? new Date(last) : new Date();
+    let start;
+
+    if (preset === 'all') {
+        const first = MABreadthState.meta && MABreadthState.meta.firstDate;
+        if (!first) { loadMABreadth(); return; }
+        start = new Date(first);
+    } else {
+        const months = { '1m': 1, '3m': 3, '6m': 6, '1y': 12, '1.5y': 18 }[preset] || 6;
+        start = new Date(end);
+        start.setMonth(start.getMonth() - months);
+    }
+    const fmt = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+    fromEl.value = fmt(start);
+    toEl.value = fmt(end);
+    MABreadthState.fromDate = fromEl.value;
+    MABreadthState.toDate = toEl.value;
+    saveMABreadthPrefs();
+    loadMABreadth();
+}
+
+/** Fetch /api/ma-breadth + /meta, render. */
+async function loadMABreadth() {
+    const metaEl = document.getElementById('ma-breadth-meta');
+    const emptyEl = document.getElementById('ma-breadth-empty');
+    try {
+        // Lấy meta đầu tiên để set min/max date input
+        const metaRes = await fetch(`${SERVER_BASE}/api/ma-breadth/meta`);
+        const meta = await metaRes.json();
+        MABreadthState.meta = meta;
+
+        const fromEl = document.getElementById('ma-breadth-from');
+        const toEl = document.getElementById('ma-breadth-to');
+
+        if (!meta.exists || meta.needBuild) {
+            // Chưa có data → empty state với nút build
+            if (MABreadthState.chart) { MABreadthState.chart.destroy(); MABreadthState.chart = null; }
+            if (emptyEl) {
+                emptyEl.style.display = 'block';
+                emptyEl.innerHTML = `Chưa có dữ liệu MA breadth. Bấm <b>"Tải dữ liệu lịch sử"</b> để bắt đầu (lần đầu ~1 phút).`;
+            }
+            if (metaEl) metaEl.textContent = '';
+            return;
+        }
+
+        // Set min/max cho date input
+        if (fromEl) { fromEl.min = meta.firstDate; fromEl.max = meta.lastDate; }
+        if (toEl) { toEl.min = meta.firstDate; toEl.max = meta.lastDate; }
+
+        // Build query
+        const params = new URLSearchParams();
+        params.set('scope', MABreadthState.scope === 'market' ? 'market' : 'industry');
+        if (MABreadthState.scope !== 'market') params.set('industryCode', MABreadthState.scope);
+        if (MABreadthState.fromDate) params.set('fromDate', MABreadthState.fromDate);
+        if (MABreadthState.toDate) params.set('toDate', MABreadthState.toDate);
+
+        const res = await fetch(`${SERVER_BASE}/api/ma-breadth?${params}`);
+        const result = await res.json();
+
+        if (!result.success || !result.series) {
+            if (emptyEl) {
+                emptyEl.style.display = 'block';
+                emptyEl.textContent = (result.error === 'no-data' ? 'Chưa có dữ liệu.' : 'Lỗi tải dữ liệu MA breadth.');
+            }
+            return;
+        }
+
+        if (result.series.length === 0) {
+            if (MABreadthState.chart) { MABreadthState.chart.destroy(); MABreadthState.chart = null; }
+            if (emptyEl) {
+                emptyEl.style.display = 'block';
+                emptyEl.textContent = 'Không có dữ liệu trong khoảng ngày đã chọn.';
+            }
+            if (metaEl) metaEl.textContent = '';
+            return;
+        }
+
+        MABreadthState.data = result.series;
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        // Hiển thị meta
+        if (metaEl) {
+            const total = result.series[result.series.length - 1].total;
+            metaEl.textContent = `${result.industryName || 'Toàn Thị Trường'} · ${result.series.length} ngày · ${formatMADate(result.meta.fromDate)} → ${formatMADate(result.meta.toDate)} · ${total} CP`;
+        }
+
+        renderMABreadthChart();
+        MABreadthState.loaded = true;
+    } catch (err) {
+        console.error('MA breadth load error:', err);
+        const metaEl2 = document.getElementById('ma-breadth-meta');
+        if (metaEl2) metaEl2.textContent = 'Lỗi tải dữ liệu';
+    }
+}
+
+/** Vẽ Chart.js line cho MA breadth. */
+function renderMABreadthChart() {
+    const canvas = document.getElementById('ma-breadth-chart');
+    if (!canvas) return;
+    const data = MABreadthState.data;
+    if (!data || !data.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (MABreadthState.chart) MABreadthState.chart.destroy();
+
+    const labels = data.map(d => d.date);
+    const datasets = [];
+    ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
+        if (!MABreadthState.visibleMAs[k]) return;
+        datasets.push({
+            label: MA_LABELS[k],
+            data: data.map(d => d[k]),
+            borderColor: MA_COLORS[k],
+            backgroundColor: MA_COLORS[k] + '20',
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.25,
+            fill: false
+        });
+    });
+
+    MABreadthState.chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top', labels: { color: '#ccc', font: { size: 12 } } },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => formatMADate(items[0].label),
+                        label: (ctx) => {
+                            const total = data[ctx.dataIndex].total;
+                            const pct = total > 0 ? ((ctx.parsed.y / total) * 100).toFixed(1) : '0';
+                            return `${ctx.dataset.label}: ${ctx.parsed.y} CP (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        color: '#888',
+                        maxTicksLimit: 12,
+                        callback: function(val, idx) {
+                            const label = this.getLabelForValue(val);
+                            return idx % Math.ceil(labels.length / 12) === 0 ? formatMADate(label) : '';
+                        }
+                    },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#888', precision: 0 },
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    title: { display: true, text: 'Số lượng CP', color: '#aaa' }
+                }
+            }
+        }
+    });
+}
+
+/** Nút "Cập nhật hôm nay" — POST /refresh. */
+async function onMABreadthRefresh() {
+    const btn = document.getElementById('ma-breadth-refresh');
+    if (btn) btn.classList.add('is-loading');
+    try {
+        const res = await fetch(`${SERVER_BASE}/api/ma-breadth/refresh`, { method: 'POST' });
+        const result = await res.json();
+        if (result.ok) {
+            const msg = result.already ? `Đã có dữ liệu ngày ${formatMADate(result.date)}` : `Đã cập nhật ${formatMADate(result.date)}`;
+            if (typeof showToast === 'function') showToast(msg, 'success');
+            await loadMABreadth();
+        } else {
+            if (typeof showToast === 'function') showToast('Lỗi: ' + (result.error || 'không xác định'), 'error');
+        }
+    } catch (err) {
+        console.error('MA breadth refresh error:', err);
+        if (typeof showToast === 'function') showToast('Lỗi kết nối server', 'error');
+    } finally {
+        if (btn) btn.classList.remove('is-loading');
+    }
+}
+
+/** Nút "Tải dữ liệu lịch sử" — confirm + POST /build-history. */
+async function onMABreadthBuild() {
+    const meta = MABreadthState.meta;
+    const hasData = meta && meta.exists && meta.historyDays > 10;
+    if (hasData && !confirm(`Đã có ${meta.historyDays} ngày dữ liệu. Tải lại toàn bộ lịch sử (~1 phút)?`)) return;
+
+    const btn = document.getElementById('ma-breadth-build');
+    const metaEl = document.getElementById('ma-breadth-meta');
+    if (btn) btn.classList.add('is-loading');
+    if (metaEl) metaEl.textContent = 'Đang tải lịch sử giá... (có thể mất ~1 phút)';
+    try {
+        const res = await fetch(`${SERVER_BASE}/api/ma-breadth/build-history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ windowDays: 370 })
+        });
+        const result = await res.json();
+        if (result.ok) {
+            if (typeof showToast === 'function') showToast(`Hoàn tất: ${result.days} ngày, ${result.symbolsTracked} mã`, 'success');
+            await loadMABreadth();
+        } else {
+            if (typeof showToast === 'function') showToast('Lỗi: ' + (result.error || 'không xác định'), 'error');
+            if (metaEl) metaEl.textContent = 'Lỗi build lịch sử';
+        }
+    } catch (err) {
+        console.error('MA breadth build error:', err);
+        if (typeof showToast === 'function') showToast('Lỗi kết nối server', 'error');
+        if (metaEl) metaEl.textContent = 'Lỗi build lịch sử';
+    } finally {
+        if (btn) btn.classList.remove('is-loading');
+    }
+}
+
 // ==========================================
 // DASHBOARD CHARTS - BUBBLE & LINE CHARTS
 // ==========================================
@@ -3200,6 +3567,11 @@ function switchTab(tabId) {
     // Load news when switching to news tab
     if (tabId === 'news') {
         loadNews();
+    }
+
+    // Init MA breadth khi switch sang tab industry lần đầu (lazy-load)
+    if (tabId === 'industry') {
+        try { initMABreadth(); } catch (e) { console.error('MA breadth init error:', e); }
     }
 }
 

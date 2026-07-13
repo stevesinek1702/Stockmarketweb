@@ -4181,3 +4181,142 @@ button.scanning::after {
 .heatmap-name { font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .heatmap-pct { font-size: 16px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
 .heatmap-idx { font-size: 11px; color: var(--text-muted); }
+
+/* ===== MA Breadth (Độ Rộng Kỹ Thuật) ===== */
+.ma-breadth-section { margin-top: 16px; }
+.ma-breadth-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin: 12px 0;
+}
+.ma-checkbox-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.ma-checkbox-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+.ma-checkbox-group input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--accent-blue, #3b82f6);
+}
+.ma-date-range-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.ma-date-range-group label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.ma-date-range-group input[type="date"] {
+    background: var(--bg-card, #1a1a35);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    padding: 5px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color-scheme: dark; /* calendar picker icon dark */
+    cursor: pointer;
+}
+.ma-date-range-group input[type="date"]:focus {
+    outline: none;
+    border-color: var(--accent-blue, #3b82f6);
+}
+.ma-range-presets {
+    display: inline-flex;
+    gap: 4px;
+}
+.ma-preset-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border-radius: 5px;
+    color: var(--text-secondary, #aaa);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.ma-preset-btn:hover {
+    border-color: var(--accent-blue, #3b82f6);
+    color: var(--text-primary, #fff);
+    background: rgba(59,130,246,0.1);
+}
+.ma-breadth-meta {
+    font-size: 12px;
+    color: var(--text-muted, #888);
+    margin-left: auto;
+}
+.ma-breadth-chart-container {
+    position: relative;
+    height: 400px;
+    width: 100%;
+    margin-top: 8px;
+}
+.ma-breadth-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted, #888);
+    font-size: 14px;
+}
+.ma-breadth-empty .empty-action {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+.btn-secondary {
+    padding: 6px 12px;
+    font-size: 13px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border-radius: 6px;
+    color: var(--text-primary, #fff);
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.btn-secondary:hover:not(:disabled) {
+    background: rgba(255,255,255,0.1);
+    border-color: var(--accent-blue, #3b82f6);
+}
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+#ma-breadth-refresh.is-loading,
+#ma-breadth-build.is-loading {
+    position: relative;
+    color: transparent;
+}
+#ma-breadth-refresh.is-loading::after,
+#ma-breadth-build.is-loading::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    top: 50%;
+    left: 50%;
+    margin: -7px 0 0 -7px;
+    border: 2px solid var(--text-muted, #888);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: ma-spin 0.7s linear infinite;
+}
+@keyframes ma-spin { to { transform: rotate(360deg); } }

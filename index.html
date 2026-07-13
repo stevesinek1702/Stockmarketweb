@@ -712,6 +712,67 @@
                     </table>
                 </div>
             </div>
+
+            <!-- MA Breadth Section (Độ Rộng Kỹ Thuật) -->
+            <div class="card full-width ma-breadth-section">
+                <div class="card-header">
+                    <h3>📈 Độ Rộng Kỹ Thuật (Số CP trên MA)</h3>
+                    <span class="card-badge">FireAnt</span>
+                </div>
+                <div class="chart-controls">
+                    <div class="ma-breadth-controls">
+                        <select id="ma-breadth-scope" class="filter-select" title="Chọn phạm vi">
+                            <option value="market">Toàn Thị Trường</option>
+                            <option value="0500">Dầu khí</option>
+                            <option value="1300">Hóa chất</option>
+                            <option value="1700">Tài nguyên cơ bản</option>
+                            <option value="2300">Xây dựng và VLXD</option>
+                            <option value="2700">Sản phẩm & DV công nghiệp</option>
+                            <option value="3300">Ôtô và linh kiện</option>
+                            <option value="3500">Thực phẩm và đồ uống</option>
+                            <option value="3700">Hàng tiêu dùng</option>
+                            <option value="4500">Y tế</option>
+                            <option value="5300">Bán lẻ</option>
+                            <option value="5500">Truyền thông</option>
+                            <option value="5700">Du lịch và giải trí</option>
+                            <option value="6500">Viễn thông</option>
+                            <option value="7500">Các dịch vụ hạ tầng</option>
+                            <option value="8300">Ngân hàng</option>
+                            <option value="8500">Bảo hiểm</option>
+                            <option value="8600">Bất động sản</option>
+                            <option value="8700">Dịch vụ tài chính</option>
+                            <option value="8900">Quỹ</option>
+                            <option value="9500">Công nghệ</option>
+                        </select>
+                        <div class="ma-checkbox-group">
+                            <label><input type="checkbox" id="ma-cb-10" checked> MA10</label>
+                            <label><input type="checkbox" id="ma-cb-20" checked> MA20</label>
+                            <label><input type="checkbox" id="ma-cb-50" checked> MA50</label>
+                            <label><input type="checkbox" id="ma-cb-100"> MA100</label>
+                            <label><input type="checkbox" id="ma-cb-200"> MA200</label>
+                        </div>
+                        <div class="ma-date-range-group">
+                            <label>Từ <input type="date" id="ma-breadth-from"></label>
+                            <label>Đến <input type="date" id="ma-breadth-to"></label>
+                            <div class="ma-range-presets">
+                                <button type="button" class="ma-preset-btn" data-preset="1m">1T</button>
+                                <button type="button" class="ma-preset-btn" data-preset="3m">3T</button>
+                                <button type="button" class="ma-preset-btn" data-preset="6m">6T</button>
+                                <button type="button" class="ma-preset-btn" data-preset="1y">1N</button>
+                                <button type="button" class="ma-preset-btn" data-preset="1.5y">1.5N</button>
+                                <button type="button" class="ma-preset-btn" data-preset="all">Tất cả</button>
+                            </div>
+                        </div>
+                        <button id="ma-breadth-refresh" class="btn-secondary" title="Tính snapshot ngày mới nhất">↻ Cập nhật hôm nay</button>
+                        <button id="ma-breadth-build" class="btn-secondary" title="Tải lại toàn bộ lịch sử (lần đầu ~1 phút)">📅 Tải dữ liệu lịch sử</button>
+                    </div>
+                    <span class="ma-breadth-meta" id="ma-breadth-meta"></span>
+                </div>
+                <div class="ma-breadth-empty" id="ma-breadth-empty" style="display:none;"></div>
+                <div class="ma-breadth-chart-container">
+                    <canvas id="ma-breadth-chart"></canvas>
+                </div>
+            </div>
         </section>
 
         <!-- Breakout Tab -->
