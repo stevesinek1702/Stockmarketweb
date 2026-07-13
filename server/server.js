@@ -357,45 +357,104 @@ app.get('/api/market-dashboard', async (req, res) => {
 
 /**
  * GET /api/influential-stocks
- * Lấy danh sách mã tác động tích cực/tiêu cực tới thị trường từ Fialda API
+ * Mã tác động tích cực/tiêu cực tới VNINDEX.
+ *
+ * Nguồn cũ Fialda (fwtapi2.fialda.com) đã chết (timeout 07/2026). Chuyển sang tính
+ * từ FireAnt: tác động ≈ (vốn hóa) × (% thay đổi giá). Đây chính là "contribution"
+ * của từng mã vào biến động chỉ số (mã vốn hóa lớn + giá biến nhiều = tác động mạnh).
+ *
+ * Dùng TradingStatistic (SharesOutStanding, LastPriceClose, AvgPrice10d) +
+ * Quotes (PriceCurrent, PricePercentChange) — cùng nguồn đã dùng cho marketcap.
  */
 app.get('/api/influential-stocks', async (req, res) => {
-    // Cache 30 seconds
-    const cached = getCachedResponse('influential-stocks', 30000);
+    // Cache 60 seconds
+    const cached = getCachedResponse('influential-stocks', 60000);
     if (cached) {
         console.log('📊 Returning cached influential-stocks data');
         return res.json(cached);
     }
     try {
-        console.log('📊 Fetching influential stocks from Fialda...');
+        console.log('📊 Calculating influential stocks from FireAnt...');
 
-        const response = await axios.get('https://fwtapi2.fialda.com/api/services/app/Derivative/GetTopInfluentialStocks?indexCode=TOPINFLUENTIALSTOCK_VNINDEX', {
-            timeout: 10000
-        });
+        const cookie = await getFireAntCookie();
+        const authHeaders = {
+            ...API_CONFIG.fireant.headers,
+            'Cookie': cookie,
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8'
+        };
 
-        const result = response.data?.result;
-        if (!result) {
-            return res.status(500).json({ success: false, error: 'Invalid response from Fialda API' });
+        const tradingUrl = `${API_CONFIG.fireant.base}/Markets/TradingStatistic`;
+        const quotesUrl = `${API_CONFIG.fireant.base}/Markets/Quotes`;
+
+        const [tradingData, _] = await Promise.all([
+            fetchAPI(tradingUrl, authHeaders).catch(() => []),
+            Promise.resolve()
+        ]);
+
+        if (!Array.isArray(tradingData) || !tradingData.length) {
+            return res.status(500).json({ success: false, error: 'No trading data from FireAnt' });
         }
 
-        // API Fialda trả về: top10PositiveStocks và top10NegativeStocks
-        const positiveStocks = result.top10PositiveStocks || result.positiveStocks || [];
-        const negativeStocks = result.top10NegativeStocks || result.negativeStocks || [];
+        // Fetch quotes cho tất cả mã (batch) để có PricePercentChange real-time
+        const allSymbols = tradingData.filter(s => s.Symbol && s.Symbol.length === 3).map(s => s.Symbol);
+        const batches = require('./breadth-symbols');
+        const quoteMap = {};
+        for (let i = 0; i < batches.length; i += 5) {
+            const chunk = batches.slice(i, i + 5);
+            const proms = chunk.map(s => fetchAPI(`${quotesUrl}?symbols=${s}`, authHeaders).catch(() => []));
+            const responses = await Promise.all(proms);
+            responses.forEach(arr => {
+                if (Array.isArray(arr)) arr.forEach(q => { if (q && q.Symbol) quoteMap[q.Symbol] = q; });
+            });
+        }
 
-        console.log(`✅ Influential stocks: ${positiveStocks.length} positive, ${negativeStocks.length} negative`);
+        // Tính impact = marketCap × %change (đơn vị: tỷ VND × %). Đây là proxy cho contribution.
+        // Normalize về "điểm index" gần đúng: affectValue = marketCap × pctChange / totalMarketCap × 100
+        // Nhưng để đơn giản & trực quan, giữ raw impact (vốn hóa × %) — số lớn = tác động lớn.
+        const stocks = [];
+        let totalMarketCap = 0;
+        tradingData.forEach(stock => {
+            if (!stock.Symbol || stock.Symbol.length !== 3) return;
+            const quote = quoteMap[stock.Symbol] || {};
+            const priceCurrent = quote.PriceCurrent || stock.LastPriceClose || 0;
+            const shares = stock.SharesOutStanding || 0;
+            const marketCap = priceCurrent * shares;
+            if (marketCap <= 0) return;
+            totalMarketCap += marketCap;
+            const pctChange = quote.PricePercentChange ? quote.PricePercentChange * 100 : 0;
+            // Impact score = marketCap (nghìn tỷ) × %change → đơn vị "nghìn tỷ·%"
+            const impact = (marketCap / 1e12) * pctChange;
+            stocks.push({
+                symbol: stock.Symbol,
+                marketCap: Math.round(marketCap / 1e12 * 10) / 10,  // nghìn tỷ
+                percentChange: Math.round(pctChange * 100) / 100,
+                impact: Math.round(impact * 100) / 100
+            });
+        });
+
+        // Sort theo impact giảm dần → top positive (đầu) + top negative (cuối)
+        stocks.sort((a, b) => b.impact - a.impact);
+        const positive = stocks.filter(s => s.impact > 0).slice(0, 10);
+        const negative = stocks.filter(s => s.impact < 0).slice(-10).reverse();
+
+        console.log(`✅ Influential stocks: ${positive.length} positive, ${negative.length} negative (from ${stocks.length} stocks)`);
 
         const responseData = {
             success: true,
+            source: 'fireant',
             data: {
-                positive: positiveStocks.slice(0, 10).map(s => ({
+                positive: positive.map(s => ({
                     symbol: s.symbol,
-                    value: parseFloat((s.affectValue || 0).toFixed(2)),
-                    percent: parseFloat(((s.affectPercent || 0) * 100).toFixed(2))
+                    value: s.impact,
+                    percent: s.percentChange,
+                    marketCap: s.marketCap
                 })),
-                negative: negativeStocks.slice(0, 10).map(s => ({
+                negative: negative.map(s => ({
                     symbol: s.symbol,
-                    value: parseFloat((s.affectValue || 0).toFixed(2)),
-                    percent: parseFloat(((s.affectPercent || 0) * 100).toFixed(2))
+                    value: s.impact,
+                    percent: s.percentChange,
+                    marketCap: s.marketCap
                 }))
             },
             timestamp: new Date().toISOString()
