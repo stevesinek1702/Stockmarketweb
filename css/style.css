@@ -4403,3 +4403,11 @@ button.scanning::after {
     padding: 6px 0;
 }
 .topflow-details summary:hover { color: var(--text-primary); }
+
+/* Nút "Xem đầy đủ tất cả mã" trong modal top flow */
+.topflow-toggle-btn {
+    display: block;
+    margin: 14px auto 0;
+    padding: 8px 18px;
+    font-size: 13px;
+}

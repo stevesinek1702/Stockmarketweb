@@ -1537,32 +1537,41 @@ function closeIndustryTopFlowModal() {
 
 /**
  * Render nội dung modal: 2 cột Top Mua Ròng / Top Bán Ròng.
- * Hiển thị gọn: mỗi mã 1 cột "Dòng tiền lớn" = tổng N phiên (1 ngày / 1 tuần / 1 tháng).
+ * Bảng đầy đủ: Mã | Giá | % | NN | TC | TD | Dòng tiền lớn (TC+TD+NN).
+ * "Dòng tiền lớn" = tổng N phiên (Hôm nay / 1 tuần / 1 tháng).
  */
 function renderIndustryTopFlowModal(result) {
     const bodyEl = document.getElementById('industry-topflow-body');
     const f = (v) => (v >= 0 ? '+' : '') + (v || 0).toFixed(1);
     const dates = result.dates || (result.date ? [result.date] : []);
-    const multiDay = dates.length > 1;
     const shortDate = (iso) => { if (!iso) return '-'; const [y,m,d] = iso.split('-'); return `${d}/${m}`; };
-
-    // Header gọn: Mã | Dòng tiền lớn (tổng N phiên) | Giá | %
     const rangeWord = result.days === 1 ? 'Hôm nay' : (result.days === 5 ? '1 tuần' : (result.days === 20 ? '1 tháng' : `${result.days} phiên`));
+
+    // Bảng đầy đủ 7 cột: Mã | Giá | % | NN | TC | TD | Dòng tiền lớn
     const tableHead = `<tr>
-        <th>Mã</th><th>Dòng tiền lớn (${rangeWord})</th><th>Giá</th><th>%</th>
+        <th>Mã</th><th>Giá</th><th>%</th><th>NN</th><th>TC</th><th>TD</th><th>Dòng tiền lớn</th>
     </tr>`;
 
+    // Lấy giá trị hiển thị cho từng cột tiền: dùng cum (tổng N phiên) khi multi-day, latest khi 1D
     const fmtRow = (s) => {
+        const multi = result.days > 1;
+        const nn = multi ? (s.nuocNgoaiCum != null ? s.nuocNgoaiCum : s.nuocNgoai) : s.nuocNgoai;
+        const tc = multi ? (s.toChucCum != null ? s.toChucCum : s.toChuc) : s.toChuc;
+        const td = multi ? (s.tuDoanhCum != null ? s.tuDoanhCum : s.tuDoanh) : s.tuDoanh;
+        const net = multi ? s.netSmartCum : s.netSmart;
         return `
         <tr>
             <td><b>${s.ticker}</b></td>
-            <td class="num ${(s.netSmartCum||0) >= 0 ? 'pos' : 'neg'}"><b>${f(s.netSmartCum)}</b></td>
             <td class="num">${(s.close||0).toLocaleString('vi-VN')}</td>
             <td class="num ${(s.percentChange||0) >= 0 ? 'pos' : 'neg'}">${f(s.percentChange)}%</td>
+            <td class="num ${(nn||0) >= 0 ? 'pos' : 'neg'}">${f(nn)}</td>
+            <td class="num ${(tc||0) >= 0 ? 'pos' : 'neg'}">${f(tc)}</td>
+            <td class="num ${(td||0) >= 0 ? 'pos' : 'neg'}">${f(td)}</td>
+            <td class="num ${(net||0) >= 0 ? 'pos' : 'neg'}"><b>${f(net)}</b></td>
         </tr>`;
     };
 
-    const rangeLabel = multiDay ? `${rangeWord} (${shortDate(dates[0])} → ${shortDate(dates[dates.length-1])})` : `${rangeWord} ${result.date || '-'}`;
+    const rangeLabel = dates.length > 1 ? `${rangeWord} (${shortDate(dates[0])} → ${shortDate(dates[dates.length-1])})` : `${rangeWord} ${result.date || '-'}`;
 
     bodyEl.innerHTML = `
         <div class="topflow-date">${rangeLabel} · ${result.stocksWithData}/${result.totalStocks} mã có dữ liệu</div>
@@ -1577,7 +1586,27 @@ function renderIndustryTopFlowModal(result) {
                 <table class="data-table topflow-table"><thead>${tableHead}</thead>
                 <tbody>${result.topSell.map(fmtRow).join('') || '<tr><td colspan="99">Không có mã bán ròng</td></tr>'}</tbody></table>
             </div>
+        </div>
+        <button type="button" class="btn-secondary topflow-toggle-btn" id="topflow-toggle-btn">
+            📋 Xem đầy đủ tất cả ${result.allStocks.length} mã
+        </button>
+        <div id="topflow-full-wrap" style="display:none; margin-top:10px;">
+            <table class="data-table topflow-table"><thead>${tableHead}</thead>
+            <tbody>${result.allStocks.map(fmtRow).join('')}</tbody></table>
         </div>`;
+
+    // Toggle nút "Xem đầy đủ"
+    const toggleBtn = document.getElementById('topflow-toggle-btn');
+    const fullWrap = document.getElementById('topflow-full-wrap');
+    if (toggleBtn && fullWrap) {
+        toggleBtn.addEventListener('click', () => {
+            const hidden = fullWrap.style.display === 'none';
+            fullWrap.style.display = hidden ? 'block' : 'none';
+            toggleBtn.textContent = hidden
+                ? `▲ Ẩn bớt danh sách`
+                : `📋 Xem đầy đủ tất cả ${result.allStocks.length} mã`;
+        });
+    }
 }
 
 // Click ra ngoài modal hoặc ESC → đóng

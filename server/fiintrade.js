@@ -269,8 +269,9 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress, days 
                 // Lấy N ngày gần nhất (cũ → mới)
                 const recent = pts.slice(-Math.max(1, days));
                 const latest = recent[recent.length - 1];
-                // Tổng cộng dồn netSmart N ngày để sort top
-                const netSmartCum = round1(recent.reduce((s, p) => s + p.toChuc + p.tuDoanh + p.nuocNgoai, 0));
+                // Tổng cộng dồn netSmart + từng nhóm N ngày (để modal hiển thị tổng tuần/tháng)
+                const sum = (key) => round1(recent.reduce((s, p) => s + (p[key] || 0), 0));
+                const netSmartCum = round1(sum('toChuc') + sum('tuDoanh') + sum('nuocNgoai'));
                 // Map per-day: mỗi ngày  object gọn
                 const perDay = recent.map(p => ({
                     date: p.date,
@@ -289,7 +290,11 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress, days 
                     tuDoanh: latest.tuDoanh,
                     nuocNgoai: latest.nuocNgoai,
                     netSmart: round1(latest.toChuc + latest.tuDoanh + latest.nuocNgoai),
+                    // Cum (tổng N phiên) cho cả 4 nhóm — modal multi-day hiển thị cum
                     netSmartCum,
+                    nuocNgoaiCum: sum('nuocNgoai'),
+                    toChucCum: sum('toChuc'),
+                    tuDoanhCum: sum('tuDoanh'),
                     days: perDay
                 });
             }
