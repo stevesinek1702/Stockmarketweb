@@ -1551,11 +1551,16 @@ function initMABreadth() {
         loadMABreadth();
     });
 
-    const onDateChange = () => {
+    // Xử lý đổi ngày: cập nhật khi gõ (input, debounce 500ms) VÀ khi commit (change).
+    // Chỉ trigger fetch khi cả from/to là ngày hợp lệ YYYY-MM-DD (hoặc rỗng).
+    const isValidDate = (s) => !s || /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const onDateInput = () => {
         clearTimeout(MABreadthState.dateDebounce);
         MABreadthState.dateDebounce = setTimeout(() => {
             let from = fromEl ? fromEl.value : '';
             let to = toEl ? toEl.value : '';
+            // Chưa hợp lệ → chờ user gõ tiếp, không fetch
+            if (!isValidDate(from) || !isValidDate(to)) return;
             // Validate from <= to, tự hoán đổi + toast nhẹ
             if (from && to && from > to) {
                 if (fromEl) fromEl.value = to;
@@ -1567,10 +1572,13 @@ function initMABreadth() {
             MABreadthState.toDate = to || null;
             saveMABreadthPrefs();
             loadMABreadth();
-        }, 300);
+        }, 500);
     };
-    if (fromEl) fromEl.addEventListener('change', onDateChange);
-    if (toEl) toEl.addEventListener('change', onDateChange);
+    if (fromEl) fromEl.addEventListener('input', onDateInput);
+    if (toEl) toEl.addEventListener('input', onDateInput);
+    // change vẫn dùng cùng handler (khi chọn từ picker / blur) — input đã bao phủ
+    if (fromEl) fromEl.addEventListener('change', onDateInput);
+    if (toEl) toEl.addEventListener('change', onDateInput);
 
     // Preset buttons
     document.querySelectorAll('.ma-preset-btn').forEach(btn => {
