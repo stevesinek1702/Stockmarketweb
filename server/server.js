@@ -2023,12 +2023,12 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
             if (q.Symbol) quoteMap[q.Symbol] = q;
         });
 
-        // Market cap thresholds
+        // Market cap thresholds (sort TĂNG dần theo min để nextGroup đúng)
         const thresholds = [
-            { name: 'Super Large', min: 100e12 },
-            { name: 'Large', min: 20e12 },
+            { name: 'Small', min: 0 },
             { name: 'Mid', min: 1e12 },
-            { name: 'Small', min: 0 }
+            { name: 'Large', min: 20e12 },
+            { name: 'Super Large', min: 100e12 }
         ];
 
         const targetGroup = thresholds.find(t => t.name === groupName);
@@ -2036,6 +2036,7 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid group name' });
         }
 
+        // nextGroup = nhóm vốn hóa lớn hơn tiếp theo → maxCap = min của nhóm lớn hơn
         const nextGroup = thresholds[thresholds.indexOf(targetGroup) + 1];
         const maxCap = nextGroup ? nextGroup.min : Infinity;
 
@@ -2046,6 +2047,7 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
             if (!stock.Symbol || stock.Symbol.length !== 3) return;
 
             const quote = quoteMap[stock.Symbol] || {};
+            // Ưu tiên PriceCurrent từ quote (real-time); fallback LastPriceClose từ TradingStatistic
             const priceCurrent = quote.PriceCurrent || stock.LastPriceClose || 0;
             const sharesOutstanding = stock.SharesOutStanding || 0;
             const marketCap = priceCurrent * sharesOutstanding;
