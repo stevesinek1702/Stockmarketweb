@@ -520,8 +520,9 @@ async function buildHistory({ fetchFn, getCookie, onProgress } = {}, windowDays 
         // Fetch giá VNINDEX 1 lần để gắn vào mỗi snapshot (overlay dual-axis)
         const vnindexMap = await fetchVNIndexHistory(fetchDays);
 
-        const history = _loadHistory();
-        if (!history.history) history.history = {};
+        // FULL REBUILD: xóa sạch history cũ để không trộn mock/data cũ vào data mới.
+        // (Trước đây dùng merge → ngày compute fail giữ giá trị cũ → nhiễu VNINDEX.)
+        const history = { meta: { version: 1 }, history: {} };
         for (const date of dateList) {
             const snap = computeBreadthForDate(closeData.symbols, symMeta, date);
             if (snap) {
