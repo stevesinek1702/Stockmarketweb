@@ -55,14 +55,17 @@ describe('countAboveMAForDate', () => {
         const result = countAboveMAForDate(stocks);
         // Market: ACB trên 5/5, BID trên 4/5 (ma10=35>close=30 sai), BVH trên 5/5
         expect(result.market).toEqual({
-            ma10: 2, ma20: 3, ma50: 3, ma100: 3, ma200: 3, total: 3
+            ma10: 2, ma20: 3, ma50: 3, ma100: 3, ma200: 3, total: 3,
+            cov10: 3, cov20: 3, cov50: 3, cov100: 3, cov200: 3
         });
         // Ngành 8300: ACB trên 5/5, BID trên 4/5 (trừ ma10)
         expect(result.industries['8300']).toEqual({
-            name: 'Ngân hàng', ma10: 1, ma20: 2, ma50: 2, ma100: 2, ma200: 2, total: 2
+            name: 'Ngân hàng', ma10: 1, ma20: 2, ma50: 2, ma100: 2, ma200: 2, total: 2,
+            cov10: 2, cov20: 2, cov50: 2, cov100: 2, cov200: 2
         });
         expect(result.industries['8500']).toEqual({
-            name: 'Bảo hiểm', ma10: 1, ma20: 1, ma50: 1, ma100: 1, ma200: 1, total: 1
+            name: 'Bảo hiểm', ma10: 1, ma20: 1, ma50: 1, ma100: 1, ma200: 1, total: 1,
+            cov10: 1, cov20: 1, cov50: 1, cov100: 1, cov200: 1
         });
     });
 
@@ -73,7 +76,9 @@ describe('countAboveMAForDate', () => {
         ];
         const result = countAboveMAForDate(stocks);
         expect(result.market.ma200).toBe(0); // null → không đếm, không lỗi
+        expect(result.market.cov200).toBe(0); // null → coverage cũng 0 (chưa đủ data)
         expect(result.market.ma10).toBe(1);
+        expect(result.market.cov10).toBe(1);
         expect(result.market.total).toBe(1);
     });
 
@@ -99,15 +104,19 @@ describe('aggregateByIndustry', () => {
     it('gom snapshot từng ngành thành chuỗi theo thời gian', () => {
         const history = {
             '2026-01-02': {
-                market: { ma10: 700, ma20: 650, ma50: 600, ma100: 500, ma200: 400, total: 1000 },
+                market: { ma10: 700, ma20: 650, ma50: 600, ma100: 500, ma200: 400, total: 1000,
+                          cov10: 1000, cov20: 1000, cov50: 1000, cov100: 1000, cov200: 1000 },
                 industries: {
-                    '8300': { name: 'Ngân hàng', ma10: 18, ma20: 16, ma50: 14, ma100: 9, ma200: 5, total: 28 }
+                    '8300': { name: 'Ngân hàng', ma10: 18, ma20: 16, ma50: 14, ma100: 9, ma200: 5, total: 28,
+                              cov10: 28, cov20: 28, cov50: 28, cov100: 28, cov200: 28 }
                 }
             },
             '2026-01-03': {
-                market: { ma10: 710, ma20: 660, ma50: 610, ma100: 510, ma200: 410, total: 1000 },
+                market: { ma10: 710, ma20: 660, ma50: 610, ma100: 510, ma200: 410, total: 1000,
+                          cov10: 1000, cov20: 1000, cov50: 1000, cov100: 1000, cov200: 1000 },
                 industries: {
-                    '8300': { name: 'Ngân hàng', ma10: 19, ma20: 17, ma50: 15, ma100: 10, ma200: 6, total: 28 }
+                    '8300': { name: 'Ngân hàng', ma10: 19, ma20: 17, ma50: 15, ma100: 10, ma200: 6, total: 28,
+                              cov10: 28, cov20: 28, cov50: 28, cov100: 28, cov200: 28 }
                 }
             }
         };
@@ -120,6 +129,18 @@ describe('aggregateByIndustry', () => {
         const bankSeries = aggregateByIndustry(history, '8300');
         expect(bankSeries).toHaveLength(2);
         expect(bankSeries[1]).toEqual({ date: '2026-01-03', ma10: 19, ma20: 17, ma50: 15, ma100: 10, ma200: 6, total: 28 });
+    });
+
+    it('cov=0 (chưa đủ data MA) → trả null thay vì 0 (tránh chart dính trục)', () => {
+        const history = {
+            '2026-01-02': {
+                market: { ma10: 700, ma20: 650, ma50: 600, ma100: 500, ma200: 0, total: 1000,
+                          cov10: 1000, cov20: 1000, cov50: 1000, cov100: 1000, cov200: 0 }  // cov200=0
+            }
+        };
+        const series = aggregateByIndustry(history, 'market');
+        expect(series[0].ma10).toBe(700);   // cov10>0 → giữ giá trị
+        expect(series[0].ma200).toBeNull(); // cov200=0 → null (chưa đủ data)
     });
 });
 

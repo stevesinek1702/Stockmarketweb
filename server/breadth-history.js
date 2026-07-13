@@ -100,9 +100,12 @@ function computeMAWithPrefix(closes, n) {
  *                        ma_n có thể null (chưa đủ dữ liệu) → bỏ qua
  * @param {Object} icb2Map tùy chọn: map code→name (mặc định ICB2_MAP)
  * @returns {{market:Object, industries:Object}}
+ *         market có thêm coverage_ma{n} = số mã đủ data cho MA đó (để phân biệt
+ *         "0 mã trên MA" hợp lệ vs "chưa đủ data MA" → null).
  */
 function countAboveMAForDate(stocks, icb2Map = ICB2_MAP) {
-    const market = { ma10: 0, ma20: 0, ma50: 0, ma100: 0, ma200: 0, total: 0 };
+    const market = { ma10: 0, ma20: 0, ma50: 0, ma100: 0, ma200: 0, total: 0,
+                     cov10: 0, cov20: 0, cov50: 0, cov100: 0, cov200: 0 };
     const industries = {};
 
     for (const s of stocks) {
@@ -112,18 +115,25 @@ function countAboveMAForDate(stocks, icb2Map = ICB2_MAP) {
         market.total++;
         for (const n of MA_PERIODS) {
             const ma = s['ma' + n];
-            if (ma != null && ma > 0 && close > ma) market['ma' + n]++;
+            if (ma != null && ma > 0) {
+                market['cov' + n]++;           // coverage: mã đủ data MA
+                if (close > ma) market['ma' + n]++;
+            }
         }
 
         const code = s.icb2;
         if (!code || !icb2Map[code]) continue; // skip mã không có ngành hợp lệ (phần ngành)
         if (!industries[code]) {
-            industries[code] = { name: icb2Map[code], ma10: 0, ma20: 0, ma50: 0, ma100: 0, ma200: 0, total: 0 };
+            industries[code] = { name: icb2Map[code], ma10: 0, ma20: 0, ma50: 0, ma100: 0, ma200: 0, total: 0,
+                                 cov10: 0, cov20: 0, cov50: 0, cov100: 0, cov200: 0 };
         }
         industries[code].total++;
         for (const n of MA_PERIODS) {
             const ma = s['ma' + n];
-            if (ma != null && ma > 0 && close > ma) industries[code]['ma' + n]++;
+            if (ma != null && ma > 0) {
+                industries[code]['cov' + n]++;
+                if (close > ma) industries[code]['ma' + n]++;
+            }
         }
     }
     return { market, industries };
@@ -134,6 +144,7 @@ function countAboveMAForDate(stocks, icb2Map = ICB2_MAP) {
  * @param {Object} history object {date: {market, industries, vnindex?}} (sorted keys)
  * @param {string} scope 'market' hoặc ICB2 code
  * @returns {Array} [{date, ma10, ma20, ma50, ma100, ma200, total, vnindex?}]
+ *         Nếu cov{n}=0 (chưa đủ data MA) → ma{n}=null (frontend vẽ gap thay vì 0).
  */
 function aggregateByIndustry(history, scope) {
     const dates = Object.keys(history).sort();
@@ -144,10 +155,12 @@ function aggregateByIndustry(history, scope) {
             ? snap.market
             : (snap.industries && snap.industries[scope]);
         if (!rec) continue;
+        // Convert: cov=0 → null (chưa đủ data), tránh hiển thị 0 giả trên chart
+        const maVal = (n) => (rec['cov' + n] > 0) ? rec['ma' + n] : null;
         const point = {
             date,
-            ma10: rec.ma10, ma20: rec.ma20, ma50: rec.ma50,
-            ma100: rec.ma100, ma200: rec.ma200, total: rec.total
+            ma10: maVal(10), ma20: maVal(20), ma50: maVal(50),
+            ma100: maVal(100), ma200: maVal(200), total: rec.total
         };
         // Thêm VNINDEX close nếu snapshot có (cho overlay dual-axis)
         if (snap.vnindex != null) point.vnindex = snap.vnindex;
