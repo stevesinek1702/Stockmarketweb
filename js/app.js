@@ -1537,39 +1537,32 @@ function closeIndustryTopFlowModal() {
 
 /**
  * Render nội dung modal: 2 cột Top Mua Ròng / Top Bán Ròng.
- * Nếu N>1 phiên: mỗi mã có N cột (netSmart mỗi phiên) + cột tổng.
+ * Hiển thị gọn: mỗi mã 1 cột "Dòng tiền lớn" = tổng N phiên (1 ngày / 1 tuần / 1 tháng).
  */
 function renderIndustryTopFlowModal(result) {
     const bodyEl = document.getElementById('industry-topflow-body');
     const f = (v) => (v >= 0 ? '+' : '') + (v || 0).toFixed(1);
     const dates = result.dates || (result.date ? [result.date] : []);
     const multiDay = dates.length > 1;
-    // Rút gọn ngày DD/MM cho header cột phiên
     const shortDate = (iso) => { if (!iso) return '-'; const [y,m,d] = iso.split('-'); return `${d}/${m}`; };
 
-    // Header: Mã | [các cột ngày nếu multiDay] | Tổng(Cum) | Giá | %
-    const dayCols = multiDay ? dates.map(d => `<th>${shortDate(d)}</th>`).join('') : '';
+    // Header gọn: Mã | Dòng tiền lớn (tổng N phiên) | Giá | %
+    const rangeWord = result.days === 1 ? 'Hôm nay' : (result.days === 5 ? '1 tuần' : (result.days === 20 ? '1 tháng' : `${result.days} phiên`));
     const tableHead = `<tr>
-        <th>Mã</th>${dayCols}<th>Tổng</th><th>Giá</th><th>%</th>
+        <th>Mã</th><th>Dòng tiền lớn (${rangeWord})</th><th>Giá</th><th>%</th>
     </tr>`;
 
     const fmtRow = (s) => {
-        // Các cột per-day netSmart
-        const dayCells = multiDay ? (s.days || []).map(p => {
-            const cls = (p.netSmart || 0) >= 0 ? 'pos' : 'neg';
-            return `<td class="num ${cls}">${f(p.netSmart)}</td>`;
-        }).join('') : '';
         return `
         <tr>
             <td><b>${s.ticker}</b></td>
-            ${dayCells}
             <td class="num ${(s.netSmartCum||0) >= 0 ? 'pos' : 'neg'}"><b>${f(s.netSmartCum)}</b></td>
             <td class="num">${(s.close||0).toLocaleString('vi-VN')}</td>
             <td class="num ${(s.percentChange||0) >= 0 ? 'pos' : 'neg'}">${f(s.percentChange)}%</td>
         </tr>`;
     };
 
-    const rangeLabel = multiDay ? `${dates.length} phiên (${shortDate(dates[0])} → ${shortDate(dates[dates.length-1])})` : `Phiên ${result.date || '-'}`;
+    const rangeLabel = multiDay ? `${rangeWord} (${shortDate(dates[0])} → ${shortDate(dates[dates.length-1])})` : `${rangeWord} ${result.date || '-'}`;
 
     bodyEl.innerHTML = `
         <div class="topflow-date">${rangeLabel} · ${result.stocksWithData}/${result.totalStocks} mã có dữ liệu</div>
