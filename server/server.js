@@ -1053,33 +1053,53 @@ app.get('/api/foreign-flow', async (req, res) => {
     const cached = getCachedResponse('foreign-flow', 60000);
     if (cached) return res.json(cached);
     try {
-        console.log('🌍 Fetching foreign flow (Khối ngoại) from Fiintrade...');
+        console.log('🌍 Fetching foreign flow (Khối ngoại)...');
 
-        // Gọi song song; dùng allSettled để một nguồn lỗi không kéo sập cả endpoint.
+        // Gọi song song:
+        //  - FireAnt HOSTC: today buy/sell/net HOSE (KHỚP với số các trang CK hiển thị).
+        //    Fiintrade (VNINDEX) lệch đáng kể (tính cả 3 sàn / cache chậm) → chỉ dùng cho trend 5/20.
+        //  - Fiintrade: trend 5/20 phiên (FireAnt không có multi-day net).
+        const cookie = await getFireAntCookie();
+        const authHeaders = {
+            ...API_CONFIG.fireant.headers,
+            'Cookie': cookie,
+            'Accept-Encoding': 'gzip, deflate'
+        };
         const settled = await Promise.allSettled([
-            fiintrade.getForeignStatistic('VNINDEX'), // 0: today buy/sell/net
-            fiintrade.getMarketInvestorFlow(1),        // 1: 1 phiên net (fallback cho today)
-            fiintrade.getMarketInvestorFlow(5),        // 2: 5 phiên net
-            fiintrade.getMarketInvestorFlow(20)        // 3: 20 phiên net
+            fetchAPI(`${API_CONFIG.fireant.base}/Markets/IntradayMarketStatistic?symbol=HOSTC`, authHeaders), // 0: FireAnt today
+            fiintrade.getMarketInvestorFlow(5),  // 1: 5 phiên net
+            fiintrade.getMarketInvestorFlow(20)  // 2: 20 phiên net
         ]);
-        const val = (i) => (settled[i].status === 'fulfilled' ? settled[i].value : null);
-        const stat = val(0), d1 = val(1), d5 = val(2), d20 = val(3);
 
-        // Mua/Bán/Ròng hôm nay: ưu tiên GetStatisticInvestor (tách được buy/sell),
-        // nếu lỗi thì lấy net-only từ getMarketInvestorFlow(1).nuocNgoai.
+        // 1. Today từ FireAnt HOSTC (chính xác, khớp số thị trường)
+        const fa = settled[0].status === 'fulfilled' ? settled[0].value : null;
+        const latest = Array.isArray(fa) ? fa[fa.length - 1] : fa;
         let today;
-        if (stat && stat.today && typeof stat.today.net === 'number') {
-            today = { buy: stat.today.buy, sell: stat.today.sell, net: stat.today.net };
-        } else if (d1 && typeof d1.nuocNgoai === 'number') {
-            today = { buy: null, sell: null, net: d1.nuocNgoai };
-        } else {
-            throw new Error('No Fiintrade foreign data available');
+        if (latest && (latest.BuyForeignValue != null || latest.SellForeignValue != null)) {
+            const buy = Math.round(((latest.BuyForeignValue || 0) / 1e9) * 10) / 10;
+            const sell = Math.round(((latest.SellForeignValue || 0) / 1e9) * 10) / 10;
+            const net = Math.round((buy - sell) * 10) / 10;
+            today = { buy, sell, net };
         }
 
+        // Fallback today: Fiintrade nếu FireAnt lỗi
+        if (!today) {
+            const stat = settled.length > 3 && settled[3].status === 'fulfilled' ? settled[3].value : null;
+            if (stat && stat.today && typeof stat.today.net === 'number') {
+                today = { buy: stat.today.buy, sell: stat.today.sell, net: stat.today.net };
+            } else {
+                throw new Error('No foreign data (FireAnt + Fiintrade đều lỗi)');
+            }
+        }
+
+        // 2. Trend 5/20 phiên từ Fiintrade (FireAnt không có)
+        const val = (i) => (settled[i].status === 'fulfilled' ? settled[i].value : null);
+        const d5 = val(1), d20 = val(2);
         const num = (o, k) => (o && typeof o[k] === 'number') ? o[k] : null;
+
         const responseData = {
             success: true,
-            source: 'fiintrade',
+            source: 'fireant',  // today từ FireAnt (primary), trend từ Fiintrade
             today,
             trend: [
                 { label: '1 phiên', net: today.net },
@@ -1091,32 +1111,8 @@ app.get('/api/foreign-flow', async (req, res) => {
         setCachedResponse('foreign-flow', responseData);
         res.json(responseData);
     } catch (error) {
-        console.error('Foreign flow error (Fiintrade):', error.message);
-        // Fallback cuối: FireAnt HOSTC (chỉ HOSE, phiên hiện tại) — vẫn có buy/sell/net.
-        try {
-            const url = `${API_CONFIG.fireant.base}/Markets/IntradayMarketStatistic?symbol=HOSTC`;
-            const data = await fetchAPI(url, API_CONFIG.fireant.headers);
-            const latest = Array.isArray(data) ? data[data.length - 1] : data;
-            const buy = Math.round(((latest?.BuyForeignValue || 0) / 1e9) * 10) / 10;
-            const sell = Math.round(((latest?.SellForeignValue || 0) / 1e9) * 10) / 10;
-            const net = Math.round((buy - sell) * 10) / 10;
-            const responseData = {
-                success: true,
-                source: 'fireant',
-                today: { buy, sell, net },
-                trend: [
-                    { label: '1 phiên', net },
-                    { label: '5 phiên', net: null },
-                    { label: '20 phiên', net: null }
-                ],
-                timestamp: new Date().toISOString()
-            };
-            setCachedResponse('foreign-flow', responseData);
-            return res.json(responseData);
-        } catch (e2) {
-            console.error('Foreign flow FireAnt fallback failed:', e2.message);
-            return res.status(500).json({ success: false, error: error.message, timestamp: new Date().toISOString() });
-        }
+        console.error('Foreign flow error:', error.message);
+        return res.status(500).json({ success: false, error: error.message, timestamp: new Date().toISOString() });
     }
 });
 
