@@ -28,6 +28,19 @@
     <div id="errorBox" class="auth-error"></div>
     <div id="successBox" class="auth-success"></div>
 
+    <!-- API call counter hôm nay -->
+    <div class="stat-box" style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:16px;margin-bottom:20px;display:flex;gap:40px;flex-wrap:wrap;align-items:center;">
+        <div style="flex:1;min-width:200px;">
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">📊 API calls hôm nay <span id="apiStatsDate"></span></div>
+            <div style="display:flex;gap:32px;flex-wrap:wrap;">
+                <div><div style="font-size:1.3rem;font-weight:600;color:var(--accent-blue);" id="apiFireant">—</div><div style="font-size:0.7rem;color:var(--text-muted);">FireAnt (realtime)</div></div>
+                <div><div style="font-size:1.3rem;font-weight:600;color:var(--accent-purple);" id="apiFiintrade">—</div><div style="font-size:0.7rem;color:var(--text-muted);">Fiintrade (EOD)</div></div>
+            </div>
+            <div style="font-size:0.68rem;color:var(--text-muted);margin-top:6px;">EOD endpoints (dòng tiền ngành...) cache 24h → gọi 1 lần/ngày, không gọi lại dù 600 user xem.</div>
+        </div>
+        <button class="btn-sm" onclick="loadApiStats()" style="padding:9px 14px;">🔄</button>
+    </div>
+
     <!-- ── Tạo user nhanh (admin cấp account cho KH nội bộ) ── -->
     <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:16px;margin-bottom:20px;">
         <h3 style="margin:0 0 12px 0;font-family:var(--font-display);color:var(--text-primary);font-size:1rem;">➕ Tạo tài khoản mới (kích hoạt ngay)</h3>
@@ -80,6 +93,21 @@
                 return;
             }
             await loadUsers();
+            loadApiStats();
+            // Auto-refresh counter mỗi 60s
+            setInterval(loadApiStats, 60000);
+        }
+
+        async function loadApiStats() {
+            try {
+                const res = await fetch('/api/admin/stats', { credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) return;
+                const c = json.calls;
+                document.getElementById('apiFireant').textContent = c.fireant.toLocaleString('vi-VN');
+                document.getElementById('apiFiintrade').textContent = c.fiintrade.toLocaleString('vi-VN');
+                document.getElementById('apiStatsDate').textContent = `(${c.date})`;
+            } catch (e) { /* ignore */ }
         }
 
         async function loadUsers() {

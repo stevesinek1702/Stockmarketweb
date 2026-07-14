@@ -18,6 +18,20 @@ function validPassword(p) {
 // ADMIN ENDPOINTS — tất cả require admin role
 // ==========================================
 
+/**
+ * GET /api/admin/stats — API call counter hôm nay.
+ */
+router.get('/stats', async (req, res) => {
+    try {
+        const { apiCounter } = require('../cache');
+        const calls = await apiCounter.today();
+        res.json({ success: true, calls });
+    } catch (err) {
+        console.error('admin stats error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
 // Áp dụng requireAdmin cho toàn bộ router
 router.use(requireAdmin);
 

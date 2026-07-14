@@ -28,6 +28,8 @@ const round1 = (x) => Math.round((x || 0) * 10) / 10;
 const cleanSectorName = (name) => String(name || '').replace(/\s*L\d+\s*$/i, '').trim();
 
 async function fiinGet(url) {
+    // Đếm API call tới Fiintrade
+    try { require('./cache').apiCounter.bump('fiintrade').catch(() => {}); } catch (e) {}
     const res = await axios.get(url, { headers: FII_HEADERS, timeout: 15000 });
     return res.data;
 }

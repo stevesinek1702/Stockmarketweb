@@ -107,4 +107,75 @@ async function invalidate(key) {
     try { await query('DELETE FROM api_cache WHERE cache_key = $1', [key]); } catch (e) { /* ignore */ }
 }
 
-module.exports = { getCached, setCached, getStale, invalidate };
+// ==========================================
+// EOD SMART-CACHE — data theo ngày (dòng tiền ngành, v.v.)
+// ==========================================
+// Khác với TTL cố định: EOD data chỉ đổi 1 lần/ngày (buổi tối).
+// Cache đến hết ngày giao dịch hiện tại. Khi data "hôm nay" đã có,
+// mọi request trong ngày đều trả cache → 0 call Fiintrade.
+
+/**
+ * EOD cache key đánh thêm ngày hiện tại để tự expire sang ngày mới.
+ * Vd 'industry-flow:1:2' + ngày 2026-07-15 → 'eod:2026-07-15:industry-flow:1:2'
+ */
+function eodKey(key) {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    return `eod:${today}:${key}`;
+}
+
+/**
+ * Đọc EOD cache. TTL = 24h (đủ an toàn, key đổi theo ngày nên qua ngày mới miss).
+ */
+async function getCachedEOD(key) {
+    return getCached(eodKey(key), 24 * 3600 * 1000);
+}
+
+/**
+ * Ghi EOD cache.
+ */
+async function setCachedEOD(key, data) {
+    return setCached(eodKey(key), data, 24 * 3600 * 1000);
+}
+
+/**
+ * Kiểm tra EOD data của hôm nay đã có chưa (để scheduler biết có cần retry).
+ */
+async function hasEODToday(key) {
+    const v = await getCached(eodKey(key), 24 * 3600 * 1000);
+    return v !== null;
+}
+
+// ==========================================
+// API CALL COUNTER — đếm số lần gọi nguồn ngoài (FireAnt/Fiintrade)
+// ==========================================
+// Lưu trong Redis theo ngày, key 'api_calls:YYYY-MM-DD:source'.
+// Reset tự động mỗi ngày (key theo ngày).
+
+const apiCounter = {
+    /**
+     * Tăng counter khi gọi API ngoài.
+     * @param {'fireant'|'fiintrade'} source
+     */
+    async bump(source) {
+        const today = new Date().toISOString().slice(0, 10);
+        const k = `api_calls:${today}:${source}`;
+        try { await redis.incr(k); await redis.expire(k, 86400 * 2); } catch (e) { /* ignore */ }
+    },
+
+    /**
+     * Đọc counter hôm nay. Trả { fireant, fiintrade }.
+     */
+    async today() {
+        const today = new Date().toISOString().slice(0, 10);
+        let fireant = 0, fiintrade = 0;
+        try {
+            const f = await redis.get(`api_calls:${today}:fireant`);
+            const t = await redis.get(`api_calls:${today}:fiintrade`);
+            fireant = f ? parseInt(f) : 0;
+            fiintrade = t ? parseInt(t) : 0;
+        } catch (e) { /* ignore */ }
+        return { fireant, fiintrade, date: today };
+    }
+};
+
+module.exports = { getCached, setCached, getStale, invalidate, getCachedEOD, setCachedEOD, hasEODToday, apiCounter };

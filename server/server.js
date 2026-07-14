@@ -76,6 +76,9 @@ const API_CONFIG = {
 
 // Utility function to make API requests
 async function fetchAPI(url, headers = {}) {
+    // Đếm API call tới FireAnt (chỉ khi URL chứa fireant.vn)
+    const { apiCounter } = require('./cache');
+    if (url.includes('fireant.vn')) apiCounter.bump('fireant').catch(() => {});
     try {
         const response = await axios.get(url, {
             headers: {
@@ -155,6 +158,20 @@ const CACHE_TTL_MS = {
     'news': 120000
 };
 
+// EOD keys: data chỉ đổi 1 lần/ngày (cuối phiên) → cache 24h, không TTL cố định.
+// Prefix match. Scheduler sẽ refresh 19-22h.
+const EOD_KEYS = [
+    'industry-flow',
+    'investor-flow',
+    'foreign-flow',
+    'investor-detail',
+    'industry-stats',
+    'top-net-stocks'
+];
+function isEODKey(key) {
+    return EOD_KEYS.some(k => key === k || key.startsWith(k + ':') || key.startsWith(k));
+}
+
 function ttlForKey(key) {
     if (CACHE_TTL_MS[key]) return CACHE_TTL_MS[key];
     for (const prefix of Object.keys(CACHE_TTL_MS)) {
@@ -164,10 +181,14 @@ function ttlForKey(key) {
 }
 
 // Wrappers async — caller PHẢI await (giữ tên cũ để ít đổi call site).
+// EOD keys dùng smart-cache 24h (key đổi theo ngày) thay vì TTL cố định.
+const { getCachedEOD, setCachedEOD } = require('./cache');
 async function getCachedResponse(key, ttlMs) {
+    if (isEODKey(key)) return getCachedEOD(key);
     return getCached(key, ttlMs);
 }
 async function setCachedResponse(key, data) {
+    if (isEODKey(key)) return setCachedEOD(key, data);
     return _setCached(key, data, ttlForKey(key));
 }
 async function getStaleResponse(key) {

@@ -21,6 +21,7 @@ const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-intern
  */
 
 // { key, url, intervalMs } — interval đặt < TTL (xem CACHE_TTL_MS trong server.js)
+// Intraday endpoints: FireAnt realtime, refresh trong giờ giao dịch
 const REFRESH_TARGETS = [
     // TTL 20-30s: refresh 25s
     { key: 'vnindex-demand',     url: '/api/vnindex-demand',          intervalMs: 25000 },
@@ -29,17 +30,24 @@ const REFRESH_TARGETS = [
     // TTL 60s: refresh 55s
     { key: 'influential-stocks', url: '/api/influential-stocks',      intervalMs: 55000 },
     { key: 'all-stocks',         url: '/api/all-stocks',              intervalMs: 55000 },
-    { key: 'investor-flow',      url: '/api/investor-flow',           intervalMs: 55000 },
-    { key: 'foreign-flow',       url: '/api/foreign-flow',            intervalMs: 55000 },
-    { key: 'investor-detail',    url: '/api/investor-detail',         intervalMs: 55000 },
-    { key: 'industry-stats',     url: '/api/industry-stats',          intervalMs: 55000 },
     { key: 'marketcap-stats',    url: '/api/marketcap-stats',         intervalMs: 55000 },
-    { key: 'top-net-stocks',     url: '/api/top-net-stocks',          intervalMs: 55000 },
     // TTL 120s: refresh 110s
     { key: 'news:all:20',        url: '/api/news?limit=20',           intervalMs: 110000 }
+    // EOD endpoints (Fiintrade) tách riêng bên dưới — refresh 19-22h, không 55s
     // Dynamic key (market-stats:HOSTC, industry-flow:*, stock-investor-flow:*) — user-driven,
     // được cache lazy khi user request, không cần pre-warm.
 ];
+
+// EOD endpoints: data chỉ đổi 1 lần/ngày (cuối phiên). Cache 24h.
+// Scheduler refresh mỗi 30 phút trong khoảng 19:00-22:00, skip nếu data hôm nay đã có.
+const EOD_TARGETS = [
+    { key: 'investor-flow',   url: '/api/investor-flow' },
+    { key: 'foreign-flow',    url: '/api/foreign-flow' },
+    { key: 'investor-detail', url: '/api/investor-detail' },
+    { key: 'industry-stats',  url: '/api/industry-stats' },
+    { key: 'top-net-stocks',  url: '/api/top-net-stocks' }
+];
+const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
 
 let running = false;
 const timers = [];
@@ -58,6 +66,31 @@ async function refreshOne(target, port) {
     }
 }
 
+/**
+ * EOD refresh: gọi endpoint → nếu server cache miss sẽ fetch Fiintrade + set EOD cache.
+ * Skip nếu data hôm nay đã có (tránh gọi thừa khi 600 user cùng xem).
+ */
+async function refreshEOD(target, port) {
+    const { hasEODToday } = require('./cache');
+    // Đã có data hôm nay → skip
+    if (await hasEODToday(target.key)) {
+        console.log(`✅ [scheduler-eod] ${target.key} đã có data hôm nay — skip`);
+        return;
+    }
+    // Chưa có → gọi endpoint (cache miss → fetch + cache EOD)
+    await refreshOne(target, port);
+}
+
+/**
+ * Kiểm tra có trong khoảng giờ EOD refresh (19:00-22:00 giờ VN) không.
+ */
+function isInEODWindow() {
+    const now = new Date();
+    // VPS chạy UTC; giờ VN = UTC+7. 19:00 VN = 12:00 UTC, 22:00 VN = 15:00 UTC.
+    const vnHour = (now.getUTCHours() + 7) % 24;
+    return vnHour >= 19 && vnHour < 22;
+}
+
 function startScheduler(port) {
     // Cho phép tắt scheduler qua env (vd khi chạy test hoặc 1 instance trong cluster)
     if (process.env.SCHEDULER_DISABLED === '1') {
@@ -66,11 +99,10 @@ function startScheduler(port) {
     }
     if (running) return;
     running = true;
-    console.log(`⏰ [scheduler] starting ${REFRESH_TARGETS.length} refresh jobs`);
+    console.log(`⏰ [scheduler] starting ${REFRESH_TARGETS.length} intraday + ${EOD_TARGETS.length} EOD refresh jobs`);
 
+    // Intraday endpoints: refresh liên tục theo interval
     for (const target of REFRESH_TARGETS) {
-        // Kick-off sau 15-20s (để server đã listen xong + cookie-sync sẵn),
-        // rồi lặp theo interval. Stagger để không gọi đồng loạt.
         const delay = 15000 + Math.random() * 5000;
         setTimeout(() => {
             refreshOne(target, port);
@@ -78,6 +110,18 @@ function startScheduler(port) {
             timers.push(t);
         }, delay);
     }
+
+    // EOD endpoints: check mỗi 30 phút, chỉ refresh trong 19-22h VN khi data hôm nay chưa có
+    setTimeout(() => {
+        const eodTick = async () => {
+            if (!isInEODWindow()) return;
+            for (const target of EOD_TARGETS) {
+                await refreshEOD(target, port);
+            }
+        };
+        eodTick(); // chạy thử ngay khi start (phòng khi start trong giờ EOD)
+        timers.push(setInterval(eodTick, EOD_RETRY_INTERVAL_MS));
+    }, 20000);
 }
 
 function stopScheduler() {
