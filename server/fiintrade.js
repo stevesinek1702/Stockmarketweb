@@ -34,6 +34,46 @@ async function fiinGet(url) {
     return res.data;
 }
 
+// ── Ticker → organCode map (cache 6h) ──────────────────────────────
+// Một số mã (vd BSR) cần organCode khác ticker (BSR→BSRC) để GetPriceData
+// chấp nhận. Nguồn: wl-core.fiintrade.vn/Master/GetListOrganization.
+let _organCodeMap = null;
+let _organCodeMapTime = 0;
+const ORGAN_CODE_TTL = 6 * 3600 * 1000; // 6 giờ
+
+async function getOrganCodeMap() {
+    if (_organCodeMap && Date.now() - _organCodeMapTime < ORGAN_CODE_TTL) {
+        return _organCodeMap;
+    }
+    try {
+        const url = 'https://wl-core.fiintrade.vn/Master/GetListOrganization?language=vi';
+        const data = await fiinGet(url);
+        const items = (data && data.items) || [];
+        const map = {};
+        items.forEach(it => {
+            if (it.ticker && it.organCode) {
+                map[String(it.ticker).toUpperCase()] = it.organCode;
+            }
+        });
+        _organCodeMap = map;
+        _organCodeMapTime = Date.now();
+        console.log(`📊 OrganCode map loaded: ${Object.keys(map).length} tickers`);
+        return map;
+    } catch (e) {
+        console.warn('⚠️ OrganCode map fetch fail:', e.message);
+        return _organCodeMap || {};
+    }
+}
+
+/**
+ * Resolve ticker → organCode (fallback = ticker nếu không có trong map).
+ */
+async function resolveOrganCode(ticker) {
+    const map = await getOrganCodeMap();
+    const code = String(ticker || '').trim().toUpperCase();
+    return map[code] || code;
+}
+
 /**
  * Dòng tiền ròng (khớp lệnh) theo ngành, tách theo 4 nhóm NĐT.
  * @param {number} timeRange 1 (1 ngày) | 5 (5 ngày) | 20 (20 ngày) | 0 (từ đầu năm)
@@ -215,8 +255,10 @@ async function getStockInvestorFlow(ticker, frequency = 'Daily') {
         throw new Error(`'${code}' là chỉ số — không hỗ trợ dòng tiền theo mã.`);
     }
 
+    // Resolve organCode — một số mã (BSR→BSRC) cần mã nội bộ FIIN khác ticker.
+    const organCode = await resolveOrganCode(code);
     const url = `https://wl-technical.fiintrade.vn/PriceData/GetPriceData`
-        + `?language=vi&Code=${encodeURIComponent(code)}&Frequently=${encodeURIComponent(freq)}&Page=1&PageSize=60`;
+        + `?language=vi&Code=${encodeURIComponent(organCode)}&Frequently=${encodeURIComponent(freq)}&Page=1&PageSize=60`;
     const data = await fiinGet(url);
     const items = (data && data.items) || [];
     if (!items.length) return { ticker: code, frequency: freq, points: [] };
@@ -310,6 +352,8 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress, days 
 module.exports = {
     FII_HEADERS,
     fiinGet,
+    getOrganCodeMap,
+    resolveOrganCode,
     getSectorFlow,
     getMarketInvestorFlow,
     getForeignStatistic,
