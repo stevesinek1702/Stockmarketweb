@@ -119,8 +119,75 @@
             });
     }
 
+    /**
+     * SWR cho EOD data — cache theo NGÀY (không phải ms).
+     * Data được fetch 1 lần/ngày, lưu localStorage. Click sau đó render ngay (0ms).
+     * Tự expire khi sang ngày mới (key chứa date → cache hôm qua tự bỏ qua).
+     *
+     * @param {string} baseKey key cơ sở (vd 'industry-flow:1:2')
+     * @param {Function} fetcher () => Promise<data>
+     * @param {Function} onData (data, {fromCache, fresh}) => void
+     * @returns {Promise} data
+     */
+    async function swrDaily(baseKey, fetcher, onData) {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const dailyKey = PREFIX + 'eod:' + today + ':' + baseKey;
+
+        // Đọc cache hôm nay từ localStorage
+        let cached = null;
+        try {
+            const raw = localStorage.getItem(dailyKey);
+            if (raw) cached = JSON.parse(raw);
+        } catch (e) { /* ignore */ }
+
+        // Có cache hôm nay → render ngay (0ms), skip network hoàn toàn
+        if (cached && cached.data) {
+            if (onData) onData(cached.data, { fromCache: true, fresh: true });
+            return cached.data;
+        }
+
+        // Chưa có cache hôm nay → fetch (có thể show spinner lần đầu)
+        try {
+            const data = await fetcher();
+            try {
+                localStorage.setItem(dailyKey, JSON.stringify({ data, ts: Date.now() }));
+            } catch (e) { /* quota — ignore */ }
+            if (onData) onData(data, { fromCache: false, fresh: true });
+            return data;
+        } catch (err) {
+            // Fallback: thử cache hôm qua nếu có
+            const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+            const yKey = PREFIX + 'eod:' + yesterday + ':' + baseKey;
+            try {
+                const raw = localStorage.getItem(yKey);
+                if (raw) {
+                    const stale = JSON.parse(raw);
+                    if (stale.data) {
+                        if (onData) onData(stale.data, { fromCache: true, fresh: false });
+                        return stale.data;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            throw err;
+        }
+    }
+
+    /**
+     * Kiểm tra cache hôm nay còn fresh không (để caller quyết spinner).
+     */
+    function hasDaily(baseKey) {
+        const today = new Date().toISOString().slice(0, 10);
+        try {
+            return !!localStorage.getItem(PREFIX + 'eod:' + today + ':' + baseKey);
+        } catch (e) {
+            return false;
+        }
+    }
+
     window.StockCache = {
         swr: swr,
+        swrDaily: swrDaily,
+        hasDaily: hasDaily,
         get: getStale,
         getFresh: getFresh,
         getStale: getStale,

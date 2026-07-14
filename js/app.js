@@ -309,10 +309,12 @@ async function fetchMarketBreadth() {
 async function fetchTopNetStocks() {
     try {
         console.log('📊 Fetching top net stocks from Google Sheets...');
-        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/top-net-stocks`);
-        const result = await response.json();
+        const result = await StockCache.swrDaily('top-net-stocks', async () => {
+            const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/top-net-stocks`);
+            return await response.json();
+        });
 
-        if (result.success && result.data) {
+        if (result && result.success && result.data) {
             console.log('✅ Top net stocks:', {
                 dailyBuy: result.data.daily.buy.length,
                 dailySell: result.data.daily.sell.length,
@@ -1325,10 +1327,16 @@ function setupIndustryFlowControls() {
  */
 async function loadIndustryFlowTab(timeRange) {
     const rangeEl = document.getElementById('industry-date-range');
+    const cacheKey = 'industry-flow:' + timeRange;
+    const hasCache = window.StockCache && StockCache.hasDaily(cacheKey);
+    // Chỉ hiện spinner lần đầu (chưa có cache hôm nay)
     try {
-        if (rangeEl) rangeEl.textContent = 'Đang tải dữ liệu...';
+        if (rangeEl && !hasCache) rangeEl.textContent = 'Đang tải dữ liệu...';
 
-        const data = await StockAPI.dataFetcher.fetchIndustryFlow(timeRange);
+        const data = await StockCache.swrDaily(
+            cacheKey,
+            () => StockAPI.dataFetcher.fetchIndustryFlow(timeRange)
+        );
 
         if (!data || data.length === 0) {
             if (rangeEl) rangeEl.textContent = 'Không có dữ liệu';
@@ -1346,7 +1354,6 @@ async function loadIndustryFlowTab(timeRange) {
         if (rangeEl) rangeEl.textContent = `Dòng tiền ròng khớp lệnh theo nhóm NĐT · ${labelMap[timeRange] || ''} · đơn vị tỷ đồng`;
 
         // Preload ngầm top flow cho tất cả ngành (theo timeRange hiện tại) để click là ra ngay.
-        // Trì hoãn 3s để không cạnh tranh request với industry-flow vừa load.
         setTimeout(() => { try { preloadIndustryTopFlow(); } catch (e) {} }, 3000);
 
         console.log(`✅ Industry flow tab loaded: ${data.length} ngành (timeRange=${timeRange})`);
@@ -2224,8 +2231,8 @@ async function loadInvestorFlow() {
 
     try {
         const [detailRes, flowRes] = await Promise.all([
-            fetch(`${window.StockAPI.SERVER_BASE}/api/investor-detail`).then(r => r.json()).catch(() => null),
-            fetch(`${window.StockAPI.SERVER_BASE}/api/investor-flow`).then(r => r.json()).catch(() => null)
+            StockCache.swrDaily('investor-detail', () => fetch(`${window.StockAPI.SERVER_BASE}/api/investor-detail`).then(r => r.json())).catch(() => null),
+            StockCache.swrDaily('investor-flow', () => fetch(`${window.StockAPI.SERVER_BASE}/api/investor-flow`).then(r => r.json())).catch(() => null)
         ]);
 
         const detailByKey = {};
@@ -2425,8 +2432,10 @@ async function loadForeignFlow() {
     };
 
     try {
-        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/foreign-flow`);
-        const result = await response.json();
+        const result = await StockCache.swrDaily('foreign-flow', async () => {
+            const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/foreign-flow`);
+            return await response.json();
+        });
 
         if (!result || !result.success || !result.today) {
             if (!window._foreignFlowLoaded) {
@@ -2494,9 +2503,10 @@ async function loadDashboardCharts() {
     console.log('📊 Loading dashboard charts...');
 
     try {
-        // Fetch all chart data in parallel
+        // Fetch all chart data in parallel — industry-stats là EOD (cache daily),
+        // marketcap/vnindex/vn30 là intraday (fetch trực tiếp)
         const [industryRes, marketCapRes, vnindexRes, vn30Res] = await Promise.all([
-            fetch(`${window.StockAPI.SERVER_BASE}/api/industry-stats`).then(r => r.json()).catch(() => null),
+            StockCache.swrDaily('industry-stats', () => fetch(`${window.StockAPI.SERVER_BASE}/api/industry-stats`).then(r => r.json())).catch(() => null),
             fetch(`${window.StockAPI.SERVER_BASE}/api/marketcap-stats`).then(r => r.json()).catch(() => null),
             fetch(`${window.StockAPI.SERVER_BASE}/api/vnindex-demand`).then(r => r.json()).catch(() => null),
             fetch(`${window.StockAPI.SERVER_BASE}/api/vn30-demand`).then(r => r.json()).catch(() => null)
