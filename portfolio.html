@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danh mục — VN Stock</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .pf-tabs { display:flex; gap:8px; margin-bottom:24px; border-bottom:1px solid var(--border-color); }
+        .pf-tab { padding:10px 20px; background:none; border:none; color:var(--text-secondary);
+                  font-size:0.95rem; cursor:pointer; border-bottom:2px solid transparent; font-family:var(--font-body); }
+        .pf-tab.active { color:var(--accent-blue); border-bottom-color:var(--accent-blue); }
+        .pf-section { display:none; }
+        .pf-section.active { display:block; }
+        .pf-add-form { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:flex-end; }
+        .pf-add-form input { padding:8px 12px; background:var(--bg-primary); border:1px solid var(--border-color);
+                             border-radius:6px; color:var(--text-primary); font-size:0.85rem; font-family:var(--font-body); }
+        .pf-add-form input[type=text] { text-transform:uppercase; }
+        .pf-add-form label { font-size:0.7rem; color:var(--text-secondary); text-transform:uppercase; display:block; margin-bottom:3px; }
+        .pf-add-form .form-group { display:flex; flex-direction:column; }
+        .stat-box { background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px;
+                    padding:16px; margin-bottom:16px; display:flex; gap:32px; flex-wrap:wrap; }
+        .stat-box .stat-item .stat-label { font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; }
+        .stat-box .stat-item .stat-value { font-size:1.3rem; font-weight:600; color:var(--text-primary); }
+    </style>
+</head>
+<body class="admin-page">
+    <div class="admin-header">
+        <h1>💼 Danh mục cá nhân</h1>
+        <div class="admin-filters">
+            <span id="userInfo" style="color:var(--text-secondary);font-size:0.8rem;"></span>
+            <a href="/" style="padding:8px 16px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);text-decoration:none;font-size:0.75rem;">← Dashboard</a>
+            <button onclick="doLogout()">Đăng xuất</button>
+        </div>
+    </div>
+
+    <div class="pf-tabs">
+        <button class="pf-tab active" data-pf-tab="portfolio">📊 Sổ cổ phiếu</button>
+        <button class="pf-tab" data-pf-tab="watchlist">⭐ Mã theo dõi</button>
+    </div>
+
+    <div id="errorBox" class="auth-error"></div>
+
+    <!-- PORTFOLIO -->
+    <div class="pf-section active" id="section-portfolio">
+        <div class="stat-box" id="pfStats">
+            <div class="stat-item"><div class="stat-label">Tổng vốn đầu tư</div><div class="stat-value" id="pfTotalCost">—</div></div>
+            <div class="stat-item"><div class="stat-label">Giá trị hiện tại</div><div class="stat-value" id="pfTotalValue">—</div></div>
+            <div class="stat-item"><div class="stat-label">Lãi/lỗ</div><div class="stat-value" id="pfPnl">—</div></div>
+        </div>
+
+        <div class="pf-add-form">
+            <div class="form-group">
+                <label>Mã CP</label>
+                <input type="text" id="pf-symbol" placeholder="VNM" maxlength="10" style="width:100px;">
+            </div>
+            <div class="form-group">
+                <label>Số lượng</label>
+                <input type="number" id="pf-quantity" placeholder="1000" min="0" step="1" style="width:120px;">
+            </div>
+            <div class="form-group">
+                <label>Giá vốn (VND)</label>
+                <input type="number" id="pf-avgprice" placeholder="65000" min="0" step="100" style="width:140px;">
+            </div>
+            <button class="auth-btn" style="margin:0;padding:9px 20px;" onclick="addOrUpdatePosition()">Thêm / Cập nhật</button>
+        </div>
+
+        <table class="user-table">
+            <thead>
+                <tr><th>Mã</th><th>Số lượng</th><th>Giá vốn</th><th>Giá hiện tại</th><th>Giá trị</th><th>Lãi/lỗ</th><th>%</th><th></th></tr>
+            </thead>
+            <tbody id="portfolioTbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- WATCHLIST -->
+    <div class="pf-section" id="section-watchlist">
+        <div class="pf-add-form">
+            <div class="form-group">
+                <label>Mã CP</label>
+                <input type="text" id="wl-symbol" placeholder="HPG" maxlength="10" style="width:100px;">
+            </div>
+            <div class="form-group">
+                <label>Ghi chú (tùy chọn)</label>
+                <input type="text" id="wl-notes" placeholder="Đợi về 25000" style="width:300px;">
+            </div>
+            <button class="auth-btn" style="margin:0;padding:9px 20px;" onclick="addWatchlist()">+ Thêm</button>
+        </div>
+
+        <table class="user-table">
+            <thead>
+                <tr><th>Mã</th><th>Giá hiện tại</th><th>% thay đổi</th><th>Ghi chú</th><th>Thêm lúc</th><th></th></tr>
+            </thead>
+            <tbody id="watchlistTbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Chưa có mã theo dõi.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        let currentUser = null;
+        let priceCache = {}; // symbol -> {price, changePercent}
+
+        async function bootstrap() {
+            currentUser = await VNAuth.currentUser();
+            if (!currentUser) { window.location.href = '/login.html'; return; }
+            document.getElementById('userInfo').textContent = '👤 ' + currentUser.username;
+            await loadPortfolio();
+            await loadWatchlist();
+        }
+
+        function showError(msg) {
+            const b = document.getElementById('errorBox');
+            b.textContent = msg; b.classList.add('show');
+            setTimeout(() => b.classList.remove('show'), 4000);
+        }
+
+        // ---- Tab switching ----
+        document.querySelectorAll('.pf-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.pf-tab').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.pf-section').forEach(s => s.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('section-' + btn.dataset.pfTab).classList.add('active');
+            });
+        });
+
+        // ---- Price fetcher (batch) ----
+        async function fetchPrices(symbols) {
+            if (!symbols.length) return;
+            try {
+                const res = await fetch(`/api/quotes?symbols=${symbols.join(',')}`, { credentials: 'same-origin' });
+                const json = await res.json();
+                if (Array.isArray(json)) {
+                    json.forEach(q => {
+                        if (q.Symbol) priceCache[q.Symbol] = {
+                            price: q.PriceCurrent || 0,
+                            changePercent: q.PricePercentChange ? q.PricePercentChange * 100 : 0
+                        };
+                    });
+                }
+            } catch (e) { /* ignore — prices optional */ }
+        }
+
+        // ---- PORTFOLIO ----
+        async function loadPortfolio() {
+            try {
+                const res = await fetch('/api/user/portfolio', { credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                const items = json.portfolio;
+                // Fetch current prices
+                const symbols = items.map(i => i.symbol);
+                if (symbols.length) await fetchPrices(symbols);
+
+                const tbody = document.getElementById('portfolioTbody');
+                let totalCost = 0, totalValue = 0;
+                if (!items.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>';
+                } else {
+                    tbody.innerHTML = items.map(item => {
+                        const cur = priceCache[item.symbol] || {};
+                        const curPrice = cur.price || 0;
+                        const value = curPrice * item.quantity;
+                        const cost = item.avg_price * item.quantity;
+                        const pnl = value - cost;
+                        const pnlPct = cost > 0 ? (pnl / cost * 100) : 0;
+                        const cls = pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                        const sign = pnl >= 0 ? '+' : '';
+                        totalCost += cost;
+                        totalValue += value;
+                        return `<tr>
+                            <td><strong>${item.symbol}</strong></td>
+                            <td>${item.quantity.toLocaleString('vi-VN')}</td>
+                            <td>${item.avg_price.toLocaleString('vi-VN')}</td>
+                            <td>${curPrice ? curPrice.toLocaleString('vi-VN') : '—'}</td>
+                            <td>${value ? value.toLocaleString('vi-VN') : '—'}</td>
+                            <td style="color:${cls}">${value ? sign + Math.round(pnl).toLocaleString('vi-VN') : '—'}</td>
+                            <td style="color:${cls}">${value ? sign + pnlPct.toFixed(1) + '%' : '—'}</td>
+                            <td><button class="btn-sm btn-delete" onclick="deletePosition('${item.symbol}')">✕</button></td>
+                        </tr>`;
+                    }).join('');
+                }
+                // Update stats
+                document.getElementById('pfTotalCost').textContent = Math.round(totalCost).toLocaleString('vi-VN') + ' ₫';
+                document.getElementById('pfTotalValue').textContent = totalValue ? Math.round(totalValue).toLocaleString('vi-VN') + ' ₫' : '—';
+                const pnl = totalValue - totalCost;
+                const pnlEl = document.getElementById('pfPnl');
+                if (totalValue) {
+                    pnlEl.textContent = (pnl >= 0 ? '+' : '') + Math.round(pnl).toLocaleString('vi-VN') + ' ₫';
+                    pnlEl.style.color = pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                } else {
+                    pnlEl.textContent = '—';
+                }
+            } catch (err) {
+                showError('Lỗi tải portfolio: ' + err.message);
+            }
+        }
+
+        async function addOrUpdatePosition() {
+            const symbol = document.getElementById('pf-symbol').value.trim().toUpperCase();
+            const quantity = parseFloat(document.getElementById('pf-quantity').value);
+            const avg_price = parseFloat(document.getElementById('pf-avgprice').value);
+            if (!symbol || !quantity || !avg_price) { showError('Nhập đủ mã/số lượng/giá vốn'); return; }
+            try {
+                const res = await fetch('/api/user/portfolio', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, quantity, avg_price })
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                document.getElementById('pf-symbol').value = '';
+                document.getElementById('pf-quantity').value = '';
+                document.getElementById('pf-avgprice').value = '';
+                await loadPortfolio();
+            } catch (err) { showError(err.message); }
+        }
+
+        async function deletePosition(symbol) {
+            if (!confirm(`Xóa vị thế ${symbol}?`)) return;
+            try {
+                const res = await fetch(`/api/user/portfolio/${symbol}`, { method: 'DELETE', credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                await loadPortfolio();
+            } catch (err) { showError(err.message); }
+        }
+
+        // ---- WATCHLIST ----
+        async function loadWatchlist() {
+            try {
+                const res = await fetch('/api/user/watchlist', { credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                const items = json.watchlist;
+                const symbols = items.map(i => i.symbol);
+                if (symbols.length) await fetchPrices(symbols);
+
+                const tbody = document.getElementById('watchlistTbody');
+                if (!items.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Chưa có mã theo dõi.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = items.map(item => {
+                    const cur = priceCache[item.symbol] || {};
+                    const pct = cur.changePercent;
+                    const cls = pct >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+                    return `<tr>
+                        <td><strong>${item.symbol}</strong></td>
+                        <td>${cur.price ? cur.price.toLocaleString('vi-VN') : '—'}</td>
+                        <td style="color:${cls}">${pct !== undefined ? (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%' : '—'}</td>
+                        <td style="color:var(--text-secondary);">${item.notes || '—'}</td>
+                        <td style="font-size:0.75rem;color:var(--text-secondary);">${new Date(item.created_at).toLocaleDateString('vi-VN')}</td>
+                        <td><button class="btn-sm btn-delete" onclick="removeWatchlist('${item.symbol}')">✕</button></td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                showError('Lỗi tải watchlist: ' + err.message);
+            }
+        }
+
+        async function addWatchlist() {
+            const symbol = document.getElementById('wl-symbol').value.trim().toUpperCase();
+            const notes = document.getElementById('wl-notes').value.trim();
+            if (!symbol) { showError('Nhập mã CP'); return; }
+            try {
+                const res = await fetch('/api/user/watchlist', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, notes })
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                document.getElementById('wl-symbol').value = '';
+                document.getElementById('wl-notes').value = '';
+                await loadWatchlist();
+            } catch (err) { showError(err.message); }
+        }
+
+        async function removeWatchlist(symbol) {
+            try {
+                const res = await fetch(`/api/user/watchlist/${symbol}`, { method: 'DELETE', credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                await loadWatchlist();
+            } catch (err) { showError(err.message); }
+        }
+
+        async function doLogout() {
+            await VNAuth.logout();
+            window.location.href = '/login.html';
+        }
+
+        bootstrap();
+    </script>
+</body>
+</html>

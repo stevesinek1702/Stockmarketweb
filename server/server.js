@@ -166,6 +166,8 @@ async function getStaleResponse(key) {
 const { requireAuth } = require('./auth');
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
+// ── Phase 4: User data (watchlist + portfolio + presets per-user, requireAuth) ─
+app.use('/api/user', require('./routes/user'));
 
 // ── Health check (public, không cần auth) ────────────────────────────────
 app.get('/api/health', (req, res) => {
@@ -2348,120 +2350,82 @@ app.get('/api/vn30-demand', async (req, res) => {
 });
 
 // ==========================================
-// FILTER PRESETS API (Persistent Storage)
+// FILTER PRESETS API (Phase 4: per-user DB-backed)
+// Backwards-compat: các endpoint cũ /api/filter-presets giờ delegate
+// tới bảng filter_presets theo user_id (đã được auth middleware gắn).
+// Frontend js/app.js gọi endpoint này — không cần đổi.
 // ==========================================
 
-const PRESETS_FILE = path.join(__dirname, 'data', 'filter-presets.json');
-
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Helper function to read presets from file
-function readPresets() {
-    try {
-        if (fs.existsSync(PRESETS_FILE)) {
-            const data = fs.readFileSync(PRESETS_FILE, 'utf8');
-            return JSON.parse(data);
-        }
-    } catch (error) {
-        console.error('Error reading presets file:', error.message);
-    }
-    return {};
-}
-
-// Helper function to write presets to file
-function writePresets(presets) {
-    try {
-        fs.writeFileSync(PRESETS_FILE, JSON.stringify(presets, null, 2), 'utf8');
-        return true;
-    } catch (error) {
-        console.error('Error writing presets file:', error.message);
-        return false;
-    }
-}
-
 /**
- * GET /api/filter-presets
- * Lấy tất cả các bộ lọc đã lưu
+ * GET /api/filter-presets — presets của user hiện tại.
  */
-app.get('/api/filter-presets', (req, res) => {
+app.get('/api/filter-presets', async (req, res) => {
     try {
-        console.log('📂 Loading filter presets...');
-        const presets = readPresets();
-        console.log(`✅ Loaded ${Object.keys(presets).length} presets`);
-        res.json({
-            success: true,
-            presets: presets
-        });
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
+        const r = await query(
+            `SELECT name, filters FROM filter_presets WHERE user_id = $1 ORDER BY name ASC`,
+            [req.user.id]
+        );
+        const presets = {};
+        for (const row of r.rows) presets[row.name] = row.filters;
+        res.json({ success: true, presets });
     } catch (error) {
-        console.error('Error loading presets:', error);
+        console.error('Error loading presets:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 /**
- * POST /api/filter-presets
- * Lưu hoặc cập nhật một bộ lọc
- * Body: { name: string, conditions: array }
+ * POST /api/filter-presets — lưu/cập nhật preset.
+ * Body: { name, conditions }
  */
-app.post('/api/filter-presets', (req, res) => {
+app.post('/api/filter-presets', async (req, res) => {
     try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
         const { name, conditions } = req.body;
-
         if (!name || typeof name !== 'string' || name.trim() === '') {
             return res.status(400).json({ success: false, error: 'Invalid preset name' });
         }
-
         if (!conditions || !Array.isArray(conditions)) {
             return res.status(400).json({ success: false, error: 'Invalid conditions' });
         }
-
-        console.log(`💾 Saving filter preset: "${name}"`);
-
-        const presets = readPresets();
-        presets[name.trim()] = conditions;
-
-        if (writePresets(presets)) {
-            console.log(`✅ Preset "${name}" saved successfully`);
-            res.json({ success: true, message: 'Preset saved' });
-        } else {
-            res.status(500).json({ success: false, error: 'Failed to save preset' });
-        }
+        await query(
+            `INSERT INTO filter_presets (user_id, name, filters)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, name) DO UPDATE
+               SET filters = EXCLUDED.filters, updated_at = now()`,
+            [req.user.id, name.trim(), JSON.stringify(conditions)]
+        );
+        res.json({ success: true, message: 'Preset saved' });
     } catch (error) {
-        console.error('Error saving preset:', error);
+        console.error('Error saving preset:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 /**
- * DELETE /api/filter-presets/:name
- * Xóa một bộ lọc
+ * DELETE /api/filter-presets/:name — xóa preset của user hiện tại.
  */
-app.delete('/api/filter-presets/:name', (req, res) => {
+app.delete('/api/filter-presets/:name', async (req, res) => {
     try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Authentication required' });
+        }
         const name = decodeURIComponent(req.params.name);
-
-        console.log(`🗑️ Deleting filter preset: "${name}"`);
-
-        const presets = readPresets();
-
-        if (!presets[name]) {
+        const r = await query(
+            `DELETE FROM filter_presets WHERE user_id = $1 AND name = $2 RETURNING id`,
+            [req.user.id, name]
+        );
+        if (r.rowCount === 0) {
             return res.status(404).json({ success: false, error: 'Preset not found' });
         }
-
-        delete presets[name];
-
-        if (writePresets(presets)) {
-            console.log(`✅ Preset "${name}" deleted successfully`);
-            res.json({ success: true, message: 'Preset deleted' });
-        } else {
-            res.status(500).json({ success: false, error: 'Failed to delete preset' });
-        }
+        res.json({ success: true, message: 'Preset deleted' });
     } catch (error) {
-        console.error('Error deleting preset:', error);
+        console.error('Error deleting preset:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
