@@ -48,20 +48,26 @@
         const users = await fetchPending();
         updateBadge(users.length);
 
+        let html = '';
         if (!users.length) {
-            list.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.8rem;padding:20px 0;">✅ Không có yêu cầu nào chờ duyệt</div>';
-            return;
-        }
-        list.innerHTML = users.map(u => `
-            <div class="notif-item">
-                <div class="ni-info">
-                    <div class="ni-name">${u.username}</div>
-                    <div class="ni-meta">${u.email || 'không email'} · ${fmtRelative(u.created_at)}</div>
+            html += '<div style="text-align:center;color:var(--text-muted);font-size:0.8rem;padding:20px 0;">✅ Không có yêu cầu nào chờ duyệt</div>';
+        } else {
+            html += users.map(u => `
+                <div class="notif-item">
+                    <div class="ni-info">
+                        <div class="ni-name">${u.username}</div>
+                        <div class="ni-meta">${u.email || 'không email'} · ${fmtRelative(u.created_at)}</div>
+                    </div>
+                    <button class="btn-sm btn-approve" onclick="adminNotif.approve(${u.id}, '${u.username}')">✓ Duyệt</button>
+                    <button class="btn-sm btn-delete" onclick="adminNotif.reject(${u.id}, '${u.username}')">✕</button>
                 </div>
-                <button class="btn-sm btn-approve" onclick="adminNotif.approve(${u.id}, '${u.username}')">✓ Duyệt</button>
-                <button class="btn-sm btn-delete" onclick="adminNotif.reject(${u.id}, '${u.username}')">✕</button>
-            </div>
-        `).join('');
+            `).join('');
+        }
+        // Footer: link tới bảng quản lý đầy đủ
+        html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-color);text-align:center;">
+            <a href="/admin.html" style="color:var(--accent-blue);font-size:0.78rem;text-decoration:none;">📋 Bảng quản lý user (khóa / mở / reset MK / xóa) →</a>
+        </div>`;
+        list.innerHTML = html;
     }
 
     async function approve(id, username) {
