@@ -41,10 +41,21 @@ function sanitizeUser(u) {
 // ==========================================
 
 /**
+ * GET /api/auth/register-status — frontend check xem register có bật không.
+ */
+router.get('/register-status', (req, res) => {
+    res.json({ success: true, enabled: process.env.REGISTER_ENABLED === 'true' });
+});
+
+/**
  * POST /api/auth/register
  * User tự đăng ký → status=pending (chờ admin duyệt).
+ * TẮT khi REGISTER_ENABLED !== 'true' (mặc định tắt — chỉ admin tạo account).
  */
 router.post('/register', async (req, res) => {
+    if (process.env.REGISTER_ENABLED !== 'true') {
+        return res.status(403).json({ success: false, error: 'Đăng ký đã bị tắt. Vui lòng liên hệ quản trị viên để cấp tài khoản.' });
+    }
     try {
         const { username, password, email } = req.body;
         if (!validUsername(username)) {

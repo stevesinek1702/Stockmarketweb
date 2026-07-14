@@ -29,6 +29,22 @@ app.use(cookieParser());
 // Phải nằm TRƯỚC các route /api để mọi handler đều có req.user.
 app.use(authenticate);
 
+// Phase: chặn /register.html khi REGISTER_ENABLED !== 'true' (mặc định tắt).
+// Phải nằm TRƯỚC express.static để override static catch-all.
+// Chỉ admin tạo account qua /admin.html — phù hợp use case nội bộ.
+app.get('/register.html', (req, res) => {
+    if (process.env.REGISTER_ENABLED !== 'true') {
+        return res.status(403).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Đăng ký đã tắt</title>
+<link rel="stylesheet" href="/css/style.css"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Grotesk:wght@600&display=swap" rel="stylesheet"></head>
+<body class="auth-page"><div class="auth-card">
+<div class="auth-logo"><div class="logo-icon">🔒</div><div class="logo-text" style="font-size:1.3rem;">Đăng ký đã bị khóa</div></div>
+<div class="auth-error show">Tính năng đăng ký hiện đã tắt. Vui lòng liên hệ quản trị viên để được cấp tài khoản.</div>
+<div class="auth-link"><a href="/login.html">← Về trang đăng nhập</a></div>
+</div></body></html>`);
+    }
+    res.sendFile(path.join(__dirname, '..', 'register.html'));
+});
+
 // Serve static files from parent directory
 app.use(express.static(path.join(__dirname, '..')));
 

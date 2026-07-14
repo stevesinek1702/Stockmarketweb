@@ -40,6 +40,16 @@
         (async () => {
             const u = await VNAuth.currentUser();
             if (u) window.location.href = '/';
+
+            // Ẩn link đăng ký nếu register bị tắt
+            try {
+                const r = await fetch('/api/auth/register-status');
+                const j = await r.json();
+                if (!j.enabled) {
+                    const link = document.querySelector('.auth-link');
+                    if (link) link.style.display = 'none';
+                }
+            } catch (e) {}
         })();
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
