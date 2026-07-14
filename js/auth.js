@@ -112,6 +112,46 @@
         register,
         logout,
         getCachedUser,
-        intercept401
+        intercept401,
+        setupPasswordToggles
     };
+
+    /**
+     * Tự thêm nút 👁 ẩn/hiện cho mọi ô input[type=password].
+     * Wrap input trong <span class="pw-wrap"> (inline, relative) để nút mắt
+     * căn theo input — không phá layout flex/grid của parent.
+     */
+    function setupPasswordToggles(root = document) {
+        const inputs = root.querySelectorAll('input[type="password"]');
+        inputs.forEach(input => {
+            if (input.dataset.pwToggle === '1') return;
+            input.dataset.pwToggle = '1';
+
+            const wrap = document.createElement('span');
+            wrap.className = 'pw-wrap';
+            input.parentNode.insertBefore(wrap, input);
+            wrap.appendChild(input);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'pw-toggle';
+            btn.setAttribute('aria-label', 'Hiện/ẩn mật khẩu');
+            btn.innerHTML = '👁';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const show = input.type === 'password';
+                input.type = show ? 'text' : 'password';
+                btn.innerHTML = show ? '🙈' : '👁';
+                input.focus();
+            });
+            wrap.appendChild(btn);
+        });
+    }
+
+    // Auto-run khi DOM sẵn sàng (áp dụng cho mọi trang load auth.js)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setupPasswordToggles());
+    } else {
+        setupPasswordToggles();
+    }
 })();
