@@ -4622,6 +4622,12 @@ button.scanning::after {
 /* Border phân tách nhóm (cột cuối của mỗi nhóm) */
 .ig-table .ig-group-border { border-right: 2px solid var(--border-color); }
 .ig-table tbody tr:hover td { background: var(--bg-card-hover); }
+/* Hàng tổng SUM */
+.ig-table .ig-sum-row td {
+    background: var(--bg-secondary); border-bottom: 2px solid var(--border-color);
+    font-size: 0.78rem;
+}
+.ig-table .ig-sum-row:hover td { background: var(--bg-secondary); }
 
 .auth-btn {
     margin-top: var(--spacing-sm);

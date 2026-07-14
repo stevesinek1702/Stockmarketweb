@@ -2362,6 +2362,22 @@ async function loadInvestorTop(range) {
             return `<td class="ig-val-${isBuy?'pos':'neg'}">${sign}${fmt(s.net)}</td>`;
         };
 
+        // ── Hàng tổng SUM (Mua/Bán/Ròng hôm nay cho mỗi nhóm) ──
+        html += '<tr class="ig-sum-row"><td class="ig-rank" style="font-weight:700;color:var(--text-primary);">Σ</td>';
+        GROUPS.forEach(g => {
+            const t = byKey[g.key] && byKey[g.key].today;
+            if (!t) {
+                html += '<td colspan="4" style="text-align:center;color:var(--text-muted);">—</td>';
+                return;
+            }
+            const netCls = (typeof t.net === 'number' && isFinite(t.net)) ? (t.net >= 0 ? 'ig-val-pos' : 'ig-val-neg') : '';
+            const netSign = (typeof t.net === 'number' && isFinite(t.net) && t.net >= 0) ? '+' : '';
+            // Mỗi nhóm: ô Mua (span 2) + ô Ròng (span 2) — gọn, dễ đọc
+            html += `<td colspan="2" style="text-align:right;font-weight:600;color:var(--text-secondary);">Mua ${fmt(t.buy)} · Bán ${fmt(t.sell)}</td>`;
+            html += `<td colspan="2" style="text-align:right;font-weight:700;" class="${netCls}">Ròng ${netSign}${fmt(t.net)}</td>`;
+        });
+        html += '</tr>';
+
         for (let i = 0; i < MAX_ROWS; i++) {
             html += '<tr><td class="ig-rank">' + (i+1) + '</td>';
             GROUPS.forEach(g => {
