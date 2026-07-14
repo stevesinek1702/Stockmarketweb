@@ -108,35 +108,48 @@ async function getFireAntCookie() {
 // ==========================================
 // RESPONSE CACHE UTILITY
 // ==========================================
-const responseCache = new Map();
+// Cache layer: Redis (hot) + Postgres (cold) — xem server/cache.js.
+// Thay cho in-memory Map cũ: cache giờ bền vững khi restart + share giữa các process,
+// giúp giảm external API call tới FireAnt/Fiintrade khi multi-user.
+const { getCached, setCached: _setCached, getStale } = require('./cache');
 
-function getCachedResponse(key, ttlMs) {
-    const entry = responseCache.get(key);
-    if (entry && Date.now() - entry.time < ttlMs) {
-        return entry.data;
+// TTL mặc định theo cache key (millisecond). Key động match theo prefix.
+const CACHE_TTL_MS = {
+    'market-stats': 20000,
+    'vnindex-demand': 30000,
+    'vn30-demand': 30000,
+    'market-breadth': 30000,
+    'influential-stocks': 60000,
+    'all-stocks': 60000,
+    'industry-flow': 60000,
+    'investor-flow': 60000,
+    'foreign-flow': 60000,
+    'investor-detail': 60000,
+    'stock-investor-flow': 60000,
+    'industry-stats': 60000,
+    'marketcap-stats': 60000,
+    'top-net-stocks': 60000,
+    'news': 120000
+};
+
+function ttlForKey(key) {
+    if (CACHE_TTL_MS[key]) return CACHE_TTL_MS[key];
+    for (const prefix of Object.keys(CACHE_TTL_MS)) {
+        if (key.startsWith(prefix)) return CACHE_TTL_MS[prefix];
     }
-    return null;
+    return 60000;
 }
 
-function setCachedResponse(key, data) {
-    responseCache.set(key, { data, time: Date.now() });
+// Wrappers async — caller PHẢI await (giữ tên cũ để ít đổi call site).
+async function getCachedResponse(key, ttlMs) {
+    return getCached(key, ttlMs);
 }
-
-// Trả dữ liệu cache gần nhất BẤT KỂ đã hết hạn — dùng làm fallback khi nguồn ngoài lỗi.
-function getStaleResponse(key) {
-    const entry = responseCache.get(key);
-    return entry ? entry.data : null;
+async function setCachedResponse(key, data) {
+    return _setCached(key, data, ttlForKey(key));
 }
-
-// Cleanup old cache entries every 5 minutes
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of responseCache) {
-        if (now - entry.time > 300000) { // 5 minutes
-            responseCache.delete(key);
-        }
-    }
-}, 300000);
+async function getStaleResponse(key) {
+    return getStale(key);
+}
 
 // ==========================================
 // FIREANT API ENDPOINTS
@@ -165,18 +178,18 @@ app.get('/api/quotes', async (req, res) => {
  */
 app.get('/api/market-stats', async (req, res) => {
     const symbol = req.query.symbol || 'HOSTC';
-    const cacheKey = `market-stats-${symbol}`;
+    const cacheKey = `market-stats:${symbol}`;
     // Cache tươi 20s: giảm tải FireAnt + phản hồi nhanh khi nhiều widget cùng gọi.
-    const fresh = getCachedResponse(cacheKey, 20000);
+    const fresh = await getCachedResponse(cacheKey, 20000);
     if (fresh) return res.json(fresh);
     try {
         const url = `${API_CONFIG.fireant.base}/Markets/IntradayMarketStatistic?symbol=${symbol}`;
         const data = await fetchAPI(url, API_CONFIG.fireant.headers);
-        setCachedResponse(cacheKey, data);
+        await setCachedResponse(cacheKey, data);
         res.json(data);
     } catch (error) {
         // Fallback: trả cache gần nhất (dù cũ) để card chỉ số không bị trống vì FireAnt chập chờn.
-        const stale = getStaleResponse(cacheKey);
+        const stale = await getStaleResponse(cacheKey);
         if (stale) {
             console.warn(`⚠️ market-stats ${symbol}: FireAnt lỗi, trả cache cũ (${error.message})`);
             return res.json(stale);
@@ -370,7 +383,7 @@ app.get('/api/market-dashboard', async (req, res) => {
  */
 app.get('/api/influential-stocks', async (req, res) => {
     // Cache 60 seconds
-    const cached = getCachedResponse('influential-stocks', 60000);
+    const cached = await getCachedResponse('influential-stocks', 60000);
     if (cached) {
         console.log('📊 Returning cached influential-stocks data');
         return res.json(cached);
@@ -481,7 +494,7 @@ app.get('/api/influential-stocks', async (req, res) => {
             },
             timestamp: new Date().toISOString()
         };
-        setCachedResponse('influential-stocks', responseData);
+        await setCachedResponse('influential-stocks', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Influential stocks error:', error.message);
@@ -549,7 +562,7 @@ app.get('/api/intraday-quotes', async (req, res) => {
  */
 app.get('/api/market-breadth', async (req, res) => {
     // Cache 30 seconds
-    const cached = getCachedResponse('market-breadth', 30000);
+    const cached = await getCachedResponse('market-breadth', 30000);
     if (cached) {
         console.log('📊 Returning cached market-breadth data');
         return res.json(cached);
@@ -594,7 +607,7 @@ app.get('/api/market-breadth', async (req, res) => {
             timestamp: new Date().toISOString(),
             data: results
         };
-        setCachedResponse('market-breadth', responseData);
+        await setCachedResponse('market-breadth', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Market breadth error:', error);
@@ -609,7 +622,7 @@ app.get('/api/market-breadth', async (req, res) => {
  */
 app.get('/api/all-stocks', async (req, res) => {
     // Cache 60 seconds - very heavy endpoint (20 batch calls)
-    const cached = getCachedResponse('all-stocks', 60000);
+    const cached = await getCachedResponse('all-stocks', 60000);
     if (cached) {
         console.log('📈 Returning cached all-stocks data');
         return res.json(cached);
@@ -785,7 +798,7 @@ app.get('/api/all-stocks', async (req, res) => {
                 UPCOM: upcomStocks
             }
         };
-        setCachedResponse('all-stocks', responseData);
+        await setCachedResponse('all-stocks', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('All stocks error:', error);
@@ -968,9 +981,9 @@ app.get('/api/industry-flow', async (req, res) => {
         // level: 1 (10 ngành cấp 1) | 2 (18 ngành cấp 2)
         const timeRange = [0, 1, 5, 20].includes(parseInt(req.query.timeRange)) ? parseInt(req.query.timeRange) : 1;
         const level = parseInt(req.query.level) === 1 ? 1 : 2;
-        const cacheKey = `industry-flow-${timeRange}-${level}`;
+        const cacheKey = `industry-flow:${timeRange}:${level}`;
 
-        const cached = getCachedResponse(cacheKey, 60000);
+        const cached = await getCachedResponse(cacheKey, 60000);
         if (cached) {
             console.log('📊 Returning cached industry-flow data');
             return res.json(cached);
@@ -995,7 +1008,7 @@ app.get('/api/industry-flow', async (req, res) => {
             toDate,
             data
         };
-        setCachedResponse(cacheKey, responseData);
+        await setCachedResponse(cacheKey, responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Industry flow error:', error.message);
@@ -1027,7 +1040,7 @@ app.get('/api/industry-cumulative', async (req, res) => {
  * Nguồn: Fiintrade (tổng hợp 10 ngành cấp 1). Đơn vị: tỷ đồng.
  */
 app.get('/api/investor-flow', async (req, res) => {
-    const cached = getCachedResponse('investor-flow', 60000);
+    const cached = await getCachedResponse('investor-flow', 60000);
     if (cached) return res.json(cached);
     try {
         console.log('📊 Fetching investor-group flow from Fiintrade...');
@@ -1052,7 +1065,7 @@ app.get('/api/investor-flow', async (req, res) => {
             toDate: d1.toDate,
             groups
         };
-        setCachedResponse('investor-flow', responseData);
+        await setCachedResponse('investor-flow', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Investor flow error:', error.message);
@@ -1072,7 +1085,7 @@ app.get('/api/investor-flow', async (req, res) => {
  * Fallback cuối: FireAnt HOSTC IntradayMarketStatistic (chỉ HOSE, phiên hiện tại).
  */
 app.get('/api/foreign-flow', async (req, res) => {
-    const cached = getCachedResponse('foreign-flow', 60000);
+    const cached = await getCachedResponse('foreign-flow', 60000);
     if (cached) return res.json(cached);
     try {
         console.log('🌍 Fetching foreign flow (Khối ngoại)...');
@@ -1130,7 +1143,7 @@ app.get('/api/foreign-flow', async (req, res) => {
             ],
             timestamp: new Date().toISOString()
         };
-        setCachedResponse('foreign-flow', responseData);
+        await setCachedResponse('foreign-flow', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Foreign flow error:', error.message);
@@ -1145,7 +1158,7 @@ app.get('/api/foreign-flow', async (req, res) => {
  * Nguồn: Fiintrade MoneyFlow/GetStatisticInvestor. Đơn vị: tỷ đồng.
  */
 app.get('/api/investor-detail', async (req, res) => {
-    const cached = getCachedResponse('investor-detail', 60000);
+    const cached = await getCachedResponse('investor-detail', 60000);
     if (cached) {
         console.log('📊 Returning cached investor-detail data');
         return res.json(cached);
@@ -1169,7 +1182,7 @@ app.get('/api/investor-detail', async (req, res) => {
             source: 'fiintrade',
             groups
         };
-        setCachedResponse('investor-detail', responseData);
+        await setCachedResponse('investor-detail', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Investor detail error:', error.message);
@@ -1186,13 +1199,13 @@ app.get('/api/stock-investor-flow', async (req, res) => {
     const symbol = String(req.query.symbol || '').trim().toUpperCase();
     const freq = ['Daily', 'Weekly', 'Monthly'].includes(req.query.freq) ? req.query.freq : 'Daily';
     if (!symbol) return res.status(400).json({ success: false, error: 'Thiếu tham số symbol' });
-    const cacheKey = `stock-investor-flow-${symbol}-${freq}`;
-    const cached = getCachedResponse(cacheKey, 60000);
+    const cacheKey = `stock-investor-flow:${symbol}:${freq}`;
+    const cached = await getCachedResponse(cacheKey, 60000);
     if (cached) return res.json(cached);
     try {
         const result = await fiintrade.getStockInvestorFlow(symbol, freq);
         const responseData = { success: true, source: 'fiintrade', timestamp: new Date().toISOString(), ...result };
-        setCachedResponse(cacheKey, responseData);
+        await setCachedResponse(cacheKey, responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Stock investor flow error:', error.message);
@@ -1413,8 +1426,8 @@ function getTimeAgo(pubDate) {
 app.get('/api/news', async (req, res) => {
     const { category, limit = 30 } = req.query;
     // Cache 120 seconds - RSS feeds
-    const cacheKey = `news-${category || 'all'}-${limit}`;
-    const cached = getCachedResponse(cacheKey, 120000);
+    const cacheKey = `news:${category || 'all'}:${limit}`;
+    const cached = await getCachedResponse(cacheKey, 120000);
     if (cached) {
         console.log('📰 Returning cached news data');
         return res.json(cached);
@@ -1461,7 +1474,7 @@ app.get('/api/news', async (req, res) => {
             count: allNews.length,
             news: allNews
         };
-        setCachedResponse(cacheKey, responseData);
+        await setCachedResponse(cacheKey, responseData);
         res.json(responseData);
     } catch (error) {
         console.error('News fetch error:', error);
@@ -1479,7 +1492,7 @@ app.get('/api/news', async (req, res) => {
  */
 app.get('/api/industry-stats', async (req, res) => {
     // Cache 60 seconds - very heavy endpoint (700+ quotes)
-    const cached = getCachedResponse('industry-stats', 60000);
+    const cached = await getCachedResponse('industry-stats', 60000);
     if (cached) {
         console.log('📊 Returning cached industry-stats data');
         return res.json(cached);
@@ -1669,7 +1682,7 @@ app.get('/api/industry-stats', async (req, res) => {
             timestamp: new Date().toISOString(),
             data: results
         };
-        setCachedResponse('industry-stats', responseData);
+        await setCachedResponse('industry-stats', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Industry stats error:', error);
@@ -1939,7 +1952,7 @@ app.get('/api/industry-top-flow', async (req, res) => {
  */
 app.get('/api/marketcap-stats', async (req, res) => {
     // Cache 60 seconds - heavy endpoint
-    const cached = getCachedResponse('marketcap-stats', 60000);
+    const cached = await getCachedResponse('marketcap-stats', 60000);
     if (cached) {
         console.log('📊 Returning cached marketcap-stats data');
         return res.json(cached);
@@ -2041,7 +2054,7 @@ app.get('/api/marketcap-stats', async (req, res) => {
             timestamp: new Date().toISOString(),
             data: results
         };
-        setCachedResponse('marketcap-stats', responseData);
+        await setCachedResponse('marketcap-stats', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Market cap stats error:', error);
@@ -2238,7 +2251,7 @@ function buildIntradayDemandSeries(rawData, bucketMin = 3) {
  * Lực Cầu = TotalActiveBuyVolume / (TotalActiveBuyVolume + TotalActiveSellVolume) * 100
  */
 app.get('/api/vnindex-demand', async (req, res) => {
-    const cached = getCachedResponse('vnindex-demand', 30000);
+    const cached = await getCachedResponse('vnindex-demand', 30000);
     if (cached) return res.json(cached);
     try {
         console.log('📈 Fetching VNINDEX intraday + Demand...');
@@ -2261,7 +2274,7 @@ app.get('/api/vnindex-demand', async (req, res) => {
             timestamp: new Date().toISOString(),
             data: results
         };
-        setCachedResponse('vnindex-demand', responseData);
+        await setCachedResponse('vnindex-demand', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('VNINDEX demand error:', error);
@@ -2275,7 +2288,7 @@ app.get('/api/vnindex-demand', async (req, res) => {
  * Lực Cầu = TotalActiveBuyVolume / TotalVolume * 100
  */
 app.get('/api/vn30-demand', async (req, res) => {
-    const cached = getCachedResponse('vn30-demand', 30000);
+    const cached = await getCachedResponse('vn30-demand', 30000);
     if (cached) return res.json(cached);
     try {
         console.log('📈 Fetching VN30 intraday + Demand...');
@@ -2298,7 +2311,7 @@ app.get('/api/vn30-demand', async (req, res) => {
             timestamp: new Date().toISOString(),
             data: results
         };
-        setCachedResponse('vn30-demand', responseData);
+        await setCachedResponse('vn30-demand', responseData);
         res.json(responseData);
     } catch (error) {
         console.error('VN30 demand error:', error);
@@ -2596,7 +2609,7 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/top-net-stocks', async (req, res) => {
     // Cache 60 seconds - Google Sheets fetch
-    const cached = getCachedResponse('top-net-stocks', 60000);
+    const cached = await getCachedResponse('top-net-stocks', 60000);
     if (cached) {
         console.log('📊 Returning cached top-net-stocks data');
         return res.json(cached);
@@ -2720,11 +2733,11 @@ app.get('/api/top-net-stocks', async (req, res) => {
                 quarterly: { buy: quarterlyBuy, sell: quarterlySell }
             }
         };
-        setCachedResponse('top-net-stocks', responseData);
+        await setCachedResponse('top-net-stocks', responseData);
         res.json(responseData);
     } catch (error) {
         // Fallback: trả cache gần nhất (dù đã hết hạn) khi Google Sheet lỗi/timeout.
-        const stale = getStaleResponse('top-net-stocks');
+        const stale = await getStaleResponse('top-net-stocks');
         if (stale) {
             console.warn(`⚠️ top-net-stocks: Google Sheet lỗi, trả cache cũ (${error.message})`);
             return res.json(stale);
@@ -2739,8 +2752,29 @@ app.get('/api/top-net-stocks', async (req, res) => {
 // START SERVER
 // ==========================================
 
-app.listen(PORT, () => {
-    console.log(`
+// ── Khởi tạo cache layer trước khi listen ─────────────────────────────
+async function bootstrap() {
+    const { pool } = require('./db');
+    const { redis } = require('./redis-client');
+
+    // Healthcheck Postgres (non-fatal — server vẫn start nếu DB lỗi)
+    try {
+        await pool.query('SELECT 1');
+        console.log('✅ [db] connected');
+    } catch (e) {
+        console.error('❌ [db] connect failed — cache sẽ chỉ dùng Redis/fallback. Lỗi:', e.message);
+    }
+
+    // Healthcheck Redis (ping)
+    try {
+        await redis.ping();
+        console.log('✅ [redis] ready');
+    } catch (e) {
+        console.error('❌ [redis] connect failed — cache chỉ dùng Postgres. Lỗi:', e.message);
+    }
+
+    app.listen(PORT, () => {
+        console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
 ║   🚀 VN STOCK MARKET SERVER                               ║
@@ -2753,22 +2787,32 @@ app.listen(PORT, () => {
 ╚═══════════════════════════════════════════════════════════╝
     `);
 
-    // ── Khởi động Auto Cookie Sync ────────────────────────────────────────
-    try {
-        const { startAutoSync } = require('./cookie-sync');
-        startAutoSync();
-    } catch (e) {
-        console.error('⚠️  Cookie sync không khởi động được:', e.message);
-    }
-
-    // ── Khởi động quét cổ phiếu tiềm năng ban đầu (sau 5 giây để server ổn định) ────────────────
-    setTimeout(async () => {
+        // ── Khởi động Auto Cookie Sync ────────────────────────────────────────
         try {
-            console.log('🚀 [POTENTIAL] Starting initial potential stocks scan...');
-            const cookie = await getFireAntCookie();
-            scanPotential(cookie).catch(err => console.error('[POTENTIAL] Initial scan error:', err.message));
-        } catch (err) {
-            console.error('Failed to trigger initial potential scan:', err.message);
+            const { startAutoSync } = require('./cookie-sync');
+            startAutoSync();
+        } catch (e) {
+            console.error('⚠️  Cookie sync không khởi động được:', e.message);
         }
-    }, 5000);
-});
+
+        // ── Refresh Scheduler — làm mới cache nền ────────────────────────────
+        try {
+            const { startScheduler } = require('./scheduler');
+            startScheduler(PORT);
+        } catch (e) {
+            console.warn('⚠️  Scheduler không khởi động được:', e.message);
+        }
+
+        // ── Khởi động quét cổ phiếu tiềm năng ban đầu (sau 5 giây để server ổn định) ────────────────
+        setTimeout(async () => {
+            try {
+                console.log('🚀 [POTENTIAL] Starting initial potential stocks scan...');
+                const cookie = await getFireAntCookie();
+                scanPotential(cookie).catch(err => console.error('[POTENTIAL] Initial scan error:', err.message));
+            } catch (err) {
+                console.error('Failed to trigger initial potential scan:', err.message);
+            }
+        }, 5000);
+    });
+}
+bootstrap();
