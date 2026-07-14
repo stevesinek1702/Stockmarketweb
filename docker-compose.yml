@@ -66,6 +66,10 @@ services:
       APPS_SCRIPT_URL: ${APPS_SCRIPT_URL:-}
       COOKIE_TTL_HOURS: ${COOKIE_TTL_HOURS:-6}
       COOKIE_SYNC_HOURS: ${COOKIE_SYNC_HOURS:-5}
+      # Bật/tắt đăng ký công khai (true = user tự đăng ký → chờ admin duyệt)
+      REGISTER_ENABLED: ${REGISTER_ENABLED:-true}
+      # Cookie secure: true khi có HTTPS, false khi chạy HTTP
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       GSHEET_SYNC_URL: ${GSHEET_SYNC_URL:-}
       GSHEET_SYNC_TOKEN: ${GSHEET_SYNC_TOKEN:-}
     # MỞ CỔNG 8080 TỚI HOST (không đụng cổng 80/443 của nginx host)
