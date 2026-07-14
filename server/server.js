@@ -2888,6 +2888,39 @@ async function bootstrap() {
                 console.error('Failed to trigger initial potential scan:', err.message);
             }
         }, 5000);
+
+        // ── Pre-warm data khi server start (user vào là data sẵn) ────────────
+        // all-stocks: build MA map + cache server (~3s lần đầu, sau đó <50ms)
+        // EOD endpoints: cache data hôm qua (hoặc hôm nay nếu 19-22h) để user
+        //   vào xem dòng tiền ngành ngay, không đợi fetch.
+        const INTERNAL_SECRET_PREWARM = process.env.INTERNAL_SECRET || 'vnstock-scheduler-internal';
+        setTimeout(async () => {
+            const prewarmEndpoints = [
+                '/api/all-stocks',
+                '/api/industry-stats',
+                '/api/top-net-stocks',
+                '/api/investor-flow',
+                '/api/foreign-flow',
+                '/api/investor-detail',
+                '/api/influential-stocks',
+                '/api/market-breadth',
+                '/api/marketcap-stats',
+                '/api/vnindex-demand',
+                '/api/vn30-demand'
+            ];
+            for (const ep of prewarmEndpoints) {
+                try {
+                    await axios.get(`http://localhost:${PORT}${ep}`, {
+                        timeout: 30000,
+                        headers: { 'X-Internal-Secret': INTERNAL_SECRET_PREWARM }
+                    });
+                    console.log(`🔥 [prewarm] ${ep}`);
+                } catch (e) {
+                    console.warn(`⚠️ [prewarm] ${ep} fail: ${e.message}`);
+                }
+            }
+            console.log('✅ [prewarm] data đã sẵn sàng cho user');
+        }, 12000);
     });
 }
 bootstrap();
