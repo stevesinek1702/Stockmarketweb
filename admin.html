@@ -137,11 +137,15 @@
             if (u.status === 'disabled' && !isSelf) {
                 btns.push(`<button class="btn-sm btn-approve" onclick="updateUser(${u.id}, {status:'active'})">Kích hoạt</button>`);
             }
-            if (u.role === 'user' && u.status !== 'pending' && !isSelf) {
-                btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'admin'})">↑ Admin</button>`);
-            }
-            if (u.role === 'admin' && !isSelf) {
-                btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'user'})">↓ User</button>`);
+            // Thăng/giáng quyền admin — ẩn mặc định (chỉ 1 admin, tránh bấm nhầm).
+            // Bật lại bằng cách set ADMIN_ROLE_MGMT=true trong localStorage.
+            if (localStorage.getItem('ADMIN_ROLE_MGMT') === 'true') {
+                if (u.role === 'user' && u.status !== 'pending' && !isSelf) {
+                    btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'admin'})">↑ Admin</button>`);
+                }
+                if (u.role === 'admin' && !isSelf) {
+                    btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'user'})">↓ User</button>`);
+                }
             }
             if (!isSelf) {
                 btns.push(`<button class="btn-sm btn-delete" onclick="deleteUser(${u.id}, '${u.username}')">Xóa</button>`);
