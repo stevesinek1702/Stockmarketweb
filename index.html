@@ -466,28 +466,16 @@
 
             <!-- Top CP Theo Dòng Tiền NĐT (Fiintrade) -->
             <div class="card full-width" id="panel-investor-top">
-                <div class="card-header" style="flex-direction: column; align-items: center; gap: 8px;">
-                    <h3>🏆 Top CP Theo Dòng Tiền NĐT</h3>
-                    <div class="top-net-tabs" id="investor-top-toggle">
-                        <button class="top-net-tab active" data-group="foreign" onclick="renderInvestorTop('foreign')">Nước ngoài</button>
-                        <button class="top-net-tab" data-group="proprietary" onclick="renderInvestorTop('proprietary')">Tự doanh</button>
-                        <button class="top-net-tab" data-group="institution" onclick="renderInvestorTop('institution')">Tổ chức</button>
-                        <button class="top-net-tab" data-group="individual" onclick="renderInvestorTop('individual')">Cá nhân</button>
-                    </div>
+                <div class="card-header">
+                    <h3>🏆 Top CP Theo Dòng Tiền — 4 Nhóm NĐT</h3>
+                    <span class="card-badge" id="investor-top-updated" style="font-size:0.7rem;color:var(--text-muted);"></span>
                 </div>
-                <div class="top-stocks-grid">
-                    <div class="stock-column">
-                        <h4 class="positive">📈 Top Mua Ròng</h4>
-                        <ul class="stock-list" id="investor-top-buy">
-                            <li><span class="stock-code">--</span><span class="stock-value" style="color:var(--text-muted)">Đang tải...</span></li>
-                        </ul>
-                    </div>
-                    <div class="stock-column">
-                        <h4 class="negative">📉 Top Bán Ròng</h4>
-                        <ul class="stock-list" id="investor-top-sell">
-                            <li><span class="stock-code">--</span><span class="stock-value" style="color:var(--text-muted)">Đang tải...</span></li>
-                        </ul>
-                    </div>
+                <!-- Grid 4 nhóm: mỗi nhóm 1 cột = header tổng + Top Mua + Top Bán -->
+                <div id="investor-top-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                    <div data-group="foreign"><div class="investor-group-col" id="investor-top-foreign"></div></div>
+                    <div data-group="proprietary"><div class="investor-group-col" id="investor-top-proprietary"></div></div>
+                    <div data-group="institution"><div class="investor-group-col" id="investor-top-institution"></div></div>
+                    <div data-group="individual"><div class="investor-group-col" id="investor-top-individual"></div></div>
                 </div>
             </div>
 

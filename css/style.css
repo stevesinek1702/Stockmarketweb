@@ -4592,6 +4592,44 @@ button.scanning::after {
 .notif-item .ni-name { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
 .notif-item .ni-meta { color: var(--text-muted); font-size: 0.68rem; margin-top: 2px; }
 
+/* 4-group investor flow grid (như Google Sheet) */
+.investor-group-col {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ig-header {
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+    margin-bottom: 2px;
+}
+.ig-name { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); font-family: var(--font-display); }
+.ig-stats { display: flex; gap: 12px; margin-top: 6px; font-size: 0.72rem; }
+.ig-stat-label { color: var(--text-muted); display: block; }
+.ig-stat-val { font-weight: 600; }
+.ig-section-label {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); margin: 4px 0 2px 0; font-weight: 600;
+}
+.ig-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 3px; }
+.ig-list li {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 6px; border-radius: 4px; font-size: 0.78rem;
+}
+.ig-list li:hover { background: var(--bg-card-hover); cursor: pointer; }
+.ig-ticker { font-weight: 600; color: var(--text-primary); }
+.ig-net { font-weight: 500; }
+@media (max-width: 1100px) {
+    #investor-top-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+@media (max-width: 700px) {
+    #investor-top-grid { grid-template-columns: 1fr !important; }
+}
+
 .auth-btn {
     margin-top: var(--spacing-sm);
     padding: 12px var(--spacing-lg);
