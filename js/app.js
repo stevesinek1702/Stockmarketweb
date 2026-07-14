@@ -4249,7 +4249,7 @@ async function initStockFilterTab() {
 
 // ... (rest of functions)
 
-function runStockFilter() {
+async function runStockFilter() {
     console.log('🚀 Starting Stock Filter...');
     const list = document.getElementById('filter-conditions-list');
     const rows = list.querySelectorAll('.filter-condition-row');
@@ -4270,8 +4270,17 @@ function runStockFilter() {
 
     console.log('📋 Filter Conditions:', conditions);
 
-    // Aggregate all stocks
+    // Aggregate all stocks — TỰ LOAD nếu chưa có (vào thẳng tab filter chưa qua Bảng Giá)
     let allStocks = [];
+    const hasData = (PriceBoardState.allStocks.HSX && PriceBoardState.allStocks.HSX.length) ||
+                    (PriceBoardState.allStocks.HNX && PriceBoardState.allStocks.HNX.length);
+    if (!hasData) {
+        const btn = document.getElementById('btn-run-filter');
+        const oldText = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Đang tải dữ liệu...'; }
+        try { await loadAllStocksFor3Exchanges(); } catch (e) { /* ignore */ }
+        if (btn) { btn.disabled = false; btn.textContent = oldText; }
+    }
     if (PriceBoardState.allStocks.HSX && Array.isArray(PriceBoardState.allStocks.HSX))
         allStocks = allStocks.concat(PriceBoardState.allStocks.HSX);
     if (PriceBoardState.allStocks.HNX && Array.isArray(PriceBoardState.allStocks.HNX))
@@ -4395,8 +4404,8 @@ function renderFilterResults(stocks) {
         }
     });
 
-    // Limit display to 300 để tránh lag (trước đây 100 — giờ hiển thị nhiều hơn)
-    const MAX_DISPLAY = 300;
+    // Limit display để tránh lag DOM (18 cột × nhiều dòng = nặng)
+    const MAX_DISPLAY = 150;
     const displayStocks = sortedStocks.slice(0, MAX_DISPLAY);
     const truncated = sortedStocks.length > MAX_DISPLAY;
 
