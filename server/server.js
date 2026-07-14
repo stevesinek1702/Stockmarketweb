@@ -1271,16 +1271,19 @@ app.get('/api/foreign-flow', async (req, res) => {
  * Nguồn: Fiintrade MoneyFlow/GetStatisticInvestor. Đơn vị: tỷ đồng.
  */
 app.get('/api/investor-detail', async (req, res) => {
-    const cached = await getCachedResponse('investor-detail', 60000);
+    // Range: today | oneWeek | oneMonth | yearToDate (mặc định today)
+    const range = ['today', 'oneWeek', 'oneMonth', 'yearToDate'].includes(req.query.range) ? req.query.range : 'today';
+    const cacheKey = `investor-detail:${range}`;
+    const cached = await getCachedResponse(cacheKey, 60000);
     if (cached) {
-        console.log('📊 Returning cached investor-detail data');
+        console.log(`📊 Returning cached ${cacheKey} data`);
         return res.json(cached);
     }
     try {
-        console.log('📊 Fetching investor-detail (4 nhóm NĐT) from Fiintrade...');
+        console.log(`📊 Fetching investor-detail (4 nhóm NĐT, range=${range}) from Fiintrade...`);
         const keys = Object.keys(fiintrade.INVESTOR_TYPES); // individual, institution, proprietary, foreign
         const settled = await Promise.all(
-            keys.map(k => fiintrade.getInvestorStatistic(k).catch(() => null))
+            keys.map(k => fiintrade.getInvestorStatistic(k, 'VNINDEX', range).catch(() => null))
         );
         const groups = settled.filter(Boolean);
 
@@ -1288,14 +1291,20 @@ app.get('/api/investor-detail', async (req, res) => {
             return res.status(500).json({ success: false, error: 'No data from Fiintrade', timestamp: new Date().toISOString() });
         }
 
-        console.log(`✅ Investor detail: ${groups.length}/4 nhóm NĐT (Fiintrade)`);
+        // Rút fromDate/toDate từ group đầu (tất cả nhóm cùng range → cùng date)
+        const fromDate = groups[0].fromDate;
+        const toDate = groups[0].toDate;
+        console.log(`✅ Investor detail: ${groups.length}/4 nhóm NĐT (Fiintrade, range=${range}, ${fromDate} → ${toDate})`);
         const responseData = {
             success: true,
             timestamp: new Date().toISOString(),
             source: 'fiintrade',
+            range,
+            fromDate,
+            toDate,
             groups
         };
-        await setCachedResponse('investor-detail', responseData);
+        await setCachedResponse(cacheKey, responseData);
         res.json(responseData);
     } catch (error) {
         console.error('Investor detail error:', error.message);

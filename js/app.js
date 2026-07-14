@@ -2284,15 +2284,23 @@ async function loadInvestorFlow() {
 }
 
 /**
- * Load "Top CP Theo Dòng Tiền 4 Nhóm NĐT" — fetch /api/investor-detail MỘT LẦN,
- * cache localStorage daily. Render bảng 16 cột giống Google Sheet:
- * 4 nhóm × 4 cột (Mã Mua | Giá Mua | Mã Bán | Giá Bán).
- * Cùng 1 hàng = top mua + top bán của 4 nhóm (so sánh ngang dễ).
- * Mua ròng sort từ mạnh nhất xuống, bán ròng sort từ bị bán mạnh nhất xuống.
+ * Load "Danh Mục Mua Bán Ròng Khớp Lệnh" — fetch /api/investor-detail?range=
+ * Render bảng 16 cột (4 nhóm × 4 cột: Mã Mua|Giá Mua|Mã Bán|Giá Bán).
+ * Tiêu đề động: rút fromDate/toDate từ data.
+ * Range: today | oneWeek | oneMonth | yearToDate.
  */
-async function loadInvestorTop() {
+async function loadInvestorTop(range) {
+    range = range || AppState.investorTopRange || 'today';
+    AppState.investorTopRange = range;
+
+    // Highlight range button
+    document.querySelectorAll('#investor-top-range .top-net-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.range === range);
+    });
+
     const thead = document.getElementById('investor-top-thead');
     const tbody = document.getElementById('investor-top-tbody');
+    const titleEl = document.getElementById('investor-top-title');
     if (!thead || !tbody) return;
 
     const GROUPS = [
@@ -2303,8 +2311,8 @@ async function loadInvestorTop() {
     ];
 
     try {
-        const res = await StockCache.swrDaily('investor-detail', () =>
-            fetch(`${window.StockAPI.SERVER_BASE}/api/investor-detail`).then(r => r.json())
+        const res = await StockCache.swrDaily('investor-detail:' + range, () =>
+            fetch(`${window.StockAPI.SERVER_BASE}/api/investor-detail?range=${range}`).then(r => r.json())
         );
         if (!res || !res.success || !Array.isArray(res.groups) || res.groups.length === 0) {
             tbody.innerHTML = '<tr><td colspan="17" style="text-align:center;color:var(--text-muted);padding:20px;">Không tải được dữ liệu</td></tr>';
@@ -2313,16 +2321,28 @@ async function loadInvestorTop() {
         const byKey = {};
         res.groups.forEach(g => { byKey[g.key] = g; });
 
-        const updatedEl = document.getElementById('investor-top-updated');
-        if (updatedEl && res.timestamp) updatedEl.textContent = '⏱ ' + new Date(res.timestamp).toLocaleTimeString('vi-VN');
+        // Tiêu đề động: rút fromDate/toDate từ data
+        const fmtDate = (iso) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        };
+        const rangeLabels = { today: '1 Ngày', oneWeek: '1 Tuần', oneMonth: '1 Tháng', yearToDate: 'Từ Đầu Năm (YTD)' };
+        if (titleEl) {
+            let dateStr = '';
+            if (res.fromDate && res.toDate) {
+                dateStr = (res.fromDate === res.toDate)
+                    ? fmtDate(res.toDate)
+                    : `${fmtDate(res.fromDate)} → ${fmtDate(res.toDate)}`;
+            }
+            titleEl.textContent = `Danh Mục Mua Bán Ròng Khớp Lệnh · ${rangeLabels[range] || range} · ${dateStr}`;
+        }
 
         const fmt = (v) => (typeof v === 'number' && isFinite(v)) ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '--';
 
         // ── HEADER 2 hàng ──
-        // Hàng 1: # | Nước ngoài (span 4) | Tự doanh (span 4) | Tổ chức (span 4) | Cá nhân (span 4)
         let h1 = '<th rowspan="2" class="ig-rank">#</th>';
         GROUPS.forEach(g => { h1 += `<th colspan="4" class="ig-group-header">${g.name}</th>`; });
-        // Hàng 2: mỗi nhóm = Mã | Giá (xanh) | Mã | Giá (đỏ)
         let h2 = '';
         GROUPS.forEach(g => {
             h2 += '<th class="ig-sub-header ig-sub-buy">Mã</th><th class="ig-sub-header ig-sub-buy">Giá</th>'
@@ -2344,7 +2364,7 @@ async function loadInvestorTop() {
 
         for (let i = 0; i < MAX_ROWS; i++) {
             html += '<tr><td class="ig-rank">' + (i+1) + '</td>';
-            GROUPS.forEach((g, idx) => {
+            GROUPS.forEach(g => {
                 const buy = byKey[g.key] && Array.isArray(byKey[g.key].topBuy) ? byKey[g.key].topBuy : [];
                 const sell = byKey[g.key] && Array.isArray(byKey[g.key].topSell) ? byKey[g.key].topSell : [];
                 html += tickerCell(buy[i]) + valCell(buy[i], true);
@@ -2354,7 +2374,7 @@ async function loadInvestorTop() {
         }
 
         tbody.innerHTML = html;
-        console.log('✅ Investor top (16 cột, 4 nhóm) updated');
+        console.log(`✅ Investor top (16 cột, range=${range}) updated`);
     } catch (error) {
         console.error('Failed to load investor top:', error);
         tbody.innerHTML = '<tr><td colspan="17" style="text-align:center;color:var(--text-muted);padding:20px;">Lỗi kết nối</td></tr>';

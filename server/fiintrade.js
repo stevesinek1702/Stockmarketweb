@@ -187,15 +187,16 @@ const INVESTOR_TYPES = {
 
 /**
  * Thống kê dòng tiền (khớp lệnh) Mua / Bán / Ròng cho MỘT nhóm NĐT, kèm
- * Top mã Mua ròng / Bán ròng trong phiên hôm nay.
+ * Top mã Mua ròng / Bán ròng theo range được chọn.
  *
  * Net = foreignBuyValue − foreignSellValue (KHÔNG dùng foreignNetBuyValue/SellValue
  * vì đó là tổng gross theo từng mã). Đơn vị quy đổi: VND → ÷1e9 = tỷ.
  *
  * @param {string} key 'individual' | 'institution' | 'proprietary' | 'foreign'
  * @param {string} comGroupCode mã nhóm chỉ số ('VNINDEX' mặc định)
+ * @param {string} range 'today' | 'oneWeek' | 'oneMonth' | 'yearToDate' (mặc định 'today')
  */
-async function getInvestorStatistic(key, comGroupCode = 'VNINDEX') {
+async function getInvestorStatistic(key, comGroupCode = 'VNINDEX', range = 'today') {
     const t = INVESTOR_TYPES[key];
     if (!t) throw new Error('invalid investor type: ' + key);
     const url = `https://wl-market.fiintrade.vn/MoneyFlow/GetStatisticInvestor`
@@ -206,10 +207,17 @@ async function getInvestorStatistic(key, comGroupCode = 'VNINDEX') {
     const agg = (o) => o ? {
         buy: round1((o.foreignBuyValue || 0) / BILLION),
         sell: round1((o.foreignSellValue || 0) / BILLION),
-        net: round1(((o.foreignBuyValue || 0) - (o.foreignSellValue || 0)) / BILLION)
+        net: round1(((o.foreignBuyValue || 0) - (o.foreignSellValue || 0)) / BILLION),
+        fromDate: o.fromDate || null,
+        toDate: o.toDate || null
     } : null;
 
-    const perTicker = (((it.today && it.today.buy) || [])).map(s => ({
+    // Range hợp lệ cho topBuy/topSell
+    const VALID_RANGES = ['today', 'oneWeek', 'oneMonth', 'yearToDate'];
+    const r = VALID_RANGES.includes(range) ? range : 'today';
+    const period = it[r] || {};
+
+    const perTicker = ((period.buy) || []).map(s => ({
         ticker: s.ticker,
         net: round1(((s.foreignBuyValue || 0) - (s.foreignSellValue || 0)) / BILLION),
         percentChange: round1((s.percentPriceChange || 0) * 100),
@@ -221,9 +229,13 @@ async function getInvestorStatistic(key, comGroupCode = 'VNINDEX') {
     return {
         key,
         name: t.name,
+        range: r,
+        fromDate: period.fromDate || null,
+        toDate: period.toDate || null,
         today: agg(it.today),
         oneWeek: agg(it.oneWeek),
         oneMonth: agg(it.oneMonth),
+        yearToDate: agg(it.yearToDate),
         topBuy: desc.filter(s => s.net > 0).slice(0, 10),
         topSell: desc.filter(s => s.net < 0).slice(-10).reverse()
     };
