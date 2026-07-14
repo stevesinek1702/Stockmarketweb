@@ -866,9 +866,10 @@ app.get('/api/all-stocks', async (req, res) => {
                 ma10: formatMA(stats.ma10),
                 ma20: formatMA(stats.ma20),
                 ma45: formatMA(stats.ma45),
-                ma50: maExtra.ma50 != null ? parseFloat(maExtra.ma50.toFixed(2)) : null,
-                ma100: maExtra.ma100 != null ? parseFloat(maExtra.ma100.toFixed(2)) : null,
-                ma200: maExtra.ma200 != null ? parseFloat(maExtra.ma200.toFixed(2)) : null,
+                // ma50/100/200 từ close cache (raw VND) → chia 1000 để khớp price
+                ma50: maExtra.ma50 != null ? parseFloat((maExtra.ma50 / 1000).toFixed(2)) : null,
+                ma100: maExtra.ma100 != null ? parseFloat((maExtra.ma100 / 1000).toFixed(2)) : null,
+                ma200: maExtra.ma200 != null ? parseFloat((maExtra.ma200 / 1000).toFixed(2)) : null,
                 rsi: techSig.rsi != null ? parseFloat(techSig.rsi.toFixed(1)) : null,
                 macdHist: techSig.macdHist != null ? parseFloat(techSig.macdHist.toFixed(2)) : null,
                 macdRsiSignal: techSig.macdRsiSignal || null,
