@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập — VN Stock</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <div class="logo-icon">📊</div>
+            <div class="logo-text">VN<span class="highlight">Stock</span></div>
+        </div>
+
+        <div class="auth-error" id="errorBox"></div>
+
+        <form class="auth-form" id="loginForm">
+            <div>
+                <label for="username">Tên đăng nhập hoặc Email</label>
+                <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+            </div>
+            <div>
+                <label for="password">Mật khẩu</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="auth-btn" id="submitBtn">Đăng nhập</button>
+        </form>
+
+        <div class="auth-link">
+            Chưa có tài khoản? <a href="register.html">Đăng ký</a>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        // Nếu đã login rồi → redirect thẳng dashboard
+        (async () => {
+            const u = await VNAuth.currentUser();
+            if (u) window.location.href = '/';
+        })();
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errBox = document.getElementById('errorBox');
+            const btn = document.getElementById('submitBtn');
+            errBox.classList.remove('show');
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            btn.disabled = true;
+            btn.textContent = 'Đang đăng nhập...';
+            try {
+                await VNAuth.login(username, password);
+                window.location.href = '/';
+            } catch (err) {
+                errBox.textContent = err.message;
+                errBox.classList.add('show');
+                btn.disabled = false;
+                btn.textContent = 'Đăng nhập';
+            }
+        });
+    </script>
+</body>
+</html>

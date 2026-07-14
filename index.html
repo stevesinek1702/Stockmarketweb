@@ -40,6 +40,9 @@
                     <span class="refresh-icon">🔄</span> Cập Nhật
                 </button>
                 <span class="update-time" id="updateTime">--:--:--</span>
+                <span class="user-info" id="userInfo" style="display:none;color:var(--text-secondary);font-size:0.8rem;"></span>
+                <a href="/admin.html" id="adminLink" style="display:none;color:var(--accent-purple);font-size:0.8rem;text-decoration:none;margin-left:8px;">⚙️ Admin</a>
+                <button id="logoutBtn" style="display:none;background:none;border:1px solid var(--border-color);color:var(--text-secondary);padding:4px 10px;border-radius:6px;font-size:0.75rem;cursor:pointer;margin-left:8px;">Đăng xuất</button>
             </div>
         </div>
     </header>
@@ -1095,6 +1098,7 @@
 
     <!-- html2canvas for image export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/cache.js"></script>
     <script src="js/api.js"></script>
     <script src="js/charts.js"></script>

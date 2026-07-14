@@ -6,21 +6,28 @@
 require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
+const cookieParser = require('cookie-parser');
 const axios   = require('axios');
 const path    = require('path');
 const fs      = require('fs');
 const { scanPotential, getCachedSignals } = require('./potential-scanner');
 const fiintrade = require('./fiintrade');
 const breadthHistory = require('./breadth-history');
+const { authenticate } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Enable CORS for all routes
-app.use(cors());
+// Enable CORS for all routes (credentials để cookie httpOnly hoạt động cross-origin nếu cần)
+app.use(cors({ origin: true, credentials: true }));
 
-// Parse JSON bodies
+// Parse JSON + cookies
 app.use(express.json());
+app.use(cookieParser());
+
+// Auth middleware: đọc cookie → gắn req.user (không chặn — endpoint tự quyết).
+// Phải nằm TRƯỚC các route /api để mọi handler đều có req.user.
+app.use(authenticate);
 
 // Serve static files from parent directory
 app.use(express.static(path.join(__dirname, '..')));
@@ -154,6 +161,27 @@ async function getStaleResponse(key) {
 // ==========================================
 // FIREANT API ENDPOINTS
 // ==========================================
+
+// ── Phase 3: Auth routes (public: register/login/logout; me requires login) ─
+const { requireAuth } = require('./auth');
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/admin', require('./routes/admin'));
+
+// ── Health check (public, không cần auth) ────────────────────────────────
+app.get('/api/health', (req, res) => {
+    res.json({ success: true, status: 'ok', time: new Date().toISOString() });
+});
+
+// ── Protect tất cả /api/* còn lại — yêu cầu login ────────────────────────
+// App là private (admin duyệt tài khoản), nên mọi data endpoint đều cần auth.
+// allowlist: /api/auth/*, /api/admin/*, /api/health (đã mount ở trên, requireAuth riêng).
+app.use('/api', (req, res, next) => {
+    // Bỏ qua các path đã có route riêng (auth/admin/health)
+    if (req.path.startsWith('/auth/') || req.path.startsWith('/admin/') || req.path === '/health') {
+        return next();
+    }
+    return requireAuth(req, res, next);
+});
 
 /**
  * GET /api/quotes

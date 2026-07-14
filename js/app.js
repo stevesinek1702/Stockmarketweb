@@ -3908,7 +3908,31 @@ function switchTab(tabId) {
 }
 
 // Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // ── Phase 3: Auth gating — kiểm tra login trước khi khởi động app ──
+    if (window.VNAuth) {
+        const user = await VNAuth.currentUser();
+        if (!user) {
+            window.location.href = '/login.html';
+            return;
+        }
+        // Hiển thị user info + logout button
+        const userInfo = document.getElementById('userInfo');
+        const adminLink = document.getElementById('adminLink');
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (userInfo) { userInfo.style.display = 'inline'; userInfo.textContent = '👤 ' + user.username; }
+        if (adminLink && user.role === 'admin') adminLink.style.display = 'inline';
+        if (logoutBtn) {
+            logoutBtn.style.display = 'inline-block';
+            logoutBtn.addEventListener('click', async () => {
+                await VNAuth.logout();
+                window.location.href = '/login.html';
+            });
+        }
+        // Intercept 401 từ API → redirect login
+        VNAuth.intercept401();
+    }
+
     initApp();
     setupNewsEventListeners();
     setupIndustryTableSort();

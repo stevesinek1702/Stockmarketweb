@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký — VN Stock</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="auth-page">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <div class="logo-icon">📊</div>
+            <div class="logo-text">VN<span class="highlight">Stock</span></div>
+        </div>
+
+        <div class="auth-error" id="errorBox"></div>
+        <div class="auth-success" id="successBox"></div>
+
+        <form class="auth-form" id="registerForm">
+            <div>
+                <label for="username">Tên đăng nhập (3-30 ký tự: chữ, số, _)</label>
+                <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+            </div>
+            <div>
+                <label for="email">Email (tùy chọn)</label>
+                <input type="email" id="email" name="email" autocomplete="email">
+            </div>
+            <div>
+                <label for="password">Mật khẩu (tối thiểu 6 ký tự)</label>
+                <input type="password" id="password" name="password" autocomplete="new-password" required>
+            </div>
+            <button type="submit" class="auth-btn" id="submitBtn">Đăng ký</button>
+        </form>
+
+        <div class="auth-link">
+            Đã có tài khoản? <a href="login.html">Đăng nhập</a>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+        (async () => {
+            const u = await VNAuth.currentUser();
+            if (u) window.location.href = '/';
+        })();
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errBox = document.getElementById('errorBox');
+            const okBox = document.getElementById('successBox');
+            const btn = document.getElementById('submitBtn');
+            const form = document.getElementById('registerForm');
+            errBox.classList.remove('show');
+            okBox.classList.remove('show');
+
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim() || null;
+            const password = document.getElementById('password').value;
+
+            btn.disabled = true;
+            btn.textContent = 'Đang xử lý...';
+            try {
+                const res = await VNAuth.register(username, password, email);
+                okBox.textContent = '✅ ' + (res.message || 'Đăng ký thành công. Chờ admin duyệt.');
+                okBox.classList.add('show');
+                form.reset();
+                // Không auto-redirect — chờ duyệt
+            } catch (err) {
+                errBox.textContent = err.message;
+                errBox.classList.add('show');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Đăng ký';
+        });
+    </script>
+</body>
+</html>

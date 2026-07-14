@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản trị — VN Stock</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="admin-page">
+    <div class="admin-header">
+        <h1>👥 Quản lý người dùng</h1>
+        <div class="admin-filters">
+            <label style="color:var(--text-secondary);font-size:var(--font-size-label);">Lọc:</label>
+            <select id="statusFilter">
+                <option value="">Tất cả</option>
+                <option value="pending">Chờ duyệt</option>
+                <option value="active">Đang hoạt động</option>
+                <option value="disabled">Đã khóa</option>
+            </select>
+            <button onclick="loadUsers()">🔄 Tải lại</button>
+            <a href="/" style="padding:8px 16px;background:var(--bg-card);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);text-decoration:none;font-size:0.75rem;">← Dashboard</a>
+            <button onclick="logoutAdmin()">Đăng xuất</button>
+        </div>
+    </div>
+
+    <div id="errorBox" class="auth-error"></div>
+
+    <table class="user-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Trạng thái</th>
+                <th>Đăng ký</th>
+                <th>Login cuối</th>
+                <th>Hành động</th>
+            </tr>
+        </thead>
+        <tbody id="userTbody">
+            <tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Đang tải...</td></tr>
+        </tbody>
+    </table>
+
+    <script src="js/auth.js"></script>
+    <script>
+        let currentUser = null;
+
+        async function bootstrap() {
+            currentUser = await VNAuth.currentUser();
+            if (!currentUser) { window.location.href = '/login.html'; return; }
+            if (currentUser.role !== 'admin') {
+                document.body.innerHTML = '<div class="auth-page"><div class="auth-card"><div class="auth-error show">⛔ Bạn không có quyền admin. <a href="/" style="color:var(--accent-blue)">Về dashboard</a></div></div></div>';
+                return;
+            }
+            await loadUsers();
+        }
+
+        async function loadUsers() {
+            const status = document.getElementById('statusFilter').value;
+            const tbody = document.getElementById('userTbody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Đang tải...</td></tr>';
+            try {
+                const url = '/api/admin/users' + (status ? `?status=${status}` : '');
+                const res = await fetch(url, { credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                renderUsers(json.users);
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--accent-red);">Lỗi: ${err.message}</td></tr>`;
+            }
+        }
+
+        function fmtDate(d) {
+            if (!d) return '<span style="color:var(--text-muted)">—</span>';
+            const date = new Date(d);
+            return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('userTbody');
+            if (!users.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Không có user</td></tr>';
+                return;
+            }
+            tbody.innerHTML = users.map(u => {
+                const isSelf = u.id === currentUser.id;
+                return `<tr>
+                    <td>${u.id}</td>
+                    <td><strong>${u.username}</strong>${isSelf ? ' <span style="color:var(--accent-blue);font-size:0.65rem;">(bạn)</span>' : ''}</td>
+                    <td style="color:var(--text-secondary);">${u.email || '—'}</td>
+                    <td>${u.role === 'admin' ? '<span class="badge badge-admin">Admin</span>' : 'User'}</td>
+                    <td><span class="badge badge-${u.status}">${u.status}</span></td>
+                    <td style="font-size:0.75rem;color:var(--text-secondary);">${fmtDate(u.created_at)}</td>
+                    <td style="font-size:0.75rem;color:var(--text-secondary);">${fmtDate(u.last_login_at)}</td>
+                    <td>${actionButtons(u, isSelf)}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function actionButtons(u, isSelf) {
+            const btns = [];
+            if (u.status === 'pending') {
+                btns.push(`<button class="btn-sm btn-approve" onclick="updateUser(${u.id}, {status:'active'})">Duyệt</button>`);
+            }
+            if (u.status !== 'disabled' && !isSelf) {
+                btns.push(`<button class="btn-sm btn-disable" onclick="updateUser(${u.id}, {status:'disabled'})">Khóa</button>`);
+            }
+            if (u.status === 'disabled' && !isSelf) {
+                btns.push(`<button class="btn-sm btn-approve" onclick="updateUser(${u.id}, {status:'active'})">Kích hoạt</button>`);
+            }
+            if (u.role === 'user' && u.status !== 'pending' && !isSelf) {
+                btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'admin'})">↑ Admin</button>`);
+            }
+            if (u.role === 'admin' && !isSelf) {
+                btns.push(`<button class="btn-sm" onclick="updateUser(${u.id}, {role:'user'})">↓ User</button>`);
+            }
+            if (!isSelf) {
+                btns.push(`<button class="btn-sm btn-delete" onclick="deleteUser(${u.id}, '${u.username}')">Xóa</button>`);
+            }
+            return btns.join('');
+        }
+
+        async function updateUser(id, body) {
+            const errBox = document.getElementById('errorBox');
+            errBox.classList.remove('show');
+            try {
+                const res = await fetch(`/api/admin/users/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body)
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                await loadUsers();
+            } catch (err) {
+                errBox.textContent = err.message;
+                errBox.classList.add('show');
+            }
+        }
+
+        async function deleteUser(id, username) {
+            if (!confirm(`Xóa user "${username}"? Tất cả watchlist/portfolio/presets sẽ bị xóa theo.`)) return;
+            const errBox = document.getElementById('errorBox');
+            errBox.classList.remove('show');
+            try {
+                const res = await fetch(`/api/admin/users/${id}`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin'
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                await loadUsers();
+            } catch (err) {
+                errBox.textContent = err.message;
+                errBox.classList.add('show');
+            }
+        }
+
+        async function logoutAdmin() {
+            await VNAuth.logout();
+            window.location.href = '/login.html';
+        }
+
+        document.getElementById('statusFilter').addEventListener('change', loadUsers);
+        bootstrap();
+    </script>
+</body>
+</html>
