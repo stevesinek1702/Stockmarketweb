@@ -64,15 +64,19 @@
                 <label>Giá vốn (VND)</label>
                 <input type="number" id="pf-avgprice" placeholder="65000" min="0" step="100" style="width:140px;">
             </div>
+            <div class="form-group">
+                <label>Ngày mua (T)</label>
+                <input type="date" id="pf-buydate" style="width:150px;">
+            </div>
             <button class="auth-btn" style="margin:0;padding:9px 20px;" onclick="addOrUpdatePosition()">Thêm / Cập nhật</button>
         </div>
 
         <table class="user-table">
             <thead>
-                <tr><th>Mã</th><th>Số lượng</th><th>Giá vốn</th><th>Giá hiện tại</th><th>Giá trị</th><th>Lãi/lỗ</th><th>%</th><th></th></tr>
+                <tr><th>Mã</th><th>Số lượng</th><th>Giá vốn</th><th>Ngày mua</th><th>T+x</th><th>Giá hiện tại</th><th>Giá trị</th><th>Lãi/lỗ</th><th>%</th><th></th></tr>
             </thead>
             <tbody id="portfolioTbody">
-                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>
+                <tr><td colspan="10" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>
             </tbody>
         </table>
     </div>
@@ -110,6 +114,8 @@
             currentUser = await VNAuth.currentUser();
             if (!currentUser) { window.location.href = '/login.html'; return; }
             document.getElementById('userInfo').textContent = '👤 ' + currentUser.username;
+            // Mặc định ô ngày mua = hôm nay
+            document.getElementById('pf-buydate').value = new Date().toISOString().slice(0, 10);
             await loadPortfolio();
             await loadWatchlist();
         }
@@ -147,6 +153,40 @@
             } catch (e) { /* ignore — prices optional */ }
         }
 
+        // ---- T+x: tính số ngày giao dịch còn chờ (luật VN: T+2) ----
+        // Trả về { buyDateStr, badge } — badge hiển thị tình trạng T+x.
+        function computeTx(buyDateInput) {
+            if (!buyDateInput) return { buyDateStr: '—', badge: '<span style="color:var(--text-muted);">—</span>' };
+            const buy = new Date(buyDateInput);
+            if (isNaN(buy.getTime())) return { buyDateStr: '—', badge: '—' };
+            const buyStr = buy.toLocaleDateString('vi-VN');
+
+            // Đếm ngày giao dịch (bỏ T7/CN) từ ngày mua đến hôm nay
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            buy.setHours(0, 0, 0, 0);
+            if (buy > today) {
+                // Ngày mua trong tương lai (lệnh T tương lai)
+                return { buyDateStr: buyStr, badge: '<span style="color:var(--accent-yellow);">⏳ Chưa tới ngày</span>' };
+            }
+            let tradingDays = 0;
+            const cursor = new Date(buy);
+            // Nếu ngày mua là cuối tuần → lệnh sang T2 kế tiếp
+            while (cursor.getDay() === 0 || cursor.getDay() === 6) cursor.setDate(cursor.getDate() + 1);
+            const adjustedBuy = new Date(cursor);
+            while (cursor < today) {
+                cursor.setDate(cursor.getDate() + 1);
+                if (cursor.getDay() !== 0 && cursor.getDay() !== 6) tradingDays++;
+            }
+            // tradingDays = số ngày giao dịch đã trôi qua kể từ T (0 = hôm nay là T)
+            if (tradingDays < 2) {
+                const left = 2 - tradingDays;
+                return { buyDateStr: buyStr, badge: `<span style="color:var(--accent-yellow);">⏳ T+${left}</span>` };
+            }
+            // Đã qua T+2 → bán được
+            return { buyDateStr: buyStr, badge: '<span style="color:var(--accent-green);">✅ Bán được</span>' };
+        }
+
         // ---- PORTFOLIO ----
         async function loadPortfolio() {
             try {
@@ -161,7 +201,7 @@
                 const tbody = document.getElementById('portfolioTbody');
                 let totalCost = 0, totalValue = 0;
                 if (!items.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);">Chưa có vị thế nào.</td></tr>';
                 } else {
                     tbody.innerHTML = items.map(item => {
                         const cur = priceCache[item.symbol] || {};
@@ -174,10 +214,14 @@
                         const sign = pnl >= 0 ? '+' : '';
                         totalCost += cost;
                         totalValue += value;
+                        // T+x: ngày mua + 2 ngày giao dịch (luật HOSE/HNX/UPCoM)
+                        const tInfo = computeTx(item.buy_date || item.created_at);
                         return `<tr>
                             <td><strong>${item.symbol}</strong></td>
                             <td>${item.quantity.toLocaleString('vi-VN')}</td>
                             <td>${item.avg_price.toLocaleString('vi-VN')}</td>
+                            <td style="font-size:0.78rem;color:var(--text-secondary);">${tInfo.buyDateStr}</td>
+                            <td>${tInfo.badge}</td>
                             <td>${curPrice ? curPrice.toLocaleString('vi-VN') : '—'}</td>
                             <td>${value ? value.toLocaleString('vi-VN') : '—'}</td>
                             <td style="color:${cls}">${value ? sign + Math.round(pnl).toLocaleString('vi-VN') : '—'}</td>
@@ -206,18 +250,20 @@
             const symbol = document.getElementById('pf-symbol').value.trim().toUpperCase();
             const quantity = parseFloat(document.getElementById('pf-quantity').value);
             const avg_price = parseFloat(document.getElementById('pf-avgprice').value);
+            const buy_date = document.getElementById('pf-buydate').value || null;
             if (!symbol || !quantity || !avg_price) { showError('Nhập đủ mã/số lượng/giá vốn'); return; }
             try {
                 const res = await fetch('/api/user/portfolio', {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbol, quantity, avg_price })
+                    body: JSON.stringify({ symbol, quantity, avg_price, buy_date })
                 });
                 const json = await res.json();
                 if (!json.success) throw new Error(json.error);
                 document.getElementById('pf-symbol').value = '';
                 document.getElementById('pf-quantity').value = '';
                 document.getElementById('pf-avgprice').value = '';
+                document.getElementById('pf-buydate').value = new Date().toISOString().slice(0, 10);
                 await loadPortfolio();
             } catch (err) { showError(err.message); }
         }

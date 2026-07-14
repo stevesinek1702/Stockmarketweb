@@ -95,7 +95,7 @@ router.delete('/watchlist/:symbol', async (req, res) => {
 router.get('/portfolio', async (req, res) => {
     try {
         const r = await query(
-            `SELECT id, symbol, quantity, avg_price, created_at, updated_at
+            `SELECT id, symbol, quantity, avg_price, buy_date, created_at, updated_at
              FROM user_portfolio
              WHERE user_id = $1 ORDER BY symbol ASC`,
             [req.user.id]
@@ -109,27 +109,37 @@ router.get('/portfolio', async (req, res) => {
 
 /**
  * POST /api/user/portfolio — thêm/cập nhật vị thế.
- * Body: { symbol, quantity, avg_price }
+ * Body: { symbol, quantity, avg_price, buy_date? (YYYY-MM-DD) }
  * UPSERT theo (user_id, symbol).
  */
 router.post('/portfolio', async (req, res) => {
     try {
-        const { symbol, quantity, avg_price } = req.body;
+        const { symbol, quantity, avg_price, buy_date } = req.body;
         if (!validSymbol(symbol)) {
             return res.status(400).json({ success: false, error: 'Symbol không hợp lệ' });
         }
         if (!validNumber(quantity) || !validNumber(avg_price)) {
             return res.status(400).json({ success: false, error: 'quantity/avg_price phải là số ≥ 0' });
         }
+        // buy_date tùy chọn; validate định dạng YYYY-MM-DD
+        let buyDateValue = null;
+        if (buy_date) {
+            const d = new Date(buy_date);
+            if (isNaN(d.getTime())) {
+                return res.status(400).json({ success: false, error: 'Ngày mua không hợp lệ (YYYY-MM-DD)' });
+            }
+            buyDateValue = d.toISOString().slice(0, 10);
+        }
         const r = await query(
-            `INSERT INTO user_portfolio (user_id, symbol, quantity, avg_price)
-             VALUES ($1, UPPER($2), $3, $4)
+            `INSERT INTO user_portfolio (user_id, symbol, quantity, avg_price, buy_date)
+             VALUES ($1, UPPER($2), $3, $4, $5)
              ON CONFLICT (user_id, symbol) DO UPDATE
                SET quantity = EXCLUDED.quantity,
                    avg_price = EXCLUDED.avg_price,
+                   buy_date = COALESCE(EXCLUDED.buy_date, user_portfolio.buy_date),
                    updated_at = now()
-             RETURNING id, symbol, quantity, avg_price, created_at, updated_at`,
-            [req.user.id, symbol.toUpperCase(), quantity, avg_price]
+             RETURNING id, symbol, quantity, avg_price, buy_date, created_at, updated_at`,
+            [req.user.id, symbol.toUpperCase(), quantity, avg_price, buyDateValue]
         );
         res.status(201).json({ success: true, item: r.rows[0] });
     } catch (err) {
