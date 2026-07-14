@@ -4592,36 +4592,35 @@ button.scanning::after {
 .notif-item .ni-name { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
 .notif-item .ni-meta { color: var(--text-muted); font-size: 0.68rem; margin-top: 2px; }
 
-/* Investor top 4-group table (như Google Sheet) — 8 cột, 2 phần Mua/Bán */
-.ig-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+/* Investor top 4-group table (như Google Sheet) — 16 cột: 4 nhóm × (MãMua|GiáMua|MãBán|GiáBán) */
+.ig-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .ig-table th, .ig-table td {
-    padding: 4px 8px; text-align: left; border-bottom: 1px solid var(--border-color);
+    padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border-color);
     white-space: nowrap;
 }
 .ig-table thead th {
-    position: sticky; top: 0; background: var(--bg-secondary); z-index: 2;
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em;
-    color: var(--text-muted); font-weight: 600; border-bottom: 2px solid var(--border-color);
+    background: var(--bg-secondary); z-index: 2;
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.02em;
+    color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color);
 }
+/* Hàng 1: tên nhóm NĐT span 4 cột */
 .ig-table .ig-group-header th {
-    text-align: center; font-size: 0.78rem; color: var(--text-primary);
-    font-family: var(--font-display); padding: 6px;
+    text-align: center; font-size: 0.8rem; color: var(--text-primary);
+    font-family: var(--font-display); padding: 6px; border-bottom: 2px solid var(--border-color);
 }
-.ig-table .ig-section-row td {
-    background: var(--bg-secondary); font-weight: 600; text-align: center;
-    padding: 6px; font-size: 0.85rem;
-}
-.ig-table .ig-section-buy { color: var(--accent-green); }
-.ig-table .ig-section-sell { color: var(--accent-red); }
-.ig-table .ig-rank { color: var(--text-muted); width: 28px; text-align: right; font-size: 0.72rem; }
-.ig-table .ig-tk { font-weight: 600; color: var(--text-primary); cursor: pointer; }
-.ig-table .ig-tk:hover { color: var(--accent-blue); }
-.ig-table .ig-val-pos { color: var(--accent-green); font-weight: 500; }
-.ig-table .ig-val-neg { color: var(--accent-red); font-weight: 500; }
+/* Hàng 2: Mã Mua | Giá | Mã Bán | Giá lặp lại */
 .ig-table .ig-sub-header th {
-    background: var(--bg-secondary); text-align: center;
-    font-size: 0.62rem; color: var(--text-muted); padding: 3px;
+    text-align: center; font-size: 0.6rem; color: var(--text-muted); padding: 3px;
 }
+.ig-table .ig-sub-buy { color: var(--accent-green) !important; }
+.ig-table .ig-sub-sell { color: var(--accent-red) !important; }
+.ig-table .ig-rank { color: var(--text-muted); width: 24px; text-align: right; font-size: 0.7rem; }
+.ig-table .ig-tk { font-weight: 600; color: var(--text-primary); cursor: pointer; }
+.ig-table .ig-tk:hover { color: var(--accent-blue); text-decoration: underline; }
+.ig-table .ig-val-pos { color: var(--accent-green); font-weight: 500; text-align: right; }
+.ig-table .ig-val-neg { color: var(--accent-red); font-weight: 500; text-align: right; }
+/* Border phân tách nhóm (cột cuối của mỗi nhóm) */
+.ig-table .ig-group-border { border-right: 2px solid var(--border-color); }
 .ig-table tbody tr:hover td { background: var(--bg-card-hover); }
 
 .auth-btn {
