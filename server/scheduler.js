@@ -1,5 +1,9 @@
 const axios = require('axios');
 
+// Internal secret để bypass auth cho scheduler self-call.
+// Middleware authenticate bỏ qua nếu header này khớp (chỉ scheduler nội bộ biết).
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-internal';
+
 /**
  * Refresh Scheduler — định kỳ tự gọi các endpoint nội bộ để làm mới cache.
  *
@@ -43,7 +47,11 @@ const timers = [];
 async function refreshOne(target, port) {
     const url = `http://localhost:${port}${target.url}`;
     try {
-        await axios.get(url, { timeout: 30000 });
+        // Gửi X-Internal-Secret để bypass auth (endpoint requireAuth sẽ allow)
+        await axios.get(url, {
+            timeout: 30000,
+            headers: { 'X-Internal-Secret': INTERNAL_SECRET }
+        });
         console.log(`🔄 [scheduler] refreshed ${target.key}`);
     } catch (e) {
         console.warn(`⚠️  [scheduler] refresh ${target.key} failed: ${e.message}`);

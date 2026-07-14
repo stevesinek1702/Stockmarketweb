@@ -98,6 +98,15 @@ function clearAuthCookies(res) {
  * Nếu cả 2 đều thất bại → req.user = null (không chặn — endpoint tự quyết).
  */
 async function authenticate(req, res, next) {
+    // Internal bypass: scheduler self-call gửi X-Internal-Secret.
+    // Chỉ server nội bộ biết giá trị này → không phải vector attack từ ngoài
+    // (kẻ tấn công bên ngoài không biết INTERNAL_SECRET).
+    const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-internal';
+    if (req.get('X-Internal-Secret') === INTERNAL_SECRET) {
+        req.user = { id: 0, username: 'scheduler', role: 'system' };
+        return next();
+    }
+
     const access = req.cookies && req.cookies[COOKIE_ACCESS];
     const refresh = req.cookies && req.cookies[COOKIE_REFRESH];
 
