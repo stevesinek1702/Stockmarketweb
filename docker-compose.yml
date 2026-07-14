@@ -1,5 +1,16 @@
 version: '3.8'
 
+# Deploy lệnh (single-command):
+#   docker compose up -d --build
+#
+# Layout dịch vụ:
+#   postgres  ← dữ liệu người dùng + cache DB
+#   redis     ← cache chính
+#   express   ← ứng dụng (cluster PM2), MỞ CỔNG 8080 TỚI HOST
+#
+# KHÔNG chạy nginx trong docker — VPS đã có nginx host. Nếu sau này muốn dùng cổng 80,
+# cấu hình nginx của host để reverse proxy → express:8080.
+
 services:
   # ── Database (Postgres) ──────────────────────────────────
   postgres:
@@ -10,30 +21,26 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vnstock}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vnstock_dev}
       POSTGRES_DB: ${POSTGRES_DB:-vnstock}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vnstock}"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
   # ── Cache (Redis) ────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: vnstock-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
   # ── App (Express + PM2 cluster) ──────────────────────────
   express:
@@ -61,27 +68,11 @@ services:
       COOKIE_SYNC_HOURS: ${COOKIE_SYNC_HOURS:-5}
       GSHEET_SYNC_URL: ${GSHEET_SYNC_URL:-}
       GSHEET_SYNC_TOKEN: ${GSHEET_SYNC_TOKEN:-}
-    # KHÔNG expose port ra host — nginx sẽ reverse proxy
-    expose:
-      - "3000"
-    volumes:
-      # Mount data dir để filter-presets.json (legacy) + logs persist
-      - expressdata:/app/server/data
-
-  # ── Reverse proxy (Nginx) ────────────────────────────────
-  nginx:
-    image: nginx:alpine
-    container_name: vnstock-nginx
-    restart: unless-stopped
-    depends_on:
-      - express
+    # MỞ CỔNG 8080 TỚI HOST (không đụng cổng 80/443 của nginx host)
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:3000"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-    # Cert (Let's Encrypt) mount bên ngoài — tạo bằng certbot riêng
+      - expressdata:/app/server/data
 
 volumes:
   pgdata:
