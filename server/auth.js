@@ -65,7 +65,10 @@ function cookieOptions(maxAgeSec) {
         sameSite: 'strict',
         path: '/',
         maxAge: maxAgeSec * 1000,
-        secure: process.env.NODE_ENV === 'production'
+        // secure chỉ bật khi có HTTPS (COOKIE_SECURE=true).
+        // Mặc định FALSE để HTTP hoạt động — khi deploy HTTPS, set COOKIE_SECURE=true.
+        // Lưu ý: KHÔNG bind theo NODE_ENV vì dev/prod đều có thể chạy HTTP.
+        secure: process.env.COOKIE_SECURE === 'true'
     };
 }
 
