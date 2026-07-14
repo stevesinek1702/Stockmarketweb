@@ -97,6 +97,9 @@ async function fetchAPI(url, headers = {}) {
 // Cookie cache for FireAnt API
 let fireAntCookieCache = { cookie: '', fetchedAt: 0 };
 
+// In-process cache MA50/100/200 map (rebuild 1h) cho /api/all-stocks
+let maMapCache = { time: 0, map: {} };
+
 /**
  * Fetch FireAnt cookie from Google Sheets (reuse logic from /api/all-stocks)
  */
@@ -795,9 +798,45 @@ app.get('/api/all-stocks', async (req, res) => {
             return parseFloat((price / 1000).toFixed(2));
         };
 
+        // ── Build MA50/100/200 map 1 lần (cache in-process 1h) ──
+        // breadth-history đã có close 620 ngày/mã, tính SMA nhanh.
+        let maMap = {};
+        if (!maMapCache.time || Date.now() - maMapCache.time > 3600000) {
+            try {
+                const { getMAForSymbol } = require('./breadth-history');
+                const allSyms = (Array.isArray(allStocks) ? allStocks : []).map(s => s.Symbol).filter(Boolean);
+                const tmp = {};
+                allSyms.forEach(sym => { tmp[sym] = getMAForSymbol(sym, [50, 100, 200]); });
+                maMapCache = { time: Date.now(), map: tmp };
+                console.log(`📈 MA50/100/200 loaded for ${Object.keys(tmp).length} symbols`);
+            } catch (e) {
+                console.warn('⚠️ MA map build fail:', e.message);
+            }
+        }
+        maMap = maMapCache.map || {};
+
+        // ── Build MACD/RSI signal map từ potential-signals cache ──
+        const macdRsiMap = {};
+        try {
+            const { getCachedSignals } = require('./potential-scanner');
+            const sigs = getCachedSignals();
+            if (sigs && Array.isArray(sigs.macdRsiSignals)) {
+                sigs.macdRsiSignals.forEach(sg => {
+                    macdRsiMap[sg.symbol] = {
+                        macdRsiSignal: sg.signalType, // 'BUY' | 'SELL'
+                        macdRsiIndicator: sg.indicator, // 'MACD' | 'RSI' | 'BOTH'
+                        rsi: sg.rsi || null,
+                        macdHist: sg.histogram || null
+                    };
+                });
+            }
+        } catch (e) { /* potential-scanner chưa sẵn sàng */ }
+
         // Helper to transform stock data với volRatio
         const transformStock = (s) => {
             const stats = tradingStatsMap[s.Symbol] || {};
+            const maExtra = maMap[s.Symbol] || {};
+            const techSig = macdRsiMap[s.Symbol] || {};
             const currentVol = s.TotalVolume || 0;
             const avgVol = stats.avgVolume || 0;
             // Tính % khối lượng so với TB: (currentVol / avgVol - 1) * 100
@@ -828,6 +867,13 @@ app.get('/api/all-stocks', async (req, res) => {
                 ma10: formatMA(stats.ma10),
                 ma20: formatMA(stats.ma20),
                 ma45: formatMA(stats.ma45),
+                ma50: maExtra.ma50 != null ? parseFloat(maExtra.ma50.toFixed(2)) : null,
+                ma100: maExtra.ma100 != null ? parseFloat(maExtra.ma100.toFixed(2)) : null,
+                ma200: maExtra.ma200 != null ? parseFloat(maExtra.ma200.toFixed(2)) : null,
+                rsi: techSig.rsi != null ? parseFloat(techSig.rsi.toFixed(1)) : null,
+                macdHist: techSig.macdHist != null ? parseFloat(techSig.macdHist.toFixed(2)) : null,
+                macdRsiSignal: techSig.macdRsiSignal || null,
+                macdRsiIndicator: techSig.macdRsiIndicator || null,
                 demandStrength: parseFloat(demandStrength)
             };
         };

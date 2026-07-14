@@ -4200,7 +4200,13 @@ const FILTER_COLUMNS = [
     { key: 'ma10', label: 'MA10' },
     { key: 'ma20', label: 'MA20' },
     { key: 'ma45', label: 'MA45' },
+    { key: 'ma50', label: 'MA50' },
+    { key: 'ma100', label: 'MA100' },
+    { key: 'ma200', label: 'MA200' },
     { key: 'demandStrength', label: 'Lực Cầu' },
+    { key: 'rsi', label: 'RSI (14)' },
+    { key: 'macdHist', label: 'MACD Histogram' },
+    { key: 'macdRsiSignal', label: 'Tín hiệu MACD/RSI', type: 'text' },
     { key: 'ma2_trend', label: 'MA2 Cắt Lên MA10 (1=Có)' }
 ];
 
@@ -4250,10 +4256,15 @@ function runStockFilter() {
     const conditions = [];
 
     rows.forEach(row => {
+        const col = row.querySelector('.cond-column').value;
+        const colDef = FILTER_COLUMNS.find(c => c.key === col);
+        const isText = colDef && colDef.type === 'text';
+        const rawVal = row.querySelector('.cond-value').value;
         conditions.push({
-            column: row.querySelector('.cond-column').value,
+            column: col,
             operator: row.querySelector('.cond-operator').value,
-            value: parseFloat(row.querySelector('.cond-value').value)
+            value: isText ? String(rawVal).trim().toUpperCase() : parseFloat(rawVal),
+            isText
         });
     });
 
@@ -4276,32 +4287,38 @@ function runStockFilter() {
     }
 
     const results = allStocks.filter(stock => {
-        // Prepare specialized derived values for filtering
         const prevPrice = stock.price - (stock.change || 0);
-        const ma2 = (stock.price + prevPrice) / 2; // SMA2
+        const ma2 = (stock.price + prevPrice) / 2;
         const ma10 = stock.ma10 || 0;
-
-        // Cross Up: Currently MA2 > MA10, but previously (approx yesterday) it was likely below.
-        // We use prevPrice < ma10 as a proxy since we don't have prevMA10
         const ma2_trend = (ma10 > 0 && ma2 > ma10 && prevPrice < ma10) ? 1 : 0;
-
-        // Extended Stock Object for Check
         const checkStock = { ...stock, ma2_trend };
 
         const pass = conditions.every(cond => {
             let stockVal = checkStock[cond.column];
 
-            // Handle potentially undefined values safely
+            // Text comparison (MACD/RSI signal)
+            if (cond.isText) {
+                if (stockVal === undefined || stockVal === null) return cond.operator === 'ne';
+                stockVal = String(stockVal).toUpperCase();
+                const target = String(cond.value).toUpperCase();
+                if (cond.operator === 'eq') return stockVal === target;
+                if (cond.operator === 'ne') return stockVal !== target;
+                if (cond.operator === 'contains') return stockVal.includes(target);
+                return false;
+            }
+
+            // Number comparison
             if (stockVal === undefined || stockVal === null) stockVal = 0;
             else stockVal = parseFloat(stockVal);
-
             const targetVal = cond.value;
-
-            if (isNaN(stockVal)) return false;
+            if (isNaN(stockVal) || isNaN(targetVal)) return false;
 
             if (cond.operator === 'gt') return stockVal > targetVal;
+            if (cond.operator === 'gte') return stockVal >= targetVal;
             if (cond.operator === 'lt') return stockVal < targetVal;
-            if (cond.operator === 'eq') return stockVal === targetVal;
+            if (cond.operator === 'lte') return stockVal <= targetVal;
+            if (cond.operator === 'eq') return Math.abs(stockVal - targetVal) < 0.01;
+            if (cond.operator === 'ne') return Math.abs(stockVal - targetVal) >= 0.01;
             return true;
         });
 
@@ -4309,12 +4326,6 @@ function runStockFilter() {
     });
 
     console.log(`✅ Filter Results: ${results.length} stocks found.`);
-    if (results.length === 0 && allStocks.length > 0) {
-        console.log('⚠️ No stocks matched. Converting one sample stock for debugging:');
-        const sample = allStocks.find(s => s.symbol === 'HPG') || allStocks[0];
-        console.log('Sample Stock:', sample);
-    }
-
     renderFilterResults(results);
 }
 
@@ -4384,8 +4395,10 @@ function renderFilterResults(stocks) {
         }
     });
 
-    // Limit display to 100 to avoid lag if too many
-    const displayStocks = sortedStocks.slice(0, 100);
+    // Limit display to 300 để tránh lag (trước đây 100 — giờ hiển thị nhiều hơn)
+    const MAX_DISPLAY = 300;
+    const displayStocks = sortedStocks.slice(0, MAX_DISPLAY);
+    const truncated = sortedStocks.length > MAX_DISPLAY;
 
     tbody.innerHTML = displayStocks.map(stock => {
         const change = stock.change || 0;
@@ -4397,9 +4410,22 @@ function renderFilterResults(stocks) {
 
         // MA Color Logic: Green if Price > MA, Red if Price < MA
         const price = stock.price || 0;
-        const ma10Class = stock.ma10 ? (price > stock.ma10 ? 'text-green' : 'text-red') : '';
-        const ma20Class = stock.ma20 ? (price > stock.ma20 ? 'text-green' : 'text-red') : '';
-        const ma45Class = stock.ma45 ? (price > stock.ma45 ? 'text-green' : 'text-red') : '';
+        const maClass = (ma) => ma ? (price > ma ? 'text-green' : 'text-red') : '';
+        const fmtMA = (ma) => (ma != null) ? ma : '--';
+
+        // RSI coloring: >70 overbought (red), <30 oversold (green)
+        const rsiVal = stock.rsi;
+        const rsiClass = rsiVal != null ? (rsiVal > 70 ? 'text-red' : (rsiVal < 30 ? 'text-green' : '')) : '';
+        const rsiCell = rsiVal != null ? rsiVal.toFixed(1) : '--';
+
+        // MACD histogram coloring
+        const macdVal = stock.macdHist;
+        const macdClass = macdVal != null ? (macdVal > 0 ? 'text-green' : (macdVal < 0 ? 'text-red' : '')) : '';
+        const macdCell = macdVal != null ? macdVal.toFixed(2) : '--';
+
+        // Signal badge
+        const sig = stock.macdRsiSignal;
+        const sigCell = sig ? `<span class="badge ${sig === 'BUY' ? 'badge-active' : 'badge-disabled'}" style="font-size:0.6rem;">${sig}</span>` : '—';
 
         return `
             <tr onclick="openTradingViewModal('${stock.symbol}')" style="cursor: pointer;">
@@ -4411,13 +4437,23 @@ function renderFilterResults(stocks) {
                 <td>${StockAPI.formatVolume(stock.volume)}</td>
                 <td>${volRatio}%</td>
                 <td>${stock.value ? stock.value.toFixed(1) : '--'}</td>
-                <td class="${ma10Class}">${stock.ma10 || '--'}</td>
-                <td class="${ma20Class}">${stock.ma20 || '--'}</td>
-                <td class="${ma45Class}">${stock.ma45 || '--'}</td>
+                <td class="${maClass(stock.ma10)}">${fmtMA(stock.ma10)}</td>
+                <td class="${maClass(stock.ma20)}">${fmtMA(stock.ma20)}</td>
+                <td class="${maClass(stock.ma45)}">${fmtMA(stock.ma45)}</td>
+                <td class="${maClass(stock.ma50)}">${fmtMA(stock.ma50)}</td>
+                <td class="${maClass(stock.ma100)}">${fmtMA(stock.ma100)}</td>
+                <td class="${maClass(stock.ma200)}">${fmtMA(stock.ma200)}</td>
+                <td class="${rsiClass}">${rsiCell}</td>
+                <td class="${macdClass}">${macdCell}</td>
+                <td>${sigCell}</td>
                 <td class="${stock.demandStrength > 50 ? 'text-green' : (stock.demandStrength < 50 ? 'text-red' : 'text-yellow')}">${stock.demandStrength}%</td>
             </tr>
         `;
     }).join('');
+
+    if (truncated) {
+        tbody.innerHTML += `<tr><td colspan="18" style="text-align:center;color:var(--text-muted);font-size:0.78rem;padding:8px;">⚠️ Hiển thị ${MAX_DISPLAY}/${sortedStocks.length} kết quả. Thêm điều kiện để thu hẹp.</td></tr>`;
+    }
 }
 
 // Call init on DOMContentLoaded
@@ -4437,15 +4473,19 @@ function addFilterCondition(presetCondition = null) {
     const colOptions = FILTER_COLUMNS.map(c => `<option value="${c.key}">${c.label}</option>`).join('');
 
     div.innerHTML = `
-        <select class="cond-column">
+        <select class="cond-column" onchange="updateCondValueInput(this)">
             ${colOptions}
         </select>
         <select class="cond-operator">
             <option value="gt">Lớn hơn (>)</option>
+            <option value="gte">Lớn hơn hoặc bằng (≥)</option>
             <option value="lt">Nhỏ hơn (<)</option>
+            <option value="lte">Nhỏ hơn hoặc bằng (≤)</option>
             <option value="eq">Bằng (=)</option>
+            <option value="ne">Khác (≠)</option>
+            <option value="contains">Chứa</option>
         </select>
-        <input type="number" class="cond-value" placeholder="Giá trị..." step="0.1">
+        <input type="text" class="cond-value" placeholder="Giá trị..." step="0.1">
         <button class="remove-condition-btn" onclick="removeFilterCondition('${id}')">×</button>
     `;
 
@@ -4456,6 +4496,33 @@ function addFilterCondition(presetCondition = null) {
         div.querySelector('.cond-column').value = presetCondition.column;
         div.querySelector('.cond-operator').value = presetCondition.operator;
         div.querySelector('.cond-value').value = presetCondition.value;
+    }
+    // Set input type theo column
+    updateCondValueInput(div.querySelector('.cond-column'));
+}
+
+// Đổi type input + placeholder tùy theo cột được chọn
+function updateCondValueInput(colSelect) {
+    const row = colSelect.closest('.filter-condition-row');
+    if (!row) return;
+    const input = row.querySelector('.cond-value');
+    const opSelect = row.querySelector('.cond-operator');
+    const col = FILTER_COLUMNS.find(c => c.key === colSelect.value);
+    if (col && col.type === 'text') {
+        input.type = 'text';
+        input.placeholder = 'VD: BUY, SELL';
+        // Hiện operator contains + eq, ẩn các operator số
+        Array.from(opSelect.options).forEach(opt => {
+            opt.style.display = (opt.value === 'contains' || opt.value === 'eq' || opt.value === 'ne') ? '' : 'none';
+        });
+        if (!['contains', 'eq', 'ne'].includes(opSelect.value)) opSelect.value = 'eq';
+    } else {
+        input.type = 'number';
+        input.placeholder = 'Giá trị...';
+        input.step = '0.1';
+        Array.from(opSelect.options).forEach(opt => {
+            opt.style.display = (opt.value === 'contains') ? 'none' : '';
+        });
     }
 }
 

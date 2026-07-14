@@ -652,6 +652,42 @@ async function _defaultFetchFn(url, headers) {
     }
 }
 
+/**
+ * Lấy giá trị MA gần nhất cho 1 symbol (dùng cho bộ lọc CP).
+ * Đọc chuỗi close từ cache ma-breadth-close.json, tính SMA prefix-sum.
+ *
+ * @param {string} symbol
+ * @param {number[]} periods [50, 100, 200] — các kỳ MA cần tính
+ * @returns {Object} { ma50: 23.5, ma100: 22.1, ma200: null } — null nếu chưa đủ data
+ */
+function getMAForSymbol(symbol, periods = [50, 100, 200]) {
+    try {
+        const raw = fs.readFileSync(CLOSE_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        const sym = data.symbols && data.symbols[symbol];
+        if (!sym || !Array.isArray(sym.closes) || !sym.closes.length) {
+            const empty = {};
+            periods.forEach(p => { empty['ma' + p] = null; });
+            return empty;
+        }
+        const closes = sym.closes;
+        const result = {};
+        periods.forEach(p => {
+            if (closes.length < p) {
+                result['ma' + p] = null;
+            } else {
+                const slice = closes.slice(-p);
+                result['ma' + p] = slice.reduce((a, b) => a + b, 0) / p;
+            }
+        });
+        return result;
+    } catch (e) {
+        const empty = {};
+        periods.forEach(p => { empty['ma' + p] = null; });
+        return empty;
+    }
+}
+
 module.exports = {
     // pure functions (test)
     computeMAWithPrefix,
@@ -667,6 +703,7 @@ module.exports = {
     getBreadth,
     getMeta,
     hasToday,
+    getMAForSymbol,
     // build API
     buildHistory,
     buildToday
