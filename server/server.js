@@ -360,11 +360,13 @@ app.get('/api/market-dashboard', async (req, res) => {
  * Mã tác động tích cực/tiêu cực tới VNINDEX.
  *
  * Nguồn cũ Fialda (fwtapi2.fialda.com) đã chết (timeout 07/2026). Chuyển sang tính
- * từ FireAnt: tác động ≈ (vốn hóa) × (% thay đổi giá). Đây chính là "contribution"
- * của từng mã vào biến động chỉ số (mã vốn hóa lớn + giá biến nhiều = tác động mạnh).
+ * từ FireAnt: contribution điểm index của từng mã =
+ *   (vốn hóa mã / tổng vốn hóa HOSE) × (% thay đổi / 100) × giá trị VNINDEX.
+ * Tổng contribution của các mã ≈ biến động điểm VNINDEX phiên đó.
  *
  * Dùng TradingStatistic (SharesOutStanding, LastPriceClose, AvgPrice10d) +
  * Quotes (PriceCurrent, PricePercentChange) — cùng nguồn đã dùng cho marketcap.
+ * Giá trị VNINDEX lấy từ IntradayMarketStatistic (field IndexCurrent).
  */
 app.get('/api/influential-stocks', async (req, res) => {
     // Cache 60 seconds
@@ -387,14 +389,21 @@ app.get('/api/influential-stocks', async (req, res) => {
         const tradingUrl = `${API_CONFIG.fireant.base}/Markets/TradingStatistic`;
         const quotesUrl = `${API_CONFIG.fireant.base}/Markets/Quotes`;
 
-        const [tradingData, _] = await Promise.all([
+        const intradayUrl = `${API_CONFIG.fireant.base}/Markets/IntradayMarketStatistic?symbol=HOSTC`;
+        const [tradingData, _, vnindexSeries] = await Promise.all([
             fetchAPI(tradingUrl, authHeaders).catch(() => []),
-            Promise.resolve()
+            Promise.resolve(),
+            fetchAPI(intradayUrl, authHeaders).catch(() => [])
         ]);
 
         if (!Array.isArray(tradingData) || !tradingData.length) {
             return res.status(500).json({ success: false, error: 'No trading data from FireAnt' });
         }
+
+        // Giá trị VNINDEX hiện tại (điểm) — dùng làm base để scale contribution về "điểm index".
+        // Lấy point cuối của IntradayMarketStatistic (latest), fallback 1900 nếu fetch lỗi.
+        const vnindexValue = (Array.isArray(vnindexSeries) && vnindexSeries.length &&
+            vnindexSeries[vnindexSeries.length - 1].IndexCurrent) || 1900;
 
         // Fetch quotes cho tất cả mã (batch) để có PricePercentChange real-time
         const allSymbols = tradingData.filter(s => s.Symbol && s.Symbol.length === 3).map(s => s.Symbol);
@@ -409,9 +418,9 @@ app.get('/api/influential-stocks', async (req, res) => {
             });
         }
 
-        // Tính impact = marketCap × %change (đơn vị: tỷ VND × %). Đây là proxy cho contribution.
-        // Normalize về "điểm index" gần đúng: affectValue = marketCap × pctChange / totalMarketCap × 100
-        // Nhưng để đơn giản & trực quan, giữ raw impact (vốn hóa × %) — số lớn = tác động lớn.
+        // Tính contribution điểm index: contribution_i = (marketCap_i / totalMarketCap)
+        // × (pctChange_i / 100) × vnindexValue. Tổng các contribution của mã tăng −
+        // mã giảm ≈ biến động điểm VNINDEX phiên đó. Đơn vị: điểm VNINDEX (~1900).
         const stocks = [];
         let totalMarketCap = 0;
         tradingData.forEach(stock => {
@@ -422,23 +431,36 @@ app.get('/api/influential-stocks', async (req, res) => {
             const marketCap = priceCurrent * shares;
             if (marketCap <= 0) return;
             totalMarketCap += marketCap;
-            const pctChange = quote.PricePercentChange ? quote.PricePercentChange * 100 : 0;
-            // Impact score = marketCap (nghìn tỷ) × %change → đơn vị "nghìn tỷ·%"
-            const impact = (marketCap / 1e12) * pctChange;
             stocks.push({
                 symbol: stock.Symbol,
-                marketCap: Math.round(marketCap / 1e12 * 10) / 10,  // nghìn tỷ
-                percentChange: Math.round(pctChange * 100) / 100,
-                impact: Math.round(impact * 100) / 100
+                marketCap,
+                priceCurrent,
+                shares,
+                pctChange: quote.PricePercentChange ? quote.PricePercentChange * 100 : 0
             });
         });
 
-        // Sort theo impact giảm dần → top positive (đầu) + top negative (cuối)
-        stocks.sort((a, b) => b.impact - a.impact);
-        const positive = stocks.filter(s => s.impact > 0).slice(0, 10);
-        const negative = stocks.filter(s => s.impact < 0).slice(-10).reverse();
+        if (totalMarketCap <= 0) {
+            return res.status(500).json({ success: false, error: 'Cannot compute total market cap' });
+        }
 
-        console.log(`✅ Influential stocks: ${positive.length} positive, ${negative.length} negative (from ${stocks.length} stocks)`);
+        // Vòng 2: normalize về điểm index contribution.
+        const resultStocks = stocks.map(s => {
+            const impact = (s.marketCap / totalMarketCap) * (s.pctChange / 100) * vnindexValue;
+            return {
+                symbol: s.symbol,
+                marketCap: Math.round(s.marketCap / 1e12 * 10) / 10,  // nghìn tỷ
+                percentChange: Math.round(s.pctChange * 100) / 100,
+                impact: Math.round(impact * 100) / 100
+            };
+        });
+
+        // Sort theo impact giảm dần → top positive (đầu) + top negative (cuối)
+        resultStocks.sort((a, b) => b.impact - a.impact);
+        const positive = resultStocks.filter(s => s.impact > 0).slice(0, 10);
+        const negative = resultStocks.filter(s => s.impact < 0).slice(-10).reverse();
+
+        console.log(`✅ Influential stocks: ${positive.length} positive, ${negative.length} negative (from ${resultStocks.length} stocks, VNINDEX=${vnindexValue}, totalMCap=${(totalMarketCap/1e12).toFixed(0)}nghìn tỷ)`);
 
         const responseData = {
             success: true,
