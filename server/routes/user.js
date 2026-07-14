@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
-const { requireAuth } = require('../auth');
+const { requireAuth, hashPassword, verifyPassword } = require('../auth');
 
 // Toàn bộ user routes yêu cầu login
 router.use(requireAuth);
@@ -157,6 +157,43 @@ router.delete('/portfolio/:symbol', async (req, res) => {
         res.json({ success: true, removed: symbol });
     } catch (err) {
         console.error('portfolio delete error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
+// ==========================================
+// CHANGE PASSWORD — /api/user/password
+// ==========================================
+
+/**
+ * POST /api/user/password — user tự đổi mật khẩu.
+ * Body: { currentPassword, newPassword }
+ */
+router.post('/password', async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ success: false, error: 'Thiếu mật khẩu hiện tại/mật khẩu mới' });
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 200) {
+            return res.status(400).json({ success: false, error: 'Mật khẩu mới tối thiểu 6 ký tự' });
+        }
+
+        // Lấy hash hiện tại để verify
+        const r = await query(`SELECT password_hash FROM users WHERE id = $1`, [req.user.id]);
+        if (r.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'User không tồn tại' });
+        }
+        const ok = await verifyPassword(currentPassword, r.rows[0].password_hash);
+        if (!ok) {
+            return res.status(401).json({ success: false, error: 'Mật khẩu hiện tại không đúng' });
+        }
+
+        const hash = await hashPassword(newPassword);
+        await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, req.user.id]);
+        res.json({ success: true, message: 'Đổi mật khẩu thành công' });
+    } catch (err) {
+        console.error('change password error:', err.message);
         res.status(500).json({ success: false, error: 'Lỗi server' });
     }
 });

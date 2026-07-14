@@ -3920,9 +3920,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const userInfo = document.getElementById('userInfo');
         const adminLink = document.getElementById('adminLink');
         const portfolioLink = document.getElementById('portfolioLink');
+        const changePwLink = document.getElementById('changePwLink');
         const logoutBtn = document.getElementById('logoutBtn');
         if (userInfo) { userInfo.style.display = 'inline'; userInfo.textContent = '👤 ' + user.username; }
         if (portfolioLink) portfolioLink.style.display = 'inline';
+        if (changePwLink) changePwLink.style.display = 'inline';
         if (adminLink && user.role === 'admin') adminLink.style.display = 'inline';
         if (logoutBtn) {
             logoutBtn.style.display = 'inline-block';

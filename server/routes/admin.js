@@ -85,7 +85,7 @@ router.post('/users', async (req, res) => {
 router.patch('/users/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { status, role } = req.body;
+        const { status, role, password } = req.body;
 
         // Ngăn admin tự khóa/hạ quyền chính mình
         if (id === req.user.id && (status === 'disabled' || (role && role !== 'admin'))) {
@@ -104,6 +104,15 @@ router.patch('/users/:id', async (req, res) => {
         if (role && ['user', 'admin'].includes(role)) {
             params.push(role);
             sets.push(`role = $${params.length}`);
+        }
+        // Admin reset mật khẩu cho user
+        if (password !== undefined) {
+            if (!validPassword(password)) {
+                return res.status(400).json({ success: false, error: 'Mật khẩu mới tối thiểu 6 ký tự' });
+            }
+            const hash = await hashPassword(password);
+            params.push(hash);
+            sets.push(`password_hash = $${params.length}`);
         }
         if (sets.length === 0) {
             return res.status(400).json({ success: false, error: 'Không có field hợp lệ để cập nhật' });
