@@ -42,6 +42,20 @@
                 <span class="update-time" id="updateTime">--:--:--</span>
                 <span class="user-info" id="userInfo" style="display:none;color:var(--text-secondary);font-size:0.8rem;"></span>
                 <a href="/portfolio.html" id="portfolioLink" style="display:none;color:var(--accent-blue);font-size:0.8rem;text-decoration:none;margin-left:8px;">💼 Danh mục</a>
+                <!-- 🔔 Chuông thông báo admin (chỉ admin thấy) -->
+                <div id="notifBell" style="display:none;position:relative;margin-left:8px;">
+                    <button id="notifBtn" title="Thông báo đăng ký" style="background:none;border:1px solid var(--border-color);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:0.95rem;line-height:1;color:var(--text-secondary);position:relative;">🔔<span id="notifBadge" style="position:absolute;top:-6px;right:-6px;background:var(--accent-red);color:white;font-size:0.6rem;font-weight:700;border-radius:10px;min-width:16px;height:16px;display:none;align-items:center;justify-content:center;padding:0 3px;">0</span></button>
+                    <!-- Dropdown panel -->
+                    <div id="notifPanel" style="display:none;position:absolute;right:0;top:calc(100% + 8px);background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;box-shadow:var(--shadow-lg);width:340px;max-height:420px;overflow-y:auto;z-index:1000;padding:12px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <strong style="color:var(--text-primary);font-size:0.9rem;">🔔 Yêu cầu đăng ký</strong>
+                            <button id="notifClose" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;">✕</button>
+                        </div>
+                        <div id="notifList" style="display:flex;flex-direction:column;gap:8px;">
+                            <div style="text-align:center;color:var(--text-muted);font-size:0.8rem;padding:16px 0;">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
                 <a href="/admin.html" id="adminLink" style="display:none;color:var(--accent-purple);font-size:0.8rem;text-decoration:none;margin-left:8px;">⚙️ Admin</a>
                 <a href="/change-password.html" id="changePwLink" style="display:none;color:var(--text-secondary);font-size:0.8rem;text-decoration:none;margin-left:8px;">🔑 Đổi MK</a>
                 <button id="logoutBtn" style="display:none;background:none;border:1px solid var(--border-color);color:var(--text-secondary);padding:4px 10px;border-radius:6px;font-size:0.75rem;cursor:pointer;margin-left:8px;">Đăng xuất</button>
@@ -1101,6 +1115,7 @@
     <!-- html2canvas for image export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/admin-notif.js"></script>
     <script src="js/cache.js"></script>
     <script src="js/api.js"></script>
     <script src="js/charts.js"></script>

@@ -3926,6 +3926,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (portfolioLink) portfolioLink.style.display = 'inline';
         if (changePwLink) changePwLink.style.display = 'inline';
         if (adminLink && user.role === 'admin') adminLink.style.display = 'inline';
+        // Khởi tạo chuông thông báo admin (chỉ admin)
+        if (user.role === 'admin' && window.adminNotif) {
+            window.adminNotif.init();
+        }
         if (logoutBtn) {
             logoutBtn.style.display = 'inline-block';
             logoutBtn.addEventListener('click', async () => {

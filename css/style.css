@@ -4581,6 +4581,17 @@ button.scanning::after {
 }
 .pw-toggle:hover { opacity: 1; }
 
+/* Dropdown thông báo admin */
+.notif-item {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 8px 10px; background: var(--bg-secondary);
+    border-radius: 6px; border: 1px solid transparent;
+}
+.notif-item:hover { border-color: var(--border-color); }
+.notif-item .ni-info { flex: 1; min-width: 0; }
+.notif-item .ni-name { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
+.notif-item .ni-meta { color: var(--text-muted); font-size: 0.68rem; margin-top: 2px; }
+
 .auth-btn {
     margin-top: var(--spacing-sm);
     padding: 12px var(--spacing-lg);
