@@ -2285,73 +2285,91 @@ async function loadInvestorFlow() {
 
 /**
  * Load "Top CP Theo Dòng Tiền 4 Nhóm NĐT" — fetch /api/investor-detail MỘT LẦN,
- * cache localStorage daily, render TẤT CẢ 4 nhóm cùng lúc (như Google Sheet).
- * Layout: 4 cột (Nước ngoài | Tự doanh | Tổ chức | Cá nhân),
- * mỗi cột = header tổng (Mua/Bán/Ròng hôm nay) + Top Mua + Top Bán.
+ * cache localStorage daily, render bảng 8 cột (4 nhóm × mã+giá trị), 2 phần:
+ * phần trên TOP MUA RÒNG, phần dưới TOP BÁN RÒNG — giống Google Sheet.
  */
 async function loadInvestorTop() {
-    const grid = document.getElementById('investor-top-grid');
-    if (!grid) return;
+    const thead = document.getElementById('investor-top-thead');
+    const tbody = document.getElementById('investor-top-tbody');
+    if (!thead || !tbody) return;
 
-    const GROUP_ORDER = ['foreign', 'proprietary', 'institution', 'individual'];
+    // 4 nhóm cố định, thứ tự NN/TD/TC/CN như Google Sheet
+    const GROUPS = [
+        { key: 'foreign',      name: 'Nước ngoài', short: 'NN' },
+        { key: 'proprietary',  name: 'Tự doanh',   short: 'TD' },
+        { key: 'institution',  name: 'Tổ chức',    short: 'TC' },
+        { key: 'individual',   name: 'Cá nhân',    short: 'CN' }
+    ];
+
     try {
         const res = await StockCache.swrDaily('investor-detail', () =>
             fetch(`${window.StockAPI.SERVER_BASE}/api/investor-detail`).then(r => r.json())
         );
         if (!res || !res.success || !Array.isArray(res.groups) || res.groups.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px;">Không tải được dữ liệu</td></tr>';
             return;
         }
         const byKey = {};
         res.groups.forEach(g => { byKey[g.key] = g; });
-        AppState.investorTopData = byKey;
 
         const updatedEl = document.getElementById('investor-top-updated');
         if (updatedEl && res.timestamp) updatedEl.textContent = '⏱ ' + new Date(res.timestamp).toLocaleTimeString('vi-VN');
 
-        const fmt = (v) => isNum(v) ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '--';
-        const isNum = (v) => typeof v === 'number' && isFinite(v);
-        const netCls = (v) => isNum(v) ? (v >= 0 ? 'positive' : 'negative') : '';
+        const fmt = (v) => (typeof v === 'number' && isFinite(v)) ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '--';
 
-        for (const key of GROUP_ORDER) {
-            const el = document.getElementById('investor-top-' + key);
-            if (!el) continue;
-            const g = byKey[key];
-            if (!g) { el.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;">Chưa có dữ liệu</div>'; continue; }
+        // ── HEADER: 8 cột (4 nhóm × mã+giá trị) + 1 cột rank ──
+        // Hàng 1: tên nhóm (merge 2 cột mỗi nhóm)
+        let groupHeader = '<th rowspan="2" class="ig-rank">#</th>';
+        GROUPS.forEach(g => {
+            groupHeader += `<th colspan="2" class="ig-group-header">${g.name}</th>`;
+        });
+        // Hàng 2: Mã | Giá trị
+        let subHeader = '';
+        GROUPS.forEach(g => {
+            subHeader += `<th class="ig-sub-header">Mã</th><th class="ig-sub-header">Giá trị (tỷ)</th>`;
+        });
+        thead.innerHTML = `<tr>${groupHeader}</tr><tr>${subHeader}</tr>`;
 
-            const today = g.today || {};
-            const buy = (Array.isArray(g.topBuy) ? g.topBuy : []).slice(0, 10);
-            const sell = (Array.isArray(g.topSell) ? g.topSell : []).slice(0, 10);
+        // ── BODY: phần MUA trên, phần BÁN dưới ──
+        const MAX_ROWS = 10;
+        let html = '';
+        const cell = (s, isBuy) => {
+            if (!s) return `<td><span class="ig-tk" style="color:var(--text-muted)">—</span></td><td class="ig-val-${isBuy?'pos':'neg'}">—</td>`;
+            const sign = isBuy ? '+' : '';
+            return `<td><span class="ig-tk" onclick="openTradingViewModal('${s.ticker}')" title="${s.ticker}">${s.ticker}</span></td>`
+                 + `<td class="ig-val-${isBuy?'pos':'neg'}">${sign}${fmt(s.net)}</td>`;
+        };
 
-            const rowItem = (s, cls, sign) => `<li onclick="openTradingViewModal('${s.ticker}')" title="Xem chart ${s.ticker}">
-                <span class="ig-ticker">${s.ticker}</span>
-                <span class="ig-net ${cls}">${sign}${fmt(s.net)}</span>
-            </li>`;
-
-            el.innerHTML = `
-                <div class="ig-header">
-                    <div class="ig-name">${g.name}</div>
-                    <div class="ig-stats">
-                        <span><span class="ig-stat-label">Mua</span><span class="ig-stat-val positive">${fmt(today.buy)}</span></span>
-                        <span><span class="ig-stat-label">Bán</span><span class="ig-stat-val negative">${fmt(today.sell)}</span></span>
-                        <span><span class="ig-stat-label">Ròng</span><span class="ig-stat-val ${netCls(today.net)}">${isNum(today.net) ? (today.net>=0?'+':'') + fmt(today.net) : '--'}</span></span>
-                    </div>
-                </div>
-                <div>
-                    <div class="ig-section-label" style="color:var(--accent-green);">📈 Top Mua Ròng</div>
-                    <ul class="ig-list">${buy.length ? buy.map(s => rowItem(s, 'positive', '+')).join('') : '<li style="color:var(--text-muted);">—</li>'}</ul>
-                </div>
-                <div>
-                    <div class="ig-section-label" style="color:var(--accent-red);">📉 Top Bán Ròng</div>
-                    <ul class="ig-list">${sell.length ? sell.map(s => rowItem(s, 'negative', '')).join('') : '<li style="color:var(--text-muted);">—</li>'}</ul>
-                </div>`;
+        // Phần TOP MUA
+        html += `<tr class="ig-section-row"><td colspan="9" class="ig-section-buy">📈 TOP MUA RÒNG</td></tr>`;
+        for (let i = 0; i < MAX_ROWS; i++) {
+            html += '<tr><td class="ig-rank">' + (i+1) + '</td>';
+            GROUPS.forEach(g => {
+                const arr = byKey[g.key] && Array.isArray(byKey[g.key].topBuy) ? byKey[g.key].topBuy : [];
+                html += cell(arr[i], true);
+            });
+            html += '</tr>';
         }
-        console.log('✅ Investor top (4 nhóm) updated');
+        // Phần TOP BÁN
+        html += `<tr class="ig-section-row"><td colspan="9" class="ig-section-sell">📉 TOP BÁN RÒNG</td></tr>`;
+        for (let i = 0; i < MAX_ROWS; i++) {
+            html += '<tr><td class="ig-rank">' + (i+1) + '</td>';
+            GROUPS.forEach(g => {
+                const arr = byKey[g.key] && Array.isArray(byKey[g.key].topSell) ? byKey[g.key].topSell : [];
+                html += cell(arr[i], false);
+            });
+            html += '</tr>';
+        }
+
+        tbody.innerHTML = html;
+        console.log('✅ Investor top (8 cột, 4 nhóm) updated');
     } catch (error) {
         console.error('Failed to load investor top:', error);
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px;">Lỗi kết nối</td></tr>';
     }
 }
 
-// Backwards-compat (HTML cũ có thể còn gọi renderInvestorTop)
+// Backwards-compat
 function renderInvestorTop(_groupKey) { loadInvestorTop(); }
 
 /**

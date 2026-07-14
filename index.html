@@ -470,12 +470,12 @@
                     <h3>🏆 Top CP Theo Dòng Tiền — 4 Nhóm NĐT</h3>
                     <span class="card-badge" id="investor-top-updated" style="font-size:0.7rem;color:var(--text-muted);"></span>
                 </div>
-                <!-- Grid 4 nhóm: mỗi nhóm 1 cột = header tổng + Top Mua + Top Bán -->
-                <div id="investor-top-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-                    <div data-group="foreign"><div class="investor-group-col" id="investor-top-foreign"></div></div>
-                    <div data-group="proprietary"><div class="investor-group-col" id="investor-top-proprietary"></div></div>
-                    <div data-group="institution"><div class="investor-group-col" id="investor-top-institution"></div></div>
-                    <div data-group="individual"><div class="investor-group-col" id="investor-top-individual"></div></div>
+                <!-- Bảng 8 cột (4 nhóm × mã+giá trị), 2 phần Mua trên / Bán dưới -->
+                <div class="ig-table-wrap" style="overflow-x:auto;">
+                    <table class="ig-table" id="investor-top-table" style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                        <thead id="investor-top-thead"></thead>
+                        <tbody id="investor-top-tbody"></tbody>
+                    </table>
                 </div>
             </div>
 
