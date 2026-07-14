@@ -653,39 +653,48 @@ async function _defaultFetchFn(url, headers) {
 }
 
 /**
- * Lấy giá trị MA gần nhất cho 1 symbol (dùng cho bộ lọc CP).
- * Đọc chuỗi close từ cache ma-breadth-close.json, tính SMA prefix-sum.
+ * Build map MA cho nhiều symbol 1 lần (đọc file 1 lần, hiệu năng cao).
+ * Dùng cho /api/all-stocks — gọi 1 lần cho ~1500 symbols thay vì getMAForSymbol 1500 lần.
  *
- * @param {string} symbol
- * @param {number[]} periods [50, 100, 200] — các kỳ MA cần tính
- * @returns {Object} { ma50: 23.5, ma100: 22.1, ma200: null } — null nếu chưa đủ data
+ * @param {string[]} symbols
+ * @param {number[]} periods [50, 100, 200]
+ * @returns {Object} { 'VNM': { ma50, ma100, ma200 }, ... }
  */
-function getMAForSymbol(symbol, periods = [50, 100, 200]) {
+function buildMAMap(symbols, periods = [50, 100, 200]) {
+    const result = {};
     try {
         const raw = fs.readFileSync(CLOSE_FILE, 'utf8');
         const data = JSON.parse(raw);
-        const sym = data.symbols && data.symbols[symbol];
-        if (!sym || !Array.isArray(sym.closes) || !sym.closes.length) {
-            const empty = {};
-            periods.forEach(p => { empty['ma' + p] = null; });
-            return empty;
-        }
-        const closes = sym.closes;
-        const result = {};
-        periods.forEach(p => {
-            if (closes.length < p) {
-                result['ma' + p] = null;
-            } else {
-                const slice = closes.slice(-p);
-                result['ma' + p] = slice.reduce((a, b) => a + b, 0) / p;
+        const symData = data.symbols || {};
+        const emptyMA = {};
+        periods.forEach(p => { emptyMA['ma' + p] = null; });
+
+        for (const sym of symbols) {
+            const sd = symData[sym];
+            if (!sd || !Array.isArray(sd.closes) || !sd.closes.length) {
+                result[sym] = { ...emptyMA };
+                continue;
             }
-        });
-        return result;
+            const closes = sd.closes;
+            const m = {};
+            periods.forEach(p => {
+                if (closes.length < p) {
+                    m['ma' + p] = null;
+                } else {
+                    // SMA = sum last N closes / N
+                    let sum = 0;
+                    for (let i = closes.length - p; i < closes.length; i++) sum += closes[i];
+                    m['ma' + p] = sum / p;
+                }
+            });
+            result[sym] = m;
+        }
     } catch (e) {
-        const empty = {};
-        periods.forEach(p => { empty['ma' + p] = null; });
-        return empty;
+        const emptyMA = {};
+        periods.forEach(p => { emptyMA['ma' + p] = null; });
+        symbols.forEach(s => { result[s] = { ...emptyMA }; });
     }
+    return result;
 }
 
 module.exports = {
@@ -703,7 +712,7 @@ module.exports = {
     getBreadth,
     getMeta,
     hasToday,
-    getMAForSymbol,
+    buildMAMap,
     // build API
     buildHistory,
     buildToday

@@ -799,14 +799,13 @@ app.get('/api/all-stocks', async (req, res) => {
         };
 
         // ── Build MA50/100/200 map 1 lần (cache in-process 1h) ──
-        // breadth-history đã có close 620 ngày/mã, tính SMA nhanh.
+        // Đọc file close cache 1 lần cho toàn bộ symbol (hiệu năng cao).
         let maMap = {};
         if (!maMapCache.time || Date.now() - maMapCache.time > 3600000) {
             try {
-                const { getMAForSymbol } = require('./breadth-history');
+                const { buildMAMap } = require('./breadth-history');
                 const allSyms = (Array.isArray(allStocks) ? allStocks : []).map(s => s.Symbol).filter(Boolean);
-                const tmp = {};
-                allSyms.forEach(sym => { tmp[sym] = getMAForSymbol(sym, [50, 100, 200]); });
+                const tmp = buildMAMap(allSyms, [50, 100, 200]);
                 maMapCache = { time: Date.now(), map: tmp };
                 console.log(`📈 MA50/100/200 loaded for ${Object.keys(tmp).length} symbols`);
             } catch (e) {
