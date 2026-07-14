@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+npm-debug.log
+.git
+.gitignore
+docs
+*.md
+!server/README.md
+.env
+**/.env
+server/data/*.json
+server/data/*.zip
+Thu thap du lieu
