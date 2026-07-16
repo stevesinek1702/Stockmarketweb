@@ -2372,9 +2372,8 @@ async function loadInvestorTop(range) {
             }
             const netCls = (typeof t.net === 'number' && isFinite(t.net)) ? (t.net >= 0 ? 'ig-val-pos' : 'ig-val-neg') : '';
             const netSign = (typeof t.net === 'number' && isFinite(t.net) && t.net >= 0) ? '+' : '';
-            // Mỗi nhóm: ô Mua (span 2) + ô Ròng (span 2) — gọn, dễ đọc
-            html += `<td colspan="2" style="text-align:right;font-weight:600;color:var(--text-secondary);">Mua ${fmt(t.buy)} · Bán ${fmt(t.sell)}</td>`;
-            html += `<td colspan="2" style="text-align:right;font-weight:700;" class="${netCls}">Ròng ${netSign}${fmt(t.net)}</td>`;
+            // Chỉ hiển thị Ròng (bỏ Mua/Bán theo yêu cầu user)
+            html += `<td colspan="4" style="text-align:center;font-weight:700;font-size:0.92rem;" class="${netCls}">${netSign}${fmt(t.net)}</td>`;
         });
         html += '</tr>';
 
