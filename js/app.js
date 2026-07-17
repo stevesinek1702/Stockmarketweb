@@ -5666,6 +5666,59 @@ function setupBreadthBreakoutEvents() {
     });
     setupBreadthAllTableEvents();
     setupBreadthSnapshotEvents();
+    setupBreadthCollapse();
+}
+
+/**
+ * Inject nút thu gọn/mở rộng vào header mỗi section có class breadth-collapsible.
+ * Click toggle → ẩn/hiện body của section (giữ header + nút).
+ * Mặc định: mở hết (class .collapsed chỉ add khi user bấm).
+ */
+function setupBreadthCollapse() {
+    const sections = document.querySelectorAll('#breadth-hl .breadth-collapsible');
+    sections.forEach(section => {
+        // Đã inject rồi thì skip (tránh duplicate khi re-init)
+        if (section.querySelector('.breadth-collapse-btn')) return;
+
+        // Tìm header container: ưu tiên .chart-controls, rồi .breadth-stat-header
+        const header = section.querySelector('.chart-controls') || section.querySelector('.breadth-stat-header');
+        if (!header) return; // verdict box không có chart-controls → xử lý riêng bên dưới
+
+        // Tạo nút toggle
+        const btn = document.createElement('button');
+        btn.className = 'breadth-collapse-btn';
+        btn.innerHTML = '<span class="collapse-icon">▼</span>';
+        btn.title = 'Thu gọn / Mở rộng';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleBreadthSection(section, btn);
+        });
+        header.appendChild(btn);
+    });
+
+    // Verdict box đặc biệt: không có chart-controls, nút gắn vào badge
+    const verdict = document.getElementById('breadth-verdict');
+    if (verdict && !verdict.querySelector('.breadth-collapse-btn')) {
+        const badge = verdict.querySelector('.breadth-verdict-badge');
+        if (badge) {
+            const btn = document.createElement('button');
+            btn.className = 'breadth-collapse-btn verdict-toggle';
+            btn.innerHTML = '<span class="collapse-icon">▼</span>';
+            btn.title = 'Thu gọn / Mở rộng';
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleBreadthSection(verdict, btn);
+            });
+            badge.appendChild(btn);
+        }
+    }
+}
+
+/** Toggle 1 section: đánh dấu collapsed + ẩn body. */
+function toggleBreadthSection(section, btn) {
+    const isCollapsed = section.classList.toggle('collapsed');
+    const icon = btn.querySelector('.collapse-icon');
+    if (icon) icon.textContent = isCollapsed ? '▶' : '▼';
 }
 
 // ════════════════════════════════════════════════════════════════════════

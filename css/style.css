@@ -4916,6 +4916,52 @@ button.scanning::after {
 /* Nút refresh trong header breadth */
 #breadth-refresh { padding: 4px 12px; font-size: 0.8rem; }
 
+/* ═══ Collapse toggle (thu gọn/mở rộng section) ═══ */
+.breadth-collapse-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    padding: 0;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.breadth-collapse-btn:hover {
+    border-color: var(--accent-blue, #4472C4);
+    color: var(--accent-blue, #4472C4);
+}
+.breadth-collapse-btn .collapse-icon {
+    display: inline-block;
+    transition: transform 0.2s;
+}
+
+/* Khi collapsed: ẩn mọi direct child trừ header đầu tiên.
+   Header đầu = .chart-controls HOẶC .breadth-stat-header HOẶC .breadth-verdict-badge. */
+.breadth-collapsible.collapsed > .chart-controls ~ *,          /* siblings sau chart-controls */
+.breadth-collapsible.collapsed > .breadth-stat-header ~ *,     /* siblings sau stat-header */
+.breadth-collapsible.collapsed > .breadth-verdict-text {       /* verdict text */
+    display: none;
+}
+/* Section có collapse → thu nhỏ padding cho gọn */
+.breadth-collapsible.collapsed { padding-bottom: 10px; }
+.breadth-collapsible { transition: padding 0.2s; }
+
+/* Nút toggle đặc biệt cho verdict badge (nhỏ hơn, đặt cạnh badge) */
+.breadth-collapse-btn.verdict-toggle {
+    width: 18px; height: 18px;
+    font-size: 0.6rem;
+    margin-left: 8px;
+    vertical-align: middle;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* ═══ Breadth snapshot — section trend lịch sử ═══ */
 .breadth-snapshot-section {
     margin: 16px 0;

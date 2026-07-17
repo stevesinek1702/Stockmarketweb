@@ -800,7 +800,7 @@
                 </div>
 
                 <!-- Xu hướng breadth theo lịch sử (snapshot hàng ngày) -->
-                <div class="breadth-snapshot-section">
+                <div class="breadth-snapshot-section breadth-collapsible">
                     <div class="chart-controls">
                         <div class="chart-title">📈 Xu Hướng Breadth Theo Lịch Sử</div>
                         <div class="breadth-range-selector" id="breadth-range-btns">
@@ -838,13 +838,13 @@
                 </div>
 
                 <!-- Verdict box: nhận xét tổng thể (rule-based) -->
-                <div class="breadth-verdict" id="breadth-verdict">
+                <div class="breadth-verdict breadth-collapsible" id="breadth-verdict">
                     <div class="breadth-verdict-badge" id="breadth-verdict-badge">—</div>
                     <div class="breadth-verdict-text" id="breadth-verdict-text">Đang tải dữ liệu breadth...</div>
                 </div>
 
                 <!-- Box thống kê đầy đủ theo từng timeframe -->
-                <div class="breadth-stat-box" id="breadth-stat-box">
+                <div class="breadth-stat-box breadth-collapsible" id="breadth-stat-box">
                     <div class="breadth-stat-header">
                         <div class="chart-title">📊 Thống Kê Breadth Theo Timeframe</div>
                         <div class="breadth-legend">
@@ -886,7 +886,10 @@
                 </div>
 
                 <!-- 2 grouped bar charts -->
-                <div class="breadth-charts">
+                <div class="breadth-charts breadth-collapsible">
+                    <div class="chart-controls breadth-section-header">
+                        <div class="chart-title">📊 Biểu Đồ Breadth</div>
+                    </div>
                     <div class="breadth-chart-block">
                         <div class="chart-controls">
                             <div class="chart-title">Số Lượng Mã Phá Đỉnh vs Phá Đáy</div>
@@ -906,7 +909,7 @@
                 </div>
 
                 <!-- Bảng tổng hợp tất cả mã (Phá Đỉnh + Phá Đáy) với filter + search -->
-                <div class="breadth-all-table">
+                <div class="breadth-all-table breadth-collapsible">
                     <div class="chart-controls">
                         <div class="chart-title">📋 Danh Sách Mã Tổng Hợp (Phá Đỉnh + Phá Đáy)</div>
                         <div class="breadth-filter-bar">
@@ -947,7 +950,7 @@
                 </div>
 
                 <!-- Bảng phân nhóm ngành với vốn hóa tác động (3T/6T/1N) -->
-                <div class="breadth-sectors">
+                <div class="breadth-sectors breadth-collapsible">
                     <div class="chart-controls">
                         <div class="chart-title">🏭 Tác Động Vốn Hóa Theo Ngành · Phá Đỉnh vs Phá Đáy</div>
                         <span class="breadth-sector-hint">Sắp theo vốn hóa phá đáy giảm dần · click header để sort</span>
@@ -977,7 +980,7 @@
                 </div>
 
                 <!-- Box sức mạnh thị trường (insight nâng cao) -->
-                <div class="breadth-insights">
+                <div class="breadth-insights breadth-collapsible">
                     <div class="chart-controls">
                         <div class="chart-title">💪 Sức Mạnh Thị Trường — 4 Chỉ Báo</div>
                     </div>
