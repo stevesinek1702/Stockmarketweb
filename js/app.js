@@ -5168,8 +5168,7 @@ async function loadBreadthBreakout() {
         renderBreadthStats(result);
         renderBreadthCountChart(result);
         renderBreadthCapChart(result);
-        renderBreadthHighTable(result);
-        renderBreadthLowTable(result);
+        renderBreadthAllTable(result);
         renderBreadthSectorTable(result);
         renderBreadthInsights(result);
 
@@ -5340,48 +5339,127 @@ function renderBreadthCapChart(data) {
 }
 
 /** Bảng mã Phá Đỉnh 3T (sort GTGD desc). */
-function renderBreadthHighTable(data) {
-    const tbody = document.getElementById('breadth-high-tbody');
-    const count = document.getElementById('breadth-high-count');
+// State cho bảng tổng hợp (filter + search + sort)
+const BreadthAllTableState = {
+    filter: 'all',      // 'all' | 'high' | 'low'
+    search: '',
+    sortKey: null,      // null = dùng thứ tự server (type → marketCap)
+    sortAsc: true
+};
+
+/**
+ * Bảng tổng hợp tất cả mã (gộp Phá Đỉnh + Phá Đáy vào 1 bảng).
+ * Có filter (Tất cả/Đỉnh/Đáy), ô search, sort theo cột.
+ */
+function renderBreadthAllTable(data) {
+    const tbody = document.getElementById('breadth-all-tbody');
+    const countEl = document.getElementById('breadth-all-count');
     if (!tbody) return;
-    const items = data.topHighs3T || [];
-    if (count) count.textContent = `${items.length} mã`;
+
+    let items = (data.allStocks || []).slice();
+
+    // Lọc theo filter
+    if (BreadthAllTableState.filter === 'high') {
+        items = items.filter(it => it.highTfs.length > 0);
+    } else if (BreadthAllTableState.filter === 'low') {
+        items = items.filter(it => it.lowTfs.length > 0);
+    }
+
+    // Lọc theo search
+    const q = BreadthAllTableState.search.trim().toLowerCase();
+    if (q) {
+        items = items.filter(it =>
+            it.ticker.toLowerCase().includes(q) ||
+            (it.sector || '').toLowerCase().includes(q)
+        );
+    }
+
+    // Sort
+    if (BreadthAllTableState.sortKey) {
+        const k = BreadthAllTableState.sortKey;
+        const dir = BreadthAllTableState.sortAsc ? 1 : -1;
+        items.sort((a, b) => {
+            let va = a[k], vb = b[k];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va < vb) return -1 * dir;
+            if (va > vb) return 1 * dir;
+            return 0;
+        });
+    }
+
+    if (countEl) countEl.textContent = `${items.length} mã`;
+
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">Không có mã nào khớp bộ lọc.</td></tr>';
+        return;
+    }
 
     tbody.innerHTML = items.map(it => {
-        const pctClass = it.pct3M >= 0 ? 'pos' : 'neg';
-        const rsiClass = it.rsi > 70 ? 'neg' : (it.rsi < 30 ? 'pos' : '');
-        const trap = it.value < 0.5 ? '<span class="breadth-warn" title="GTGD rất thấp — bẫy thanh khoản">⚠️</span>' : '';
+        const pctClass = (it.pct1Y || 0) >= 0 ? 'pos' : 'neg';
+        const rsi = it.rsi || 0;
+        const rsiClass = rsi > 70 ? 'neg' : (rsi < 30 ? 'pos' : '');
+        const trap = (it.value || 0) < 0.5 && it.highTfs.length > 0
+            ? '<span class="breadth-warn" title="GTGD rất thấp — bẫy thanh khoản">⚠️</span>' : '';
+        const highBadges = (it.highTfs || []).map(tf => `<span class="breadth-tf-badge high">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
+        const lowBadges = (it.lowTfs || []).map(tf => `<span class="breadth-tf-badge low">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
         return `<tr>
             <td class="stock-code"><strong>${it.ticker}</strong>${trap}</td>
             <td>${it.sector}</td>
-            <td>${it.marketCap.toLocaleString('vi-VN')}</td>
-            <td class="${pctClass}">${it.pct3M >= 0 ? '+' : ''}${it.pct3M.toFixed(1)}%</td>
-            <td>${it.value.toFixed(2)}</td>
-            <td class="${rsiClass}">${it.rsi.toFixed(1)}</td>
+            <td>${(it.marketCap || 0).toLocaleString('vi-VN')}</td>
+            <td class="${pctClass}">${(it.pct1Y || 0) >= 0 ? '+' : ''}${(it.pct1Y || 0).toFixed(1)}%</td>
+            <td>${(it.value || 0).toFixed(2)}</td>
+            <td class="${rsiClass}">${rsi.toFixed(1)}</td>
+            <td>${highBadges}</td>
+            <td>${lowBadges}</td>
         </tr>`;
     }).join('');
 }
 
-/** Bảng mã Phá Đáy 1N (top 10 giảm sâu). */
-function renderBreadthLowTable(data) {
-    const tbody = document.getElementById('breadth-low-tbody');
-    const count = document.getElementById('breadth-low-count');
-    if (!tbody) return;
-    const items = data.topLows1Y || [];
-    if (count) count.textContent = `${items.length} mã`;
+/** Bind sự kiện filter + search + sort cho bảng tổng hợp. */
+function setupBreadthAllTableEvents() {
+    // Filter buttons
+    document.querySelectorAll('#breadth-filter-btns .breadth-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#breadth-filter-btns .breadth-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            BreadthAllTableState.filter = btn.getAttribute('data-filter');
+            if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
+        });
+    });
 
-    tbody.innerHTML = items.map(it => {
-        const pctClass = it.pct1Y >= 0 ? 'pos' : 'neg';
-        const rsiClass = it.rsi < 30 ? 'neg' : '';
-        return `<tr>
-            <td class="stock-code"><strong>${it.ticker}</strong></td>
-            <td>${it.sector}</td>
-            <td>${it.marketCap.toLocaleString('vi-VN')}</td>
-            <td class="${pctClass}">${it.pct1Y >= 0 ? '+' : ''}${it.pct1Y.toFixed(1)}%</td>
-            <td>${it.value.toFixed(2)}</td>
-            <td class="${rsiClass}">${it.rsi.toFixed(1)}</td>
-        </tr>`;
-    }).join('');
+    // Search input (debounce 200ms)
+    const search = document.getElementById('breadth-search');
+    let searchTimer = null;
+    if (search) {
+        search.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                BreadthAllTableState.search = search.value;
+                if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
+            }, 200);
+        });
+    }
+
+    // Sort theo cột (click header)
+    document.querySelectorAll('#breadth-all-table th.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const key = th.getAttribute('data-sort');
+            if (BreadthAllTableState.sortKey === key) {
+                BreadthAllTableState.sortAsc = !BreadthAllTableState.sortAsc;
+            } else {
+                BreadthAllTableState.sortKey = key;
+                BreadthAllTableState.sortAsc = true;
+            }
+            // Update icon
+            document.querySelectorAll('#breadth-all-table th.sortable').forEach(t => {
+                t.classList.remove('sort-asc', 'sort-desc');
+            });
+            th.classList.add(BreadthAllTableState.sortAsc ? 'sort-asc' : 'sort-desc');
+            if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
+        });
+    });
 }
 
 /** Bảng phân nhóm ngành (3T): High vs Low count. */
@@ -5467,10 +5545,11 @@ function renderBreadthInsights(data) {
     </div>`).join('');
 }
 
-/** Init: bind nút refresh. */
+/** Init: bind nút refresh + filter + search + sort cho bảng tổng hợp. */
 function setupBreadthBreakoutEvents() {
     const btn = document.getElementById('breadth-refresh');
     if (btn) btn.addEventListener('click', () => {
         loadBreadthBreakout();
     });
+    setupBreadthAllTableEvents();
 }

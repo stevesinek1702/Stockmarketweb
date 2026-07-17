@@ -849,48 +849,36 @@
                     </div>
                 </div>
 
-                <!-- 2 bảng song song: Mã Phá Đỉnh 3T | Mã Phá Đáy 1N -->
-                <div class="breadth-tables">
-                    <div class="breadth-table-block">
-                        <div class="chart-controls">
-                            <div class="chart-title">🟢 Mã Phá Đỉnh (3 Tháng) — sort theo GTGD</div>
-                            <span class="breadth-count" id="breadth-high-count"></span>
-                        </div>
-                        <div class="industry-table-wrapper">
-                            <table class="data-table" id="breadth-high-table">
-                                <thead>
-                                    <tr>
-                                        <th>Mã</th>
-                                        <th>Ngành</th>
-                                        <th>Vốn Hóa</th>
-                                        <th>% 3T</th>
-                                        <th>GTGD</th>
-                                        <th>RSI</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="breadth-high-tbody"></tbody>
-                            </table>
+                <!-- Bảng tổng hợp tất cả mã (Phá Đỉnh + Phá Đáy) với filter + search -->
+                <div class="breadth-all-table">
+                    <div class="chart-controls">
+                        <div class="chart-title">📋 Danh Sách Mã Tổng Hợp (Phá Đỉnh + Phá Đáy)</div>
+                        <div class="breadth-filter-bar">
+                            <input type="text" id="breadth-search" class="breadth-search" placeholder="🔍 Tìm mã / ngành...">
+                            <div class="breadth-filter-btns" id="breadth-filter-btns">
+                                <button class="breadth-filter-btn active" data-filter="all">Tất cả</button>
+                                <button class="breadth-filter-btn" data-filter="high">🟢 Phá Đỉnh</button>
+                                <button class="breadth-filter-btn" data-filter="low">🔴 Phá Đáy</button>
+                            </div>
+                            <span class="breadth-count" id="breadth-all-count"></span>
                         </div>
                     </div>
-                    <div class="breadth-table-block">
-                        <div class="chart-controls">
-                            <div class="chart-title">🔴 Mã Phá Đáy (1 Năm) — top 10 giảm sâu</div>
-                            <span class="breadth-count" id="breadth-low-count"></span>
-                        </div>
-                        <div class="industry-table-wrapper">
-                            <table class="data-table" id="breadth-low-table">
-                                <thead>
-                                    <tr>
-                                        <th>Mã</th>
-                                        <th>Ngành</th>
-                                        <th>Vốn Hóa</th>
-                                        <th>% 1N</th>
-                                        <th>GTGD</th>
-                                        <th>RSI</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="breadth-low-tbody"></tbody>
-                        </div>
+                    <div class="industry-table-wrapper breadth-table-scroll">
+                        <table class="data-table sortable-table" id="breadth-all-table">
+                            <thead>
+                                <tr>
+                                    <th class="sortable" data-sort="ticker">Mã <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="sector">Ngành <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="marketCap">Vốn Hóa <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="pct1Y">% 1N <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="value">GTGD <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="rsi">RSI <span class="sort-icon">⇅</span></th>
+                                    <th>🟢 Đỉnh</th>
+                                    <th>🔴 Đáy</th>
+                                </tr>
+                            </thead>
+                            <tbody id="breadth-all-tbody"></tbody>
+                        </table>
                     </div>
                 </div>
 

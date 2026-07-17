@@ -1252,6 +1252,52 @@ app.get('/api/breadth-breakout', async (req, res) => {
             .sort((a, b) => (a.pct1Y || 0) - (b.pct1Y || 0))
             .slice(0, 10);
 
+        // ── allStocks: gộp tất cả mã vào 1 bảng, đánh dấu timeframe xuất hiện
+        // mỗi ticker chỉ xuất hiện 1 lần; cột High/Low ghi badge 3T/6T/1N nếu có.
+        const TFMAP = { ThreeMonths: '3T', SixMonths: '6T', OneYear: '1N' };
+        const mergeMap = new Map();
+        const addRange = (arr, type, tf) => {
+            for (const it of arr) {
+                if (!mergeMap.has(it.ticker)) {
+                    mergeMap.set(it.ticker, {
+                        ticker: it.ticker,
+                        sector: it.sector,
+                        price: it.price,
+                        value: it.value,
+                        marketCap: it.marketCap,
+                        pct3M: it.pct3M,
+                        pct6M: it.pct6M,
+                        pct1Y: it.pct1Y,
+                        rsi: it.rsi,
+                        highTfs: [],
+                        lowTfs: []
+                    });
+                }
+                const o = mergeMap.get(it.ticker);
+                // Giữ giá trị/GTGD/rsi lớn nhất (mã phá đỉnh gần nhất thường ở 3T)
+                if ((it.value || 0) > (o.value || 0)) o.value = it.value;
+                if ((it.rsi || 0) > (o.rsi || 0)) o.rsi = it.rsi;
+                const tag = TFMAP[tf];
+                if (type === 'high') o.highTfs.push(tag);
+                else o.lowTfs.push(tag);
+            }
+        };
+        addRange(high3T, 'high', 'ThreeMonths');
+        addRange(high6T, 'high', 'SixMonths');
+        addRange(high1Y, 'high', 'OneYear');
+        addRange(low3T,  'low',  'ThreeMonths');
+        addRange(low6T,  'low',  'SixMonths');
+        addRange(low1Y,  'low',  'OneYear');
+        // Sort: loại (chỉ đỉnh trước, chỉ đáy sau), rồi vốn hóa giảm dần
+        const allStocks = [...mergeMap.values()].sort((a, b) => {
+            const aType = a.highTfs.length > 0 && a.lowTfs.length === 0 ? 0
+                : a.lowTfs.length > 0 && a.highTfs.length === 0 ? 2 : 1;
+            const bType = b.highTfs.length > 0 && b.lowTfs.length === 0 ? 0
+                : b.lowTfs.length > 0 && b.highTfs.length === 0 ? 2 : 1;
+            if (aType !== bType) return aType - bType;
+            return (b.marketCap || 0) - (a.marketCap || 0);
+        });
+
         // ── rsiSummary: RSI trung bình H 3T & L 3T ───────────────────────
         const avgRsi = (arr) => {
             const rs = arr.map(it => it.rsi).filter(r => r > 0);
@@ -1269,6 +1315,7 @@ app.get('/api/breadth-breakout', async (req, res) => {
             sectorBreakdown,
             topHighs3T,
             topLows1Y,
+            allStocks,
             rsiSummary,
             raw: { high3T, high6T, high1Y, low3T, low6T, low1Y }
         };
