@@ -908,19 +908,29 @@
                     </div>
                 </div>
 
-                <!-- Bảng phân nhóm ngành -->
+                <!-- Bảng phân nhóm ngành với vốn hóa tác động (3T/6T/1N) -->
                 <div class="breadth-sectors">
                     <div class="chart-controls">
-                        <div class="chart-title">🏭 Phân Bố Ngành · 3 Tháng (Phá Đỉnh vs Phá Đáy)</div>
+                        <div class="chart-title">🏭 Tác Động Vốn Hóa Theo Ngành · Phá Đỉnh vs Phá Đáy</div>
+                        <span class="breadth-sector-hint">Sắp theo vốn hóa phá đáy giảm dần · click header để sort</span>
                     </div>
-                    <div class="industry-table-wrapper">
-                        <table class="data-table" id="breadth-sector-table">
+                    <div class="industry-table-wrapper breadth-table-scroll">
+                        <table class="data-table sortable-table" id="breadth-sector-table">
                             <thead>
                                 <tr>
-                                    <th>Ngành</th>
-                                    <th>🟢 # Phá Đỉnh</th>
-                                    <th>🔴 # Phá Đáy</th>
-                                    <th>Chênh lệch</th>
+                                    <th class="sortable" data-sort="sector">Ngành <span class="sort-icon">⇅</span></th>
+                                    <th colspan="2" class="tf-group-3T">3 Tháng</th>
+                                    <th colspan="2" class="tf-group-6T">6 Tháng</th>
+                                    <th colspan="2" class="tf-group-1N">1 Năm</th>
+                                    <th class="sortable" data-sort="totalLowCap">💥 Vốn Đáy <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="totalHighCap">💚 Vốn Đỉnh <span class="sort-icon">⇅</span></th>
+                                </tr>
+                                <tr class="sub-header">
+                                    <th></th>
+                                    <th>🟢Đỉnh</th><th>🔴Đáy</th>
+                                    <th>🟢Đỉnh</th><th>🔴Đáy</th>
+                                    <th>🟢Đỉnh</th><th>🔴Đáy</th>
+                                    <th>tỷ</th><th>tỷ</th>
                                 </tr>
                             </thead>
                             <tbody id="breadth-sector-tbody"></tbody>

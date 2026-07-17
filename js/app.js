@@ -5548,36 +5548,62 @@ function setupBreadthAllTableEvents() {
     });
 }
 
-/** Bảng phân nhóm ngành (3T): High vs Low count. */
+/** Bảng phân nhóm ngành: 3T/6T/1N × H/L count + vốn hóa tác động. */
 function renderBreadthSectorTable(data) {
     const tbody = document.getElementById('breadth-sector-tbody');
     if (!tbody) return;
 
-    // Gom tất cả ngành xuất hiện ở High hoặc Low
-    const sectors = new Map();
-    for (const it of data.sectorBreakdown.high) {
-        sectors.set(it.sector, { h: it.count, hCap: it.cap, l: 0, lCap: 0 });
-    }
-    for (const it of data.sectorBreakdown.low) {
-        if (!sectors.has(it.sector)) sectors.set(it.sector, { h: 0, hCap: 0, l: 0, lCap: 0 });
-        const o = sectors.get(it.sector);
-        o.l = it.count; o.lCap = it.cap;
-    }
-
-    const rows = [...sectors.entries()]
-        .map(([sec, v]) => ({ sec, ...v, total: v.h + v.l, diff: v.h - v.l }))
-        .sort((a, b) => b.total - a.total);
+    const rows = data.sectorBreakdown || [];
+    const TFS = ['ThreeMonths', 'SixMonths', 'OneYear'];
+    const fmtCap = (c) => {
+        c = c || 0;
+        if (c >= 1000) return (c / 1000).toFixed(1) + 'K';
+        return c.toLocaleString('vi-VN');
+    };
+    // Cell: hiện count + cap nhỏ bên dưới; nếu count=0 thì hiện "—"
+    const cell = (p, type) => {
+        const cnt = p ? (type === 'h' ? p.h : p.l) : 0;
+        const cap = p ? (type === 'h' ? p.hCap : p.lCap) : 0;
+        if (!cnt) return '<td class="breadth-dash">—</td>';
+        return `<td class="${type === 'h' ? 'pos' : 'neg'}"><span class="breadth-sec-cnt">${cnt}</span><span class="breadth-sec-cap">${fmtCap(cap)} tỷ</span></td>`;
+    };
 
     tbody.innerHTML = rows.map(r => {
-        const diffClass = r.diff > 0 ? 'pos' : (r.diff < 0 ? 'neg' : '');
-        const diffStr = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
         return `<tr>
-            <td><strong>${r.sec}</strong></td>
-            <td class="pos">${r.h}</td>
-            <td class="neg">${r.l}</td>
-            <td class="${diffClass}">${diffStr}</td>
+            <td class="breadth-sec-name"><strong>${r.sector}</strong></td>
+            ${cell(r.perTf.ThreeMonths, 'h')}
+            ${cell(r.perTf.ThreeMonths, 'l')}
+            ${cell(r.perTf.SixMonths, 'h')}
+            ${cell(r.perTf.SixMonths, 'l')}
+            ${cell(r.perTf.OneYear, 'h')}
+            ${cell(r.perTf.OneYear, 'l')}
+            <td class="neg breadth-sec-impact"><strong>${fmtCap(r.totalLowCap)} tỷ</strong></td>
+            <td class="pos breadth-sec-impact"><strong>${fmtCap(r.totalHighCap)} tỷ</strong></td>
         </tr>`;
     }).join('');
+
+    // Sort cho sector table
+    document.querySelectorAll('#breadth-sector-table th.sortable').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.onclick = () => {
+            const key = th.getAttribute('data-sort');
+            const sorted = [...rows].sort((a, b) => {
+                if (key === 'sector') return a.sector.localeCompare(b.sector);
+                return (b[key] || 0) - (a[key] || 0);
+            });
+            tbody.innerHTML = sorted.map(r => `<tr>
+                <td class="breadth-sec-name"><strong>${r.sector}</strong></td>
+                ${cell(r.perTf.ThreeMonths, 'h')}
+                ${cell(r.perTf.ThreeMonths, 'l')}
+                ${cell(r.perTf.SixMonths, 'h')}
+                ${cell(r.perTf.SixMonths, 'l')}
+                ${cell(r.perTf.OneYear, 'h')}
+                ${cell(r.perTf.OneYear, 'l')}
+                <td class="neg breadth-sec-impact"><strong>${fmtCap(r.totalLowCap)} tỷ</strong></td>
+                <td class="pos breadth-sec-impact"><strong>${fmtCap(r.totalHighCap)} tỷ</strong></td>
+            </tr>`).join('');
+        };
+    });
 }
 
 /** Box 4 chỉ báo sức mạnh thị trường. */

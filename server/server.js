@@ -1229,20 +1229,57 @@ app.get('/api/breadth-breakout', async (req, res) => {
         };
         const sizeBuckets = { high: bucketize(high3T), low: bucketize(low3T) };
 
-        // ── sectorBreakdown: gom theo ngành cho H & L (3T) ───────────────
-        const groupSector = (arr) => {
-            const m = new Map();
-            for (const it of arr) {
-                const sec = it.sector || '(không rõ)';
-                if (!m.has(sec)) m.set(sec, { count: 0, cap: 0 });
-                const o = m.get(sec);
-                o.count++; o.cap += it.marketCap || 0;
-            }
-            return [...m.entries()]
-                .map(([sector, v]) => ({ sector, count: v.count, cap: Math.round(v.cap) }))
-                .sort((a, b) => b.count - a.count);
+        // ── sectorBreakdown: gom theo ngành cho H & L, ĐỦ 3 timeframe ───
+        // Mỗi ngành 1 dòng, mỗi timeframe có {highCount, lowCount, highCap, lowCap}.
+        // Sort theo "tác động" = tổng vốn hóa phá đáy giảm dần (đọng vốn hóa lớn nhất trước).
+        const groupSectorCombined = () => {
+            const m = new Map(); // sector → { perTf: {3T:{h:0,l:0,hCap:0,lCap:0}, ...} }
+            const TF_LIST = ['ThreeMonths', 'SixMonths', 'OneYear'];
+            const ensure = (sec) => {
+                if (!m.has(sec)) {
+                    const perTf = {};
+                    for (const tf of TF_LIST) perTf[tf] = { h: 0, l: 0, hCap: 0, lCap: 0 };
+                    m.set(sec, { sector: sec, perTf });
+                }
+                return m.get(sec);
+            };
+            const apply = (arr, type, tf) => {
+                for (const it of arr) {
+                    const sec = it.sector || '(không rõ)';
+                    const o = ensure(sec).perTf[tf];
+                    if (type === 'high') { o.h++; o.hCap += it.marketCap || 0; }
+                    else { o.l++; o.lCap += it.marketCap || 0; }
+                }
+            };
+            apply(high3T, 'high', 'ThreeMonths');
+            apply(high6T, 'high', 'SixMonths');
+            apply(high1Y, 'high', 'OneYear');
+            apply(low3T,  'low',  'ThreeMonths');
+            apply(low6T,  'low',  'SixMonths');
+            apply(low1Y,  'low',  'OneYear');
+            // Tính tổng + format
+            const rows = [...m.values()].map(o => {
+                let totalHigh = 0, totalLow = 0, totalHCnt = 0, totalLCnt = 0;
+                for (const tf of TF_LIST) {
+                    const p = o.perTf[tf];
+                    totalHigh += p.hCap; totalLow += p.lCap;
+                    totalHCnt += p.h; totalLCnt += p.l;
+                    p.hCap = Math.round(p.hCap); p.lCap = Math.round(p.lCap);
+                }
+                return {
+                    sector: o.sector,
+                    perTf: o.perTf,
+                    totalHighCap: Math.round(totalHigh),
+                    totalLowCap: Math.round(totalLow),
+                    totalHCnt, totalLCnt,
+                    impact: Math.round(totalLow - totalHigh) // tác động ròng (đáy - đỉnh)
+                };
+            });
+            // Sort theo vốn hóa phá đáy giảm dần (ngành đọng vốn hóa yếu nhất trước)
+            rows.sort((a, b) => b.totalLowCap - a.totalLowCap);
+            return rows;
         };
-        const sectorBreakdown = { high: groupSector(high3T), low: groupSector(low3T) };
+        const sectorBreakdown = groupSectorCombined();
 
         // ── topHighs3T: sort theo GTGD desc (lật "phá đỉnh ma" GTGD≈0) ───
         const topHighs3T = [...high3T].sort((a, b) => (b.value || 0) - (a.value || 0));

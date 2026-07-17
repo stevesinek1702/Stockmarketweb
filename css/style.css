@@ -4766,6 +4766,17 @@ button.scanning::after {
    BREADTH HIGH/LOW — Phá Đỉnh / Phá Đáy
    ════════════════════════════════════════════════════════════════ */
 
+/* Layout tổng thể section breadth */
+#breadth-hl .card.full-width { max-width: 1600px; margin: 0 auto; }
+#breadth-hl .card-header h3 {
+    font-size: 1.15rem;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-blue, #4472C4));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+#breadth-hl .chart-title { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+
 /* Verdict box — nhận xét tổng thể (border-left theo verdict color) */
 .breadth-verdict {
     display: flex;
@@ -4830,8 +4841,51 @@ button.scanning::after {
 .breadth-warn { color: #f0ad4e; margin-left: 4px; cursor: help; }
 .breadth-turnaround { margin-left: 4px; cursor: help; filter: drop-shadow(0 0 2px rgba(46, 230, 138, 0.4)); }
 
-/* Bảng phân nhóm ngành */
-.breadth-sectors { margin: 16px 0; }
+/* Bảng phân nhóm ngành — sector table redesigned */
+.breadth-sectors {
+    margin: 16px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px 16px;
+}
+.breadth-sectors .chart-controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.breadth-sector-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+#breadth-sector-table { width: 100%; border-collapse: collapse; }
+#breadth-sector-table thead th {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.15);
+}
+#breadth-sector-table thead th:first-child { text-align: left; }
+#breadth-sector-table thead th.sortable { cursor: pointer; }
+#breadth-sector-table thead th.sortable:hover { color: var(--text-primary); }
+#breadth-sector-table .sub-header th {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    padding: 4px 6px;
+    border-bottom: 2px solid var(--border-color);
+}
+#breadth-sector-table .tf-group-3T { color: var(--accent-blue, #4472C4); }
+#breadth-sector-table .tf-group-6T { color: var(--accent-purple, #9b59b6); }
+#breadth-sector-table .tf-group-1N { color: #e8a934; }
+#breadth-sector-table tbody td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.82rem;
+}
+.breadth-sec-name { text-align: left !important; color: var(--text-primary); }
+.breadth-sec-cnt { display: block; font-weight: 700; font-size: 0.9rem; }
+.breadth-sec-cap { display: block; font-size: 0.7rem; color: var(--text-muted); font-weight: 400; }
+.breadth-sec-impact { font-size: 0.9rem !important; }
+#breadth-sector-table td.pos .breadth-sec-cnt { color: var(--accent-green); }
+#breadth-sector-table td.neg .breadth-sec-cnt { color: var(--accent-red); }
 
 /* Box sức mạnh thị trường — 4 chỉ báo */
 .breadth-insights {
