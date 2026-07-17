@@ -2618,6 +2618,16 @@ function renderIndustryBubbleChart(data) {
     const savedSel = localStorage.getItem('vnstock_selected_industries');
     if (savedSel) {
         const selectedSet = new Set(JSON.parse(savedSel));
+        // Nếu savedSel chưa chứa custom theme code nào (CT:xxx) → auto-add tất cả
+        // custom themes. Lý do: savedSel được tạo trước khi có custom themes, nên
+        // chỉ chứa ICB2 code → filter sẽ loại hết CT:xxx. Auto-add để custom themes
+        // luôn hiện lần đầu, sau đó user có thể toggle ẩn trong dropdown.
+        const hasCustomTheme = [...selectedSet].some(c => String(c).startsWith('CT:'));
+        if (!hasCustomTheme) {
+            data.forEach(ind => {
+                if (ind.isCustomTheme) selectedSet.add(ind.code);
+            });
+        }
         data = data.filter(ind => selectedSet.has(ind.code));
     }
 
