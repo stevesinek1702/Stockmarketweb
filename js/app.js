@@ -2848,6 +2848,28 @@ function renderMarketCapBubbleChart(data) {
 /**
  * Toggle bubble labels on/off
  */
+/**
+ * Toggle popup giải thích cách tính Lực Cầu (nút ⭐ trên dashboard).
+ * Đóng khi click ra ngoài popup.
+ */
+function toggleLucCauInfo() {
+    const popup = document.getElementById('lucCau-info-popup');
+    if (!popup) return;
+    const isOpen = popup.style.display !== 'none';
+    popup.style.display = isOpen ? 'none' : 'flex';
+    if (!isOpen) {
+        // Bind close-on-outside-click lần đầu
+        setTimeout(() => {
+            document.addEventListener('click', function closeOnOutside(e) {
+                if (!e.target.closest('.lucCau-info-card') && !e.target.closest('.lucCau-info-btn')) {
+                    popup.style.display = 'none';
+                    document.removeEventListener('click', closeOnOutside);
+                }
+            });
+        }, 0);
+    }
+}
+
 function toggleBubbleLabels(chartType) {
     if (chartType === 'industry') {
         DashboardChartsState.showIndustryLabels = document.getElementById('industry-show-labels').checked;

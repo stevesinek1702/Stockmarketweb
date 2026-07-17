@@ -2302,6 +2302,114 @@ h1, h2, h3,
     color: var(--text-primary);
 }
 
+/* ⭐ Nút info Lực Cầu — icon sao cạnh tiêu đề chart */
+.lucCau-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    margin-left: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s, transform 0.15s;
+    user-select: none;
+    vertical-align: middle;
+}
+.lucCau-info-btn:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+/* ⭐ Popup overlay giải thích cách tính Lực Cầu */
+.lucCau-info-popup {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.lucCau-info-card {
+    background: var(--bg-card, #1e2235);
+    border: 1px solid var(--border-color, #3a3f55);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.lucCau-info-card h4 {
+    margin: 0 0 12px;
+    font-size: 1.15rem;
+    color: var(--text-primary, #e4e7ef);
+}
+.lucCau-info-card h5 {
+    margin: 16px 0 8px;
+    font-size: 0.92rem;
+    color: var(--text-secondary, #9ba3b4);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.lucCau-info-card .lucCau-formula {
+    background: rgba(68, 114, 196, 0.12);
+    border-left: 3px solid var(--accent-blue, #4472C4);
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin: 0 0 12px;
+    font-size: 0.92rem;
+    color: var(--text-primary, #e4e7ef);
+}
+.lucCau-info-card ul {
+    margin: 0 0 8px;
+    padding-left: 20px;
+    list-style: none;
+}
+.lucCau-info-card ul li {
+    padding: 4px 0;
+    font-size: 0.88rem;
+    color: var(--text-secondary, #9ba3b4);
+    line-height: 1.5;
+}
+.lucCau-info-card ul.lucCau-filter li::before {
+    content: '';
+}
+.lucCau-info-card .lucCau-note {
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    background: rgba(255, 215, 61, 0.06);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #9ba3b4);
+    line-height: 1.55;
+}
+.lucCau-info-card .lucCau-note strong {
+    color: var(--text-primary, #e4e7ef);
+}
+.lucCau-info-close {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted, #6b7280);
+    font-size: 1.2rem;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.lucCau-info-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #e4e7ef);
+}
+
 .label-toggle {
     display: flex;
     align-items: center;

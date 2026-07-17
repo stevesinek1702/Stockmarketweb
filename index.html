@@ -197,7 +197,7 @@
                     <!-- Bubble Chart: Industry Movement -->
                     <div class="chart-card" id="card-industry-bubble">
                         <div class="chart-header">
-                            <h3>🏢 Chuyển Động Ngành</h3>
+                            <h3>🏢 Chuyển Động Ngành <span class="lucCau-info-btn" title="Xem cách tính Lực Cầu" onclick="toggleLucCauInfo()">⭐</span></h3>
                             <label class="label-toggle">
                                 <input type="checkbox" id="industry-show-labels" onchange="toggleBubbleLabels('industry')">
                                 <span>Hiện nhãn</span>
@@ -231,7 +231,7 @@
                     <!-- Bubble Chart: Market Cap -->
                     <div class="chart-card" id="card-marketcap-bubble">
                         <div class="chart-header">
-                            <h3>💰 Vốn Hóa</h3>
+                            <h3>💰 Vốn Hóa <span class="lucCau-info-btn" title="Xem cách tính Lực Cầu" onclick="toggleLucCauInfo()">⭐</span></h3>
                             <label class="label-toggle">
                                 <input type="checkbox" id="marketcap-show-labels" onchange="toggleBubbleLabels('marketcap')">
                                 <span>Hiện nhãn</span>
@@ -560,6 +560,38 @@
                     </table>
                 </div>
             </div>
+
+        <!-- ⭐ Popup giải thích cách tính Lực Cầu (toggle bằng nút sao) -->
+        <div class="lucCau-info-popup" id="lucCau-info-popup" style="display:none;">
+            <div class="lucCau-info-card">
+                <button class="lucCau-info-close" onclick="toggleLucCauInfo()">✕</button>
+                <h4>⭐ Cách tính Lực Cầu (%)</h4>
+                <p class="lucCau-formula">
+                    <strong>Lực cầu = GT mua chủ động / Tổng GT giao dịch × 100</strong>
+                </p>
+                <ul class="lucCau-rules">
+                    <li>📊 <strong>GT mua chủ động</strong> = Số CP mua chủ động × Giá TB khớp lệnh</li>
+                    <li>💰 <strong>Tổng GT</strong> = Tổng giá trị giao dịch phiên (VND)</li>
+                    <li>🟢 <strong>&gt; 50%</strong> = lực cầu mạnh (mua &gt; bán)</li>
+                    <li>🔴 <strong>&lt; 50%</strong> = lực cầu yếu (bán &gt; mua)</li>
+                    <li>⚖️ <strong>= 50%</strong> = cân bằng</li>
+                </ul>
+                <h5>Loại mã nhiễu (không đưa vào tính)</h5>
+                <ul class="lucCau-filter">
+                    <li>🚫 GT giao dịch &lt; <strong>100 triệu VND</strong> (mã rác/dorman)</li>
+                    <li>🚫 Volume &lt; <strong>30.000 CP</strong> (quá ít lô)</li>
+                    <li>🚫 Lực cầu &gt; <strong>80%</strong> (outlier — 1 lệnh trúng ceiling)</li>
+                </ul>
+                <p class="lucCau-note">
+                    💡 <strong>Value-weighted</strong>: mã dòng tiền lớn (blue-chip) có weight cao hơn mã nhỏ.
+                    VD: PDR (GT 55 tỷ) tác động lực cầu ngành nhiều hơn SCR (GT 6 tỷ).
+                </p>
+                <p class="lucCau-note">
+                    ⚠️ Ngành ít mã đủ điều kiện (VD: Truyền thông hôm nay) → hiện "—" vì không đủ dữ liệu đáng tin.
+                </p>
+            </div>
+        </div>
+
         </section>
 
         <!-- Price Board Tab -->
