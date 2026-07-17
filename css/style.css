@@ -5179,9 +5179,10 @@ button.scanning::after {
     font-weight: 600;
 }
 
-/* Bảng scroll dọc (max 500px) để không chiếm hết trang */
+/* Bảng scroll dọc (max 500px) để không chiếm hết trang.
+   Chỉ áp dụng cho bảng MÃ TỔNG HỢP (50+ dòng cần sticky).
+   Bảng NGÀNH (~27 dòng) không cần → dùng wrapper gốc, không sticky, không gap. */
 .breadth-table-scroll { max-height: 520px; overflow-y: auto; }
-/* Sticky thead: áp dụng cho th + nền ĐỤC để row không lộ qua header */
 .breadth-table-scroll thead th {
     position: sticky;
     top: 0;
@@ -5189,13 +5190,13 @@ button.scanning::after {
     background: var(--bg-primary);
     box-shadow: inset 0 -1px 0 var(--border-color);
 }
-/* Bảng sector có 2 row header → row thứ 2 phải top đúng vị trí */
-.breadth-table-scroll thead tr:first-child th { top: 0; }
-.breadth-table-scroll thead tr:nth-child(2) th { top: 35px; }  /* cao = header row 1 */
-/* Sector table: override background mờ → nền đục */
-#breadth-sector-table thead th,
+/* Bảng mã tổng hợp: nền đục để row không lộ qua header khi scroll */
 #breadth-all-table thead th {
     background: var(--bg-primary) !important;
+}
+/* Bảng ngành: nền mờ gốc (không sticky) */
+#breadth-sector-table thead th {
+    background: rgba(0, 0, 0, 0.15);
 }
 
 /* Badge timeframe (3T/6T/1N) trong cột Đỉnh/Đáy */
