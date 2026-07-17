@@ -24,9 +24,10 @@
     var memory = new Map();
 
     // Schema version cho EOD cache. Bump khi backend thay đổi cấu trúc data
-    // (vd: lucCau từ volume-based → value-weighted, thêm liquidCount).
+    // (vd: lucCau từ volume-based → value-weighted, thêm liquidCount,
+    // thêm custom themes Cá tra/Tôm/Vingroup).
     // Cache cũ (v khác) tự bị bỏ qua → user luôn render data cấu trúc mới.
-    var CACHE_SCHEMA_VERSION = 2;
+    var CACHE_SCHEMA_VERSION = 3;
 
     function lsKey(key) { return PREFIX + key; }
 
