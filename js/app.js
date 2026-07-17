@@ -998,7 +998,7 @@ function renderPriceBoard() {
                 <td>${stock.ma10 || '--'}</td>
                 <td>${stock.ma20 || '--'}</td>
                 <td>${stock.ma45 || '--'}</td>
-                <td class="${stock.demandStrength > 50 ? 'text-green' : (stock.demandStrength < 50 ? 'text-red' : 'text-yellow')}">${stock.demandStrength}%</td>
+                <td class="${stock.demandStrength == null ? 'text-muted' : (stock.demandStrength > 50 ? 'text-green' : (stock.demandStrength < 50 ? 'text-red' : 'text-yellow'))}">${stock.demandStrength == null ? '—' : stock.demandStrength + '%'}</td>
             </tr>
         `;
     }).join('');
@@ -2638,7 +2638,7 @@ function renderIndustryBubbleChart(data) {
     const datasets = data.map((industry, index) => ({
         label: industry.name,
         data: [{
-            x: industry.lucCau,
+            x: industry.lucCau == null ? 50 : industry.lucCau, // null (không mã đủ ĐK) → 50 để bubble vẫn hiện giữa trục
             y: industry.percentAboveMA10,
             r: Math.max(8, Math.min(25, industry.stockCount * 2)), // Bubble size based on stock count
             industryCode: industry.code // Store industry code for click handler
@@ -2721,7 +2721,7 @@ function renderIndustryBubbleChart(data) {
                         onclick="event.stopPropagation();toggleIndustrySelect('${ind.code}',this.checked)"
                         style="accent-color:${color};width:14px;height:14px;cursor:pointer;">
                     <span class="industry-dot" style="background:${color}"></span>${ind.name}
-                    <span class="industry-count">${ind.stockCount} CP</span>
+                    <span class="industry-count">${ind.liquidCount != null ? ind.liquidCount + '/' + ind.stockCount : ind.stockCount} CP</span>
                 </label>`;
             }).join('')}
         `;
@@ -2788,7 +2788,7 @@ function renderMarketCapBubbleChart(data) {
     const datasets = data.map(group => ({
         label: group.name,
         data: [{
-            x: group.lucCau,
+            x: group.lucCau == null ? 50 : group.lucCau, // null → 50 để bubble vẫn hiện giữa trục
             y: group.percentAboveMA10,
             r: Math.max(15, Math.min(40, group.stockCount / 2))
         }],
@@ -2953,7 +2953,7 @@ function renderBubbleTable(container, data, chartType) {
         </tr></thead><tbody>`;
 
     sorted.forEach((item, i) => {
-        const forceColor = item.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
+        const forceColor = item.lucCau == null ? 'var(--text-muted)' : (item.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)');
         const ma10Color = item.percentAboveMA10 >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
         
         let breadthCell = '';
@@ -2995,9 +2995,9 @@ function renderBubbleTable(container, data, chartType) {
         html += `<tr ${rowClickAttr}>
             <td>${i + 1}</td>
             <td style="font-weight: 600; color: var(--accent-blue);">${item.name} <span style="opacity:0.5; font-size:11px;">▸</span></td>
-            <td class="force-cell" style="color:${forceColor}">${item.lucCau.toFixed(1)}%</td>
+            <td class="force-cell" style="color:${item.lucCau == null ? 'var(--text-muted)' : forceColor}">${item.lucCau == null ? '—' : item.lucCau.toFixed(1) + '%'}</td>
             <td class="ma10-cell" style="color:${ma10Color}">${item.percentAboveMA10.toFixed(1)}%</td>
-            <td>${item.stockCount}</td>
+            <td>${item.liquidCount != null ? item.liquidCount + '/' + item.stockCount : item.stockCount}${item.filteredCount ? ` <span style="color:var(--text-muted);font-size:0.78em;" title="${item.filteredCount} mã GD dưới 100tr bị loại">(-${item.filteredCount})</span>` : ''}</td>
             ${isIndustry ? `<td>${formatMarketCap(item.marketCap)}</td>` : ''}
             ${breadthCell}
         </tr>`;
@@ -3082,15 +3082,15 @@ function renderIndustryTopStocks(data) {
     const body = document.getElementById('industry-modal-body');
     if (!body) return;
 
-    const { industryCode, industryName, totalStocks, totalAboveMA10, stocks } = data;
+    const { industryCode, industryName, totalStocks, totalAboveMA10, stocks, liquidCount, filteredCount } = data;
 
     if (!stocks || stocks.length === 0) {
-        body.innerHTML = `<p>Không có CP nào trong ngành ${industryName}</p>`;
+        body.innerHTML = `<p>Không có CP đủ thanh khoản (GD ≥ 100 triệu) trong ngành ${industryName}${filteredCount ? ` — ${filteredCount} mã bị loại do GD thấp` : ''}</p>`;
         return;
     }
 
     // Store data for re-render on sort
-    _industryStocksData = { industryCode, industryName, totalStocks, totalAboveMA10, stocks: [...stocks] };
+    _industryStocksData = { industryCode, industryName, totalStocks, totalAboveMA10, liquidCount, filteredCount, stocks: [...stocks] };
     _industrySortKey = 'lucCau';
     _industrySortAsc = false;
 
@@ -3111,7 +3111,7 @@ function _renderIndustryTable() {
     const body = document.getElementById('industry-modal-body');
     if (!body || !_industryStocksData) return;
 
-    const { industryCode, industryName, totalStocks, totalAboveMA10 } = _industryStocksData;
+    const { industryCode, industryName, totalStocks, totalAboveMA10, liquidCount, filteredCount } = _industryStocksData;
     const stocks = [..._industryStocksData.stocks];
     const key = _industrySortKey;
     const asc = _industrySortAsc;
@@ -3194,6 +3194,7 @@ function _renderIndustryTable() {
         <div class="industry-summary">
             <span class="summary-item"><strong>Ngành:</strong> ${industryName} (${industryCode})</span>
             <span class="summary-item"><strong>Tổng CP:</strong> ${totalStocks} mã</span>
+            ${typeof liquidCount !== 'undefined' ? `<span class="summary-item" style="color: var(--accent-blue)"><strong>Đủ thanh khoản:</strong> ${liquidCount}${filteredCount ? ` <span style="color:var(--text-muted);font-size:0.85em;">(ẩn ${filteredCount} mã GD&lt;100tr)</span>` : ''}</span>` : ''}
             <span class="summary-item" style="color: var(--accent-green)"><strong>Trên MA10:</strong> ${totalAboveMA10} mã</span>
             <span class="summary-item" style="color: var(--accent-red)"><strong>Dưới MA10:</strong> ${totalStocks - totalAboveMA10} mã</span>
         </div>
@@ -3210,7 +3211,7 @@ function _renderIndustryTable() {
 
     stocks.forEach((stock, index) => {
         const vsMA10 = stock.ma10 > 0 ? ((stock.price - stock.ma10) / stock.ma10 * 100).toFixed(2) : 0;
-        const lucCauColor = stock.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
+        const lucCauColor = stock.lucCau == null ? 'var(--text-muted)' : (stock.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)');
         const changeColor = stock.percentChange >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
         const rowBg = stock.aboveMA10 ? 'rgba(0, 255, 136, 0.05)' : 'rgba(255, 68, 102, 0.03)';
         const ma10Status = stock.aboveMA10
@@ -3224,7 +3225,7 @@ function _renderIndustryTable() {
                 <td>${formatPriceVN(stock.price)}</td>
                 <td>${formatPriceVN(stock.ma10)}</td>
                 <td style="color:${vsMA10 >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${vsMA10 >= 0 ? '+' : ''}${vsMA10}%</td>
-                <td class="force-cell" style="color:${lucCauColor}; font-weight: 600;">${stock.lucCau.toFixed(1)}%</td>
+                <td class="force-cell" style="color:${lucCauColor}; font-weight: 600;">${stock.lucCau == null ? '—' : stock.lucCau.toFixed(1) + '%'}</td>
                 <td>${formatVolume(stock.totalVolume)}</td>
                 <td style="color:${changeColor}">${stock.percentChange >= 0 ? '+' : ''}${stock.percentChange}%</td>
             </tr>
@@ -3467,7 +3468,7 @@ function _renderMarketcapTable() {
 
     stocks.forEach((stock, index) => {
         const vsMA10 = stock.ma10 > 0 ? ((stock.price - stock.ma10) / stock.ma10 * 100).toFixed(2) : 0;
-        const lucCauColor = stock.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
+        const lucCauColor = stock.lucCau == null ? 'var(--text-muted)' : (stock.lucCau >= 50 ? 'var(--accent-green)' : 'var(--accent-red)');
         const changeColor = stock.percentChange >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
         const rowBg = stock.aboveMA10 ? 'rgba(0, 255, 136, 0.05)' : 'rgba(255, 68, 102, 0.03)';
         const ma10Status = stock.aboveMA10
@@ -3485,7 +3486,7 @@ function _renderMarketcapTable() {
                 <td>${formatPriceVN(stock.price)}</td>
                 <td>${formatPriceVN(stock.ma10)}</td>
                 <td style="color:${vsMA10 >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${vsMA10 >= 0 ? '+' : ''}${vsMA10}%</td>
-                <td class="force-cell" style="color:${lucCauColor}; font-weight: 600;">${stock.lucCau.toFixed(1)}%</td>
+                <td class="force-cell" style="color:${lucCauColor}; font-weight: 600;">${stock.lucCau == null ? '—' : stock.lucCau.toFixed(1) + '%'}</td>
                 <td>${formatVolume(stock.totalVolume)}</td>
                 <td style="color:${changeColor}">${stock.percentChange >= 0 ? '+' : ''}${stock.percentChange}%</td>
                 <td>${marketCapDisplay}</td>
@@ -4515,7 +4516,7 @@ function renderFilterResults(stocks) {
                 <td class="${rsiClass}">${rsiCell}</td>
                 <td class="${macdClass}">${macdCell}</td>
                 <td>${sigCell}</td>
-                <td class="${stock.demandStrength > 50 ? 'text-green' : (stock.demandStrength < 50 ? 'text-red' : 'text-yellow')}">${stock.demandStrength}%</td>
+                <td class="${stock.demandStrength == null ? 'text-muted' : (stock.demandStrength > 50 ? 'text-green' : (stock.demandStrength < 50 ? 'text-red' : 'text-yellow'))}">${stock.demandStrength == null ? '—' : stock.demandStrength + '%'}</td>
             </tr>
         `;
     }).join('');

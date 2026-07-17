@@ -94,6 +94,62 @@ async function fetchAPI(url, headers = {}) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// LỰC CẦU (Demand Strength) — Value-weighted + Liquidity Filter
+// ═══════════════════════════════════════════════════════════════════
+// VẤN ĐỀ cũ: lucCau = TotalActiveBuyVolume / TotalVolume × 100 (theo SỐ CP)
+//   → mã penny 100 CP × 7.600đ = 760K VND nhưng vẫn count 100% lực cầu
+//   → mã không giao dịch (vol=0) bị gán 0% hoặc 50% giả định → tạo nhiễu
+//   → mẫu số phình ở ngành nhiều mã (BDS 125, SPDV CN 236, Hạ tầng 155)
+//
+// GIẢI PHÁP: tính theo GIÁ TRỊ (VND) + lọc thanh khoản
+//   lucCau = activeBuyValue / totalValue × 100
+//   activeBuyValue = TotalActiveBuyVolume × PriceAverage (giá TB khớp lệnh)
+//   Chỉ tính mã có TotalValue ≥ LIQUIDITY_MIN_VALUE (100 triệu VND)
+//   → mã rác (1-2 lô, dorman) bị loại hoàn toàn khỏi calculation
+//   → dòng tiền lớn (PDR 55 tỷ) dominate đúng mức, dòng nhỏ (CID 760K) pha loãng ≈ 0
+// ═══════════════════════════════════════════════════════════════════
+const LIQUIDITY_MIN_VALUE = 100_000_000; // 100 triệu VND — ngưỡng thanh khoản tối thiểu
+
+/**
+ * Tính lực cầu cho 1 quote theo GIÁ TRỊ (VND).
+ * @param {Object} quote - FireAnt quote object (có TotalValue, TotalActiveBuyVolume, PriceAverage)
+ * @returns {number|null} lucCau (0-100, 1 số lẻ) hoặc null nếu không đủ thanh khoản
+ */
+function computeLucCauByValue(quote) {
+    const totalValue = quote.TotalValue || quote.totalValue || 0;
+    // Mã không đủ thanh khoản (GD < 100 triệu) → loại khỏi calculation, trả null
+    if (totalValue < LIQUIDITY_MIN_VALUE) return null;
+    const activeBuyValue = (quote.TotalActiveBuyVolume || 0) * (quote.PriceAverage || 0);
+    if (totalValue <= 0) return null;
+    return Math.round((activeBuyValue / totalValue) * 1000) / 10; // 1 số lẻ
+}
+
+/**
+ * Tổng hợp lucCau value-weighted cho 1 nhóm (ngành / cap-group).
+ * Sum(activeBuyValue) / Sum(totalValue) — dòng tiền lớn có weight đúng.
+ * @param {Array} quotes - mảng FireAnt quote thuộc nhóm
+ * @returns {{lucCau:number|null, liquidCount:number, filteredCount:number}}
+ */
+function aggregateLucCauByValue(quotes) {
+    let sumBuyValue = 0, sumTotalValue = 0, liquidCount = 0, filteredCount = 0;
+    quotes.forEach(q => {
+        const tv = q.TotalValue || q.totalValue || 0;
+        if (tv < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
+        sumBuyValue += (q.TotalActiveBuyVolume || 0) * (q.PriceAverage || 0);
+        sumTotalValue += tv;
+        liquidCount++;
+    });
+    if (liquidCount === 0 || sumTotalValue === 0) {
+        return { lucCau: null, liquidCount: 0, filteredCount };
+    }
+    return {
+        lucCau: Math.round((sumBuyValue / sumTotalValue) * 1000) / 10,
+        liquidCount,
+        filteredCount
+    };
+}
+
 // Cookie cache for FireAnt API
 let fireAntCookieCache = { cookie: '', fetchedAt: 0 };
 
@@ -842,10 +898,10 @@ app.get('/api/all-stocks', async (req, res) => {
             // User requested logic earlier was (current/avg)*100.
             const volRatio = avgVol > 0 ? Math.round((currentVol / avgVol) * 100) : 0;
 
-            // Calculate Demand Strength (Lực cầu)
-            // Lực cầu = TotalActiveBuyVolume / TotalVolume * 100
-            const activeBuyVol = s.TotalActiveBuyVolume || 0;
-            const demandStrength = currentVol > 0 ? ((activeBuyVol / currentVol) * 100).toFixed(1) : 0;
+            // Calculate Demand Strength (Lực cầu) — Value-weighted + liquidity filter
+            // Mã có TotalValue < 100 triệu → demandStrength = null (hiện '—', không ẩn)
+            // Tránh nhiễu: mã 100 CP × 7.600đ = 760K không bị count 100% lực cầu
+            const lucCauValue = computeLucCauByValue(s); // null nếu < 100tr GD
 
             return {
                 symbol: s.Symbol,
@@ -874,7 +930,7 @@ app.get('/api/all-stocks', async (req, res) => {
                 macdHist: techSig.macdHist != null ? parseFloat(techSig.macdHist.toFixed(2)) : null,
                 macdRsiSignal: techSig.macdRsiSignal || null,
                 macdRsiIndicator: techSig.macdRsiIndicator || null,
-                demandStrength: parseFloat(demandStrength)
+                demandStrength: lucCauValue   // number (0-100) hoặc null nếu mã < 100tr GD
             };
         };
 
@@ -2015,16 +2071,13 @@ app.get('/api/industry-stats', async (req, res) => {
                     code: icb2,
                     name: ICB2_MAP[icb2],
                     stocks: [],
-                    totalActiveBuy: 0,
-                    totalVolume: 0,
+                    quotes: [], // FireAnt quote gốc để tính lucCau value-weighted
                     totalMarketCap: 0
                 };
             }
 
             const priceCurrent = quote.PriceCurrent || 0;
             const ma10 = ma10Map[quote.Symbol] || 0;
-            const activeBuy = quote.TotalActiveBuyVolume || 0;
-            const totalVol = quote.TotalVolume || 0;
             const sharesOutstanding = sharesMap[quote.Symbol] || 0;
             const marketCap = priceCurrent * sharesOutstanding;
 
@@ -2037,8 +2090,7 @@ app.get('/api/industry-stats', async (req, res) => {
                 marketCap
             });
 
-            industryGroups[icb2].totalActiveBuy += activeBuy;
-            industryGroups[icb2].totalVolume += totalVol;
+            industryGroups[icb2].quotes.push(quote); // giữ nguyên để aggregateLucCauByValue lọc
             industryGroups[icb2].totalMarketCap += marketCap;
         });
 
@@ -2063,15 +2115,18 @@ app.get('/api/industry-stats', async (req, res) => {
                 }
             });
 
-            // Lực cầu = TotalActiveBuyVolume / TotalVolume * 100
-            const lucCau = group.totalVolume > 0 ? (group.totalActiveBuy / group.totalVolume) * 100 : 50;
+            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted)
+            // Chỉ tính mã có TotalValue ≥ 100 triệu VND (loại mã rác/dorman)
+            const { lucCau, liquidCount, filteredCount } = aggregateLucCauByValue(group.quotes);
 
             return {
                 code: group.code,
                 name: group.name,
                 stockCount: totalStocks,
+                liquidCount,         // số mã đủ thanh khoản (≥100tr GD) — dùng để tính lucCau
+                filteredCount,       // số mã bị loại (vol=0 hoặc GD<100tr)
                 percentAboveMA10: Math.round(percentAboveMA10 * 10) / 10,
-                lucCau: Math.round(lucCau * 10) / 10,
+                lucCau,              // null nếu không còn mã nào đủ ĐK
                 upCount,
                 downCount,
                 flatCount,
@@ -2201,24 +2256,30 @@ app.get('/api/industry-top-stocks', async (req, res) => {
             });
         }
 
-        // Filter ALL stocks by industry code and calculate lucCau per stock
+        // Filter ALL stocks by industry code and calculate lucCau per stock (value-weighted)
         const icb2Prefix = industryCode.substring(0, 2);
-        const industryStocks = [];
+        const industryStocks = []; // chỉ mã đủ thanh khoản (≥100tr GD)
         let countAboveMA10 = 0;
+        let totalStocks = 0;     // tổng mã trong ngành (kể cả bị loại)
+        let filteredCount = 0;   // mã bị loại (vol=0 hoặc GD<100tr)
 
         allQuotes.forEach(quote => {
             if (!quote.Symbol) return;
 
             const stockIndustryCode = quote.IndustryCode || '';
             if (stockIndustryCode.substring(0, 2) !== icb2Prefix) return;
+            totalStocks++;
 
             const priceCurrent = quote.PriceCurrent || 0;
             const ma10 = ma10Map[quote.Symbol] || 0;
-            const activeBuy = quote.TotalActiveBuyVolume || 0;
             const totalVol = quote.TotalVolume || 0;
+            const totalValue = quote.TotalValue || 0;
 
-            // Lực cầu = ActiveBuyVolume / TotalVolume * 100
-            const lucCau = totalVol > 0 ? (activeBuy / totalVol) * 100 : 0;
+            // Lọc thanh khoản: mã GD < 100 triệu → ẩn khỏi bảng (tránh nhiễu lực cầu)
+            if (totalValue < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
+
+            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted)
+            const lucCau = computeLucCauByValue(quote);
             const aboveMA10 = ma10 > 0 && priceCurrent > ma10;
             if (aboveMA10) countAboveMA10++;
 
@@ -2227,26 +2288,31 @@ app.get('/api/industry-top-stocks', async (req, res) => {
                 price: priceCurrent,
                 ma10: ma10,
                 aboveMA10: aboveMA10,
-                lucCau: Math.round(lucCau * 100) / 100,
+                lucCau: lucCau,  // luôn có giá trị (đã filter), null chỉ khi totalValue=0 hiếm
                 totalVolume: totalVol,
-                activeBuyVolume: activeBuy,
+                totalValue: totalValue,
+                activeBuyVolume: quote.TotalActiveBuyVolume || 0,
                 percentChange: quote.PricePercentChange ? parseFloat((quote.PricePercentChange * 100).toFixed(2)) : 0
             });
         });
 
-        // Sort: aboveMA10 first, then by lucCau descending
+        // Sort: aboveMA10 first, then by lucCau descending (null cuối)
         industryStocks.sort((a, b) => {
             if (a.aboveMA10 !== b.aboveMA10) return b.aboveMA10 - a.aboveMA10;
-            return b.lucCau - a.lucCau;
+            const la = a.lucCau == null ? -1 : a.lucCau;
+            const lb = b.lucCau == null ? -1 : b.lucCau;
+            return lb - la;
         });
 
-        console.log(`✅ Industry ${industryCode} (${ICB2_MAP[industryCode]}): ${industryStocks.length} CP, ${countAboveMA10} trên MA10`);
+        console.log(`✅ Industry ${industryCode} (${ICB2_MAP[industryCode]}): ${totalStocks} mã tổng, ${industryStocks.length} đủ thanh khoản, ${filteredCount} bị loại, ${countAboveMA10} trên MA10`);
 
         res.json({
             success: true,
             industryCode: industryCode,
             industryName: ICB2_MAP[industryCode],
-            totalStocks: industryStocks.length,
+            totalStocks: totalStocks,            // tổng mã trong ngành
+            liquidCount: industryStocks.length,  // mã đủ thanh khoản (hiện trên bảng)
+            filteredCount: filteredCount,        // mã bị ẩn (vol thấp)
             totalAboveMA10: countAboveMA10,
             stocks: industryStocks
         });
@@ -2398,10 +2464,10 @@ app.get('/api/marketcap-stats', async (req, res) => {
         };
 
         const groups = {
-            'Small': { stocks: [], totalActiveBuy: 0, totalVolume: 0 },
-            'Mid': { stocks: [], totalActiveBuy: 0, totalVolume: 0 },
-            'Large': { stocks: [], totalActiveBuy: 0, totalVolume: 0 },
-            'Super Large': { stocks: [], totalActiveBuy: 0, totalVolume: 0 }
+            'Small': { stocks: [], quotes: [] },
+            'Mid': { stocks: [], quotes: [] },
+            'Large': { stocks: [], quotes: [] },
+            'Super Large': { stocks: [], quotes: [] }
         };
 
         tradingData.forEach(stock => {
@@ -2410,11 +2476,9 @@ app.get('/api/marketcap-stats', async (req, res) => {
             const quoteData = quotesResponse?.find(q => q.Symbol === stock.Symbol);
 
             const priceCurrent = quoteData?.PriceCurrent || stock.LastPriceClose || 0;
-            const sharesOutstanding = stock.SharesOutStanding || 0;
-            const marketCap = priceCurrent * sharesOutstanding;
+            const sharesOutStanding = stock.SharesOutStanding || 0;
+            const marketCap = priceCurrent * sharesOutStanding;
             const ma10 = stock.AvgPrice10d || 0;
-            const activeBuy = quoteData?.TotalActiveBuyVolume || 0;
-            const totalVol = quoteData?.TotalVolume || 0;
 
             // Determine group
             let groupName = 'Small';
@@ -2430,8 +2494,8 @@ app.get('/api/marketcap-stats', async (req, res) => {
                 aboveMA10: priceCurrent > ma10 && ma10 > 0
             });
 
-            groups[groupName].totalActiveBuy += activeBuy;
-            groups[groupName].totalVolume += totalVol;
+            // Lưu quote gốc để aggregate lucCau value-weighted (cần TotalValue/PriceAverage/TotalActiveBuyVolume)
+            if (quoteData) groups[groupName].quotes.push(quoteData);
         });
 
         // Calculate stats for each group
@@ -2440,16 +2504,18 @@ app.get('/api/marketcap-stats', async (req, res) => {
             const stocksAboveMA10 = group.stocks.filter(s => s.aboveMA10).length;
             const percentAboveMA10 = totalStocks > 0 ? (stocksAboveMA10 / totalStocks) * 100 : 0;
 
-            // Lực cầu = TotalActiveBuyVolume / TotalVolume * 100
-            const lucCau = group.totalVolume > 0 ? (group.totalActiveBuy / group.totalVolume) * 100 : 50;
+            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted, lọc thanh khoản ≥100tr)
+            const { lucCau, liquidCount, filteredCount } = aggregateLucCauByValue(group.quotes);
 
             return {
                 name,
                 label: MARKET_CAP_GROUPS[name].label,
                 color: MARKET_CAP_GROUPS[name].color,
                 stockCount: totalStocks,
+                liquidCount,
+                filteredCount,
                 percentAboveMA10: Math.round(percentAboveMA10 * 10) / 10,
-                lucCau: Math.round(lucCau * 10) / 10
+                lucCau
             };
         });
 
@@ -2538,6 +2604,8 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
 
         const stocks = [];
         let countAboveMA10 = 0;
+        let totalStocks = 0;
+        let filteredCount = 0;
 
         tradingData.forEach(stock => {
             if (!stock.Symbol || stock.Symbol.length !== 3) return;
@@ -2550,11 +2618,16 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
 
             // Filter by group
             if (marketCap < targetGroup.min || marketCap >= maxCap) return;
+            totalStocks++;
 
             const ma10 = stock.AvgPrice10d || 0;
-            const activeBuy = quote.TotalActiveBuyVolume || 0;
-            const totalVol = quote.TotalVolume || 0;
-            const lucCau = totalVol > 0 ? (activeBuy / totalVol) * 100 : 0;
+            const totalValue = quote.TotalValue || 0;
+
+            // Lọc thanh khoản: mã GD < 100 triệu → ẩn (tránh nhiễu lực cầu)
+            if (totalValue < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
+
+            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted)
+            const lucCau = computeLucCauByValue(quote);
             const aboveMA10 = ma10 > 0 && priceCurrent > ma10;
 
             if (aboveMA10) countAboveMA10++;
@@ -2564,26 +2637,31 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
                 price: priceCurrent,
                 ma10: ma10,
                 aboveMA10,
-                lucCau: Math.round(lucCau * 100) / 100,
-                totalVolume: totalVol,
-                activeBuyVolume: activeBuy,
+                lucCau: lucCau,
+                totalVolume: quote.TotalVolume || 0,
+                totalValue: totalValue,
+                activeBuyVolume: quote.TotalActiveBuyVolume || 0,
                 percentChange: quote.PricePercentChange ? parseFloat((quote.PricePercentChange * 100).toFixed(2)) : 0,
                 marketCap
             });
         });
 
-        // Sort: aboveMA10 first, then by lucCau descending
+        // Sort: aboveMA10 first, then by lucCau descending (null cuối)
         stocks.sort((a, b) => {
             if (a.aboveMA10 !== b.aboveMA10) return b.aboveMA10 - a.aboveMA10;
-            return b.lucCau - a.lucCau;
+            const la = a.lucCau == null ? -1 : a.lucCau;
+            const lb = b.lucCau == null ? -1 : b.lucCau;
+            return lb - la;
         });
 
-        console.log(`✅ [marketcap-top-stocks] ${groupName}: ${stocks.length} CP, ${countAboveMA10} trên MA10`);
+        console.log(`✅ [marketcap-top-stocks] ${groupName}: ${totalStocks} mã tổng, ${stocks.length} đủ thanh khoản, ${filteredCount} bị loại, ${countAboveMA10} trên MA10`);
 
         res.json({
             success: true,
             groupName,
-            totalStocks: stocks.length,
+            totalStocks: totalStocks,
+            liquidCount: stocks.length,
+            filteredCount: filteredCount,
             totalAboveMA10: countAboveMA10,
             stocks
         });
