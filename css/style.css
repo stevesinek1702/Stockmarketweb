@@ -2302,24 +2302,24 @@ h1, h2, h3,
     color: var(--text-primary);
 }
 
-/* ⭐ Nút info Lực Cầu — icon sao cạnh tiêu đề chart */
-.lucCau-info-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    margin-left: 6px;
-    font-size: 0.85rem;
-    cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.15s, transform 0.15s;
-    user-select: none;
-    vertical-align: middle;
+/* ⭐ Footnote Lực Cầu — dấu (*) dưới bảng chart, click sổ ra popup giải thích */
+.lucCau-footnote {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    text-align: right;
 }
-.lucCau-info-btn:hover {
-    opacity: 1;
-    transform: scale(1.15);
+.lucCau-footnote-link {
+    font-size: 0.75rem;
+    color: var(--text-muted, #6b7280);
+    cursor: pointer;
+    font-style: italic;
+    transition: color 0.15s;
+    user-select: none;
+}
+.lucCau-footnote-link:hover {
+    color: var(--accent-blue, #4472C4);
+    text-decoration: underline;
 }
 
 /* ⭐ Popup overlay giải thích cách tính Lực Cầu */

@@ -2861,7 +2861,7 @@ function toggleLucCauInfo() {
         // Bind close-on-outside-click lần đầu
         setTimeout(() => {
             document.addEventListener('click', function closeOnOutside(e) {
-                if (!e.target.closest('.lucCau-info-card') && !e.target.closest('.lucCau-info-btn')) {
+                if (!e.target.closest('.lucCau-info-card') && !e.target.closest('.lucCau-footnote-link')) {
                     popup.style.display = 'none';
                     document.removeEventListener('click', closeOnOutside);
                 }

@@ -197,7 +197,7 @@
                     <!-- Bubble Chart: Industry Movement -->
                     <div class="chart-card" id="card-industry-bubble">
                         <div class="chart-header">
-                            <h3>🏢 Chuyển Động Ngành <span class="lucCau-info-btn" title="Xem cách tính Lực Cầu" onclick="toggleLucCauInfo()">⭐</span></h3>
+                            <h3>🏢 Chuyển Động Ngành</h3>
                             <label class="label-toggle">
                                 <input type="checkbox" id="industry-show-labels" onchange="toggleBubbleLabels('industry')">
                                 <span>Hiện nhãn</span>
@@ -226,12 +226,13 @@
                             <span class="ref-line-50">Mốc 50% - Cân bằng</span>
                         </div>
                         <div id="industry-table-container" class="bubble-table-container" style="display:none;"></div>
+                        <div class="lucCau-footnote"><span class="lucCau-footnote-link" onclick="toggleLucCauInfo()">(*) Cách tính Lực Cầu</span></div>
                     </div>
 
                     <!-- Bubble Chart: Market Cap -->
                     <div class="chart-card" id="card-marketcap-bubble">
                         <div class="chart-header">
-                            <h3>💰 Vốn Hóa <span class="lucCau-info-btn" title="Xem cách tính Lực Cầu" onclick="toggleLucCauInfo()">⭐</span></h3>
+                            <h3>💰 Vốn Hóa</h3>
                             <label class="label-toggle">
                                 <input type="checkbox" id="marketcap-show-labels" onchange="toggleBubbleLabels('marketcap')">
                                 <span>Hiện nhãn</span>
@@ -261,6 +262,7 @@
                             <span class="ref-line-50" style="cursor:pointer; color: var(--accent-blue);">💡 Click vào bubble để xem danh sách CP</span>
                         </div>
                         <div id="marketcap-table-container" class="bubble-table-container" style="display:none;"></div>
+                        <div class="lucCau-footnote"><span class="lucCau-footnote-link" onclick="toggleLucCauInfo()">(*) Cách tính Lực Cầu</span></div>
                     </div>
                 </div>
 
