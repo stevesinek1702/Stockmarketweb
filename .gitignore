@@ -49,3 +49,4 @@ All Query Board*.txt
 
 # ---- Script chứa token nhúng (FireAnt JWT) — KHÔNG push lên repo ----
 Thu thap du lieu/fireant_dashboard.py
+.zcode/

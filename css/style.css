@@ -4851,6 +4851,7 @@ button.scanning::after {
 #breadth-all-table td.pos, #breadth-sector-table td.pos { color: var(--accent-green); font-weight: 600; }
 #breadth-all-table td.neg, #breadth-sector-table td.neg { color: var(--accent-red); font-weight: 600; }
 .breadth-warn { color: #f0ad4e; margin-left: 4px; cursor: help; }
+.breadth-turnaround { margin-left: 4px; cursor: help; filter: drop-shadow(0 0 2px rgba(46, 230, 138, 0.4)); }
 
 /* Bảng phân nhóm ngành */
 .breadth-sectors { margin: 16px 0; }

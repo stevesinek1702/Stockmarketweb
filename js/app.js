@@ -5391,23 +5391,30 @@ function renderBreadthAllTable(data) {
     if (countEl) countEl.textContent = `${items.length} mã`;
 
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text-muted);">Không có mã nào khớp bộ lọc.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Không có mã nào khớp bộ lọc.</td></tr>';
         return;
     }
 
     tbody.innerHTML = items.map(it => {
         const pctClass = (it.pct1Y || 0) >= 0 ? 'pos' : 'neg';
+        const pctYtdClass = (it.pctYTD || 0) >= 0 ? 'pos' : 'neg';
         const rsi = it.rsi || 0;
         const rsiClass = rsi > 70 ? 'neg' : (rsi < 30 ? 'pos' : '');
         const trap = (it.value || 0) < 0.5 && it.highTfs.length > 0
             ? '<span class="breadth-warn" title="GTGD rất thấp — bẫy thanh khoản">⚠️</span>' : '';
+        // Turnaround: mã có trong danh sách phá đáy NHƯNG YTD vẫn dương
+        // → đang phục hồi mạnh sau downtrend sâu (kiểu DNH: +5.6% YTD dù vừa lập đáy)
+        const isTurnaround = it.lowTfs.length > 0 && (it.pctYTD || 0) > 0;
+        const turnaround = isTurnaround
+            ? '<span class="breadth-turnaround" title="Turnaround: đang phục hồi dù vừa lập đáy mới">🔄</span>' : '';
         const highBadges = (it.highTfs || []).map(tf => `<span class="breadth-tf-badge high">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
         const lowBadges = (it.lowTfs || []).map(tf => `<span class="breadth-tf-badge low">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
         return `<tr>
-            <td class="stock-code"><strong>${it.ticker}</strong>${trap}</td>
+            <td class="stock-code"><strong>${it.ticker}</strong>${trap}${turnaround}</td>
             <td>${it.sector}</td>
             <td>${(it.marketCap || 0).toLocaleString('vi-VN')}</td>
             <td class="${pctClass}">${(it.pct1Y || 0) >= 0 ? '+' : ''}${(it.pct1Y || 0).toFixed(1)}%</td>
+            <td class="${pctYtdClass}">${(it.pctYTD || 0) >= 0 ? '+' : ''}${(it.pctYTD || 0).toFixed(1)}%</td>
             <td>${(it.value || 0).toFixed(2)}</td>
             <td class="${rsiClass}">${rsi.toFixed(1)}</td>
             <td>${highBadges}</td>

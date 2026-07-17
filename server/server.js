@@ -1268,6 +1268,7 @@ app.get('/api/breadth-breakout', async (req, res) => {
                         pct3M: it.pct3M,
                         pct6M: it.pct6M,
                         pct1Y: it.pct1Y,
+                        pctYTD: it.pctYTD,
                         rsi: it.rsi,
                         highTfs: [],
                         lowTfs: []
