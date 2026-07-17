@@ -30,6 +30,7 @@
                 <button class="nav-btn" data-tab="price-board">Bảng Giá</button>
                 <button class="nav-btn" data-tab="stock-filter">Bộ Lọc CP</button>
                 <button class="nav-btn" data-tab="industry">Phân Tích Ngành</button>
+                <button class="nav-btn" data-tab="breadth-hl">📈 Phá Đỉnh/Đáy</button>
                 <button class="nav-btn" data-tab="breakout">Breakout</button>
                 <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
                 <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
@@ -783,6 +784,142 @@
                 <div class="ma-breadth-empty" id="ma-breadth-empty" style="display:none;"></div>
                 <div class="ma-breadth-chart-container">
                     <canvas id="ma-breadth-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Breadth High/Low Tab (Phá Đỉnh / Phá Đáy) -->
+        <section class="tab-content" id="breadth-hl">
+            <div class="card full-width">
+                <div class="card-header">
+                    <h3>📈 Phá Đỉnh / Phá Đáy — Sức Mạnh Thị Trường</h3>
+                    <div class="industry-timerange-controls">
+                        <button class="btn-secondary" id="breadth-refresh" title="Tải lại dữ liệu">↻ Cập Nhật</button>
+                        <span class="breadth-meta" id="breadth-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                    </div>
+                </div>
+
+                <!-- Verdict box: nhận xét tổng thể (rule-based) -->
+                <div class="breadth-verdict" id="breadth-verdict">
+                    <div class="breadth-verdict-badge" id="breadth-verdict-badge">—</div>
+                    <div class="breadth-verdict-text" id="breadth-verdict-text">Đang tải dữ liệu breadth...</div>
+                </div>
+
+                <!-- 4 stat cards -->
+                <div class="breadth-stats">
+                    <div class="stat-card" id="breadth-stat-3m">
+                        <div class="stat-label">H/L Ratio · 3 Tháng</div>
+                        <div class="stat-number">—</div>
+                        <div class="stat-sub"></div>
+                    </div>
+                    <div class="stat-card" id="breadth-stat-6m">
+                        <div class="stat-label">H/L Ratio · 6 Tháng</div>
+                        <div class="stat-number">—</div>
+                        <div class="stat-sub"></div>
+                    </div>
+                    <div class="stat-card" id="breadth-stat-1y">
+                        <div class="stat-label">H/L Ratio · 1 Năm</div>
+                        <div class="stat-number">—</div>
+                        <div class="stat-sub"></div>
+                    </div>
+                    <div class="stat-card" id="breadth-stat-cap">
+                        <div class="stat-label">Vốn Hóa Low ÷ High (3T)</div>
+                        <div class="stat-number">—</div>
+                        <div class="stat-sub"></div>
+                    </div>
+                </div>
+
+                <!-- 2 grouped bar charts -->
+                <div class="breadth-charts">
+                    <div class="breadth-chart-block">
+                        <div class="chart-controls">
+                            <div class="chart-title">Số Lượng Mã Phá Đỉnh vs Phá Đáy</div>
+                        </div>
+                        <div class="industry-cumulative-chart">
+                            <canvas id="breadth-count-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="breadth-chart-block">
+                        <div class="chart-controls">
+                            <div class="chart-title">Tổng Vốn Hóa (tỷ VND) · Tiền Đang Ở Đâu?</div>
+                        </div>
+                        <div class="industry-cumulative-chart">
+                            <canvas id="breadth-cap-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2 bảng song song: Mã Phá Đỉnh 3T | Mã Phá Đáy 1N -->
+                <div class="breadth-tables">
+                    <div class="breadth-table-block">
+                        <div class="chart-controls">
+                            <div class="chart-title">🟢 Mã Phá Đỉnh (3 Tháng) — sort theo GTGD</div>
+                            <span class="breadth-count" id="breadth-high-count"></span>
+                        </div>
+                        <div class="industry-table-wrapper">
+                            <table class="data-table" id="breadth-high-table">
+                                <thead>
+                                    <tr>
+                                        <th>Mã</th>
+                                        <th>Ngành</th>
+                                        <th>Vốn Hóa</th>
+                                        <th>% 3T</th>
+                                        <th>GTGD</th>
+                                        <th>RSI</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="breadth-high-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="breadth-table-block">
+                        <div class="chart-controls">
+                            <div class="chart-title">🔴 Mã Phá Đáy (1 Năm) — top 10 giảm sâu</div>
+                            <span class="breadth-count" id="breadth-low-count"></span>
+                        </div>
+                        <div class="industry-table-wrapper">
+                            <table class="data-table" id="breadth-low-table">
+                                <thead>
+                                    <tr>
+                                        <th>Mã</th>
+                                        <th>Ngành</th>
+                                        <th>Vốn Hóa</th>
+                                        <th>% 1N</th>
+                                        <th>GTGD</th>
+                                        <th>RSI</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="breadth-low-tbody"></tbody>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng phân nhóm ngành -->
+                <div class="breadth-sectors">
+                    <div class="chart-controls">
+                        <div class="chart-title">🏭 Phân Bố Ngành · 3 Tháng (Phá Đỉnh vs Phá Đáy)</div>
+                    </div>
+                    <div class="industry-table-wrapper">
+                        <table class="data-table" id="breadth-sector-table">
+                            <thead>
+                                <tr>
+                                    <th>Ngành</th>
+                                    <th>🟢 # Phá Đỉnh</th>
+                                    <th>🔴 # Phá Đáy</th>
+                                    <th>Chênh lệch</th>
+                                </tr>
+                            </thead>
+                            <tbody id="breadth-sector-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Box sức mạnh thị trường (insight nâng cao) -->
+                <div class="breadth-insights">
+                    <div class="chart-controls">
+                        <div class="chart-title">💪 Sức Mạnh Thị Trường — 4 Chỉ Báo</div>
+                    </div>
+                    <div id="breadth-insights-list"></div>
                 </div>
             </div>
         </section>

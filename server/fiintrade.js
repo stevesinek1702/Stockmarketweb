@@ -361,6 +361,60 @@ async function getSectorTopStocksFlow(tickers, batchSize = 10, onProgress, days 
     return results;
 }
 
+// ── TopMover: New High / New Low (Phá đỉnh / Phá đáy) ────────────────
+// Endpoint công khai: wl-market.fiintrade.vn/TopMover/GetTopNew{High|Low}
+// → chỉ cần header Origin = SSI iBoard (đã có trong FII_HEADERS).
+// Timeframes theo Fiintrade: 'ThreeMonths' | 'SixMonths' | 'OneYear'.
+
+const TOPMOVER_RANGES = ['ThreeMonths', 'SixMonths', 'OneYear'];
+
+/**
+ * Lấy danh sách mã lập đỉnh mới (New High) hoặc đáy mới (New Low).
+ * @param {'GetTopNewHigh'|'GetTopNewLow'} endpoint
+ * @param {'ThreeMonths'|'SixMonths'|'OneYear'} timeRange
+ * @returns {Promise<Array>} mảng items đã normalize (rỗng nếu lỗi).
+ */
+async function getTopMover(endpoint, timeRange) {
+    if (!TOPMOVER_RANGES.includes(timeRange)) {
+        throw new Error(`Invalid timeRange: ${timeRange}`);
+    }
+    const url = `https://wl-market.fiintrade.vn/TopMover/${endpoint}`
+        + `?ComGroupCode=All&TimeRange=${timeRange}&language=vi`;
+    const data = await fiinGet(url);
+    const items = (data && data.items) || [];
+
+    // Normalize: chỉ giữ các field cần thiết cho dashboard breadth.
+    return items.map(it => {
+        const fin = it.financial || {};
+        const perf = it.performance || {};
+        const tech = it.technical || {};
+        return {
+            ticker: it.ticker,
+            organCode: it.organCode,
+            sector: cleanSectorName(it.sectorName),
+            price: round1(it.price),
+            // GTGD phiên hiện tại (VND) → tỷ
+            value: round1((it.value || 0) / BILLION),
+            // Vốn hóa (rtd11 = MarketCap VND) → tỷ
+            marketCap: round1((fin.rtd11 || 0) / BILLION),
+            // % thay đổi các mốc (Fiintrade trả về dạng thập phân 0.05 = 5%)
+            pct1D: round1((perf.percentPriceChange1Day || 0) * 100),
+            pct3M: round1((perf.percentPriceChange3Month || 0) * 100),
+            pct6M: round1((perf.percentPriceChange6Month || 0) * 100),
+            pct1Y: round1((perf.percentPriceChange1Year || 0) * 100),
+            pctYTD: round1((perf.percentPriceChangeYTD || 0) * 100),
+            // Kỹ thuật
+            rsi: round1(tech.rsi || 0),
+            sma20: round1(tech.sma20 || 0),
+            sma50: round1(tech.sma50 || 0),
+            sma100: round1(tech.sma100 || 0)
+        };
+    });
+}
+
+async function getTopNewHigh(timeRange) { return getTopMover('GetTopNewHigh', timeRange); }
+async function getTopNewLow(timeRange)  { return getTopMover('GetTopNewLow',  timeRange); }
+
 module.exports = {
     FII_HEADERS,
     fiinGet,
@@ -372,6 +426,9 @@ module.exports = {
     getInvestorStatistic,
     getStockInvestorFlow,
     getSectorTopStocksFlow,
+    getTopNewHigh,
+    getTopNewLow,
+    TOPMOVER_RANGES,
     INVESTOR_TYPES,
     cleanSectorName,
     round1

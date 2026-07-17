@@ -1147,6 +1147,142 @@ app.get('/api/industry-cumulative', async (req, res) => {
 });
 
 /**
+ * GET /api/breadth-breakout
+ * "Phá Đỉnh / Phá Đáy" — breadth thị trường dựa trên số mã lập đỉnh mới (New High)
+ * vs đáy mới (New Low) theo 3 timeframe (3T / 6T / 1N). Nguồn: Fiintrade TopMover.
+ *
+ * Insight được tính sẵn server-side để frontend chỉ render:
+ *   - summary: H/L count + ratio + verdict cho từng timeframe
+ *   - capSummary: tổng vốn hóa H vs L + Low/High multiplier
+ *   - sizeBuckets: phân nhóm vốn hóa (Mega/Large/Mid/Small/Micro) cho H & L (3T)
+ *   - sectorBreakdown: gom theo ngành, đếm count + vốn hóa, cho H & L (3T)
+ *   - topHighs3T: mã High 3T sort theo GTGD (lật "phá đỉnh ma" GTGD≈0)
+ *   - topLows1Y: top 10 mã Low 1Y giảm sâu nhất
+ *   - rsiSummary: RSI trung bình nhóm H 3T & L 3T (overbought/oversold)
+ */
+app.get('/api/breadth-breakout', async (req, res) => {
+    const cacheKey = 'breadth-breakout';
+    const cached = await getCachedResponse(cacheKey, 60000);
+    if (cached) {
+        console.log('📈 Returning cached breadth-breakout data');
+        return res.json(cached);
+    }
+
+    try {
+        console.log('📈 Fetching TopMover New High/Low from Fiintrade (6 endpoints)...');
+
+        // Fetch song song 6 combos. Mỗi call wrap try/catch riêng → partial response nếu 1 fail.
+        const safeFetch = async (fn, range, label) => {
+            try { return await fn(range); }
+            catch (e) { console.warn(`⚠️ TopMover ${label} fail:`, e.message); return []; }
+        };
+
+        const [high3T, high6T, high1Y, low3T, low6T, low1Y] = await Promise.all([
+            safeFetch(fiintrade.getTopNewHigh, 'ThreeMonths', 'High/3T'),
+            safeFetch(fiintrade.getTopNewHigh, 'SixMonths',  'High/6T'),
+            safeFetch(fiintrade.getTopNewHigh, 'OneYear',    'High/1Y'),
+            safeFetch(fiintrade.getTopNewLow,  'ThreeMonths', 'Low/3T'),
+            safeFetch(fiintrade.getTopNewLow,  'SixMonths',  'Low/6T'),
+            safeFetch(fiintrade.getTopNewLow,  'OneYear',    'Low/1Y')
+        ]);
+
+        const RANGES = ['ThreeMonths', 'SixMonths', 'OneYear'];
+        const highByTf = { ThreeMonths: high3T, SixMonths: high6T, OneYear: high1Y };
+        const lowByTf  = { ThreeMonths: low3T,  SixMonths: low6T,  OneYear: low1Y };
+
+        // ── summary: H/L count + ratio + verdict cho từng timeframe ──────
+        const summary = RANGES.map(tf => {
+            const h = highByTf[tf].length;
+            const l = lowByTf[tf].length;
+            const ratio = l > 0 ? h / l : (h > 0 ? 99 : 0);
+            const verdict = ratio >= 1.25 ? 'Bullish' : (ratio <= 0.8 ? 'Bearish' : 'Neutral');
+            return { tf, high: h, low: l, ratio: Math.round(ratio * 100) / 100, verdict };
+        });
+
+        // ── capSummary: tổng vốn hóa H vs L theo timeframe ───────────────
+        const sumCap = (arr) => arr.reduce((s, it) => s + (it.marketCap || 0), 0);
+        const capSummary = RANGES.map(tf => {
+            const capHigh = sumCap(highByTf[tf]);
+            const capLow  = sumCap(lowByTf[tf]);
+            const lowOverHigh = capHigh > 0 ? capLow / capHigh : (capLow > 0 ? 99 : 0);
+            return {
+                tf,
+                capHigh: Math.round(capHigh),
+                capLow:  Math.round(capLow),
+                lowOverHigh: Math.round(lowOverHigh * 100) / 100
+            };
+        });
+
+        // ── sizeBuckets: phân nhóm vốn hóa cho H & L (3T) ────────────────
+        // Ngưỡng (tỷ VND): Mega ≥50K · Large 10-50K · Mid 2-10K · Small 0.5-2K · Micro <0.5K
+        const bucketOf = (cap) => {
+            if (cap >= 50000) return 'Mega';
+            if (cap >= 10000) return 'Large';
+            if (cap >= 2000)  return 'Mid';
+            if (cap >= 500)   return 'Small';
+            return 'Micro';
+        };
+        const bucketize = (arr) => {
+            const b = { Mega: 0, Large: 0, Mid: 0, Small: 0, Micro: 0 };
+            for (const it of arr) b[bucketOf(it.marketCap || 0)]++;
+            return b;
+        };
+        const sizeBuckets = { high: bucketize(high3T), low: bucketize(low3T) };
+
+        // ── sectorBreakdown: gom theo ngành cho H & L (3T) ───────────────
+        const groupSector = (arr) => {
+            const m = new Map();
+            for (const it of arr) {
+                const sec = it.sector || '(không rõ)';
+                if (!m.has(sec)) m.set(sec, { count: 0, cap: 0 });
+                const o = m.get(sec);
+                o.count++; o.cap += it.marketCap || 0;
+            }
+            return [...m.entries()]
+                .map(([sector, v]) => ({ sector, count: v.count, cap: Math.round(v.cap) }))
+                .sort((a, b) => b.count - a.count);
+        };
+        const sectorBreakdown = { high: groupSector(high3T), low: groupSector(low3T) };
+
+        // ── topHighs3T: sort theo GTGD desc (lật "phá đỉnh ma" GTGD≈0) ───
+        const topHighs3T = [...high3T].sort((a, b) => (b.value || 0) - (a.value || 0));
+
+        // ── topLows1Y: top 10 Low 1Y giảm sâu nhất ───────────────────────
+        const topLows1Y = [...low1Y]
+            .sort((a, b) => (a.pct1Y || 0) - (b.pct1Y || 0))
+            .slice(0, 10);
+
+        // ── rsiSummary: RSI trung bình H 3T & L 3T ───────────────────────
+        const avgRsi = (arr) => {
+            const rs = arr.map(it => it.rsi).filter(r => r > 0);
+            return rs.length ? Math.round(rs.reduce((a, b) => a + b, 0) / rs.length * 10) / 10 : 0;
+        };
+        const rsiSummary = { high3T: avgRsi(high3T), low3T: avgRsi(low3T) };
+
+        const responseData = {
+            success: true,
+            timestamp: new Date().toISOString(),
+            source: 'fiintrade',
+            summary,
+            capSummary,
+            sizeBuckets,
+            sectorBreakdown,
+            topHighs3T,
+            topLows1Y,
+            rsiSummary,
+            raw: { high3T, high6T, high1Y, low3T, low6T, low1Y }
+        };
+
+        await setCachedResponse(cacheKey, responseData);
+        console.log(`✅ Breadth breakout: H=${high3T.length}/${high6T.length}/${high1T.length} L=${low3T.length}/${low6T.length}/${low1Y.length}`);
+        res.json(responseData);
+    } catch (error) {
+        console.error('Breadth breakout error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/investor-flow
  * "Phân tích lệnh" — dòng tiền ròng (khớp lệnh) toàn thị trường theo 4 nhóm NĐT:
  * cá nhân / tổ chức / tự doanh / nước ngoài, cho nhiều mốc thời gian (1D, 5D, 20D).

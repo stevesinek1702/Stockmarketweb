@@ -18,6 +18,7 @@ const API = {
         INVESTOR_STATS: '/api/investor-stats',
         INVESTOR_ALL: '/api/investor-all',
         INDUSTRY_FLOW: '/api/industry-flow',
+        BREADTH_BREAKOUT: '/api/breadth-breakout',
         SECURITIES_FLOW: '/api/securities-flow',
         DASHBOARD: '/api/dashboard',
         VNINDEX_HISTORY: '/api/vnindex-history',

@@ -4762,3 +4762,137 @@ button.scanning::after {
 .btn-sm.btn-disable { border-color: var(--accent-red-dark); color: var(--accent-red); }
 .btn-sm.btn-delete  { border-color: var(--accent-red-dark); color: var(--accent-red); }
 
+/* ════════════════════════════════════════════════════════════════
+   BREADTH HIGH/LOW — Phá Đỉnh / Phá Đáy
+   ════════════════════════════════════════════════════════════════ */
+
+/* Verdict box — nhận xét tổng thể (border-left theo verdict color) */
+.breadth-verdict {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--text-muted);
+    border-radius: 10px;
+}
+.breadth-verdict.bullish { border-left-color: var(--accent-green); background: rgba(46, 230, 138, 0.06); }
+.breadth-verdict.bearish { border-left-color: var(--accent-red);   background: rgba(255, 92, 120, 0.06); }
+.breadth-verdict.neutral { border-left-color: var(--text-muted); }
+
+.breadth-verdict-badge {
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 1.1rem;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--border-color);
+    white-space: nowrap;
+}
+.breadth-verdict.bullish .breadth-verdict-badge { background: rgba(46, 230, 138, 0.15); color: var(--accent-green); }
+.breadth-verdict.bearish .breadth-verdict-badge { background: rgba(255, 92, 120, 0.15); color: var(--accent-red); }
+.breadth-verdict.neutral .breadth-verdict-badge { color: var(--text-secondary); }
+
+.breadth-verdict-text { flex: 1; }
+.breadth-verdict-text p {
+    margin: 4px 0;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+.breadth-verdict-text p:first-child { margin-top: 0; }
+.breadth-verdict-text p:last-child  { margin-bottom: 0; }
+
+/* 4 stat cards (grid responsive) */
+.breadth-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+}
+@media (max-width: 900px) { .breadth-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .breadth-stats { grid-template-columns: 1fr; } }
+
+.breadth-stats .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px 16px;
+    border-left: 3px solid var(--text-muted);
+}
+.breadth-stats .stat-card.bullish { border-left-color: var(--accent-green); }
+.breadth-stats .stat-card.bearish { border-left-color: var(--accent-red); }
+.breadth-stats .stat-card.neutral { border-left-color: var(--text-muted); }
+.breadth-stats .stat-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
+.breadth-stats .stat-number { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.breadth-stats .stat-sub { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* 2 biểu đồ cạnh nhau */
+.breadth-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+}
+@media (max-width: 1100px) { .breadth-charts { grid-template-columns: 1fr; } }
+.breadth-chart-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 12px 16px;
+}
+.breadth-chart-block .industry-cumulative-chart { height: 280px; }
+
+/* 2 bảng cạnh nhau */
+.breadth-tables {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+}
+@media (max-width: 1100px) { .breadth-tables { grid-template-columns: 1fr; } }
+.breadth-table-block { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; }
+.breadth-table-block .chart-controls { margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.breadth-count { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Tô màu ô +/- trong bảng breadth */
+#breadth-high-table td.pos, #breadth-low-table td.pos,
+#breadth-sector-table td.pos { color: var(--accent-green); font-weight: 600; }
+#breadth-high-table td.neg, #breadth-low-table td.neg,
+#breadth-sector-table td.neg { color: var(--accent-red); font-weight: 600; }
+.breadth-warn { color: #f0ad4e; margin-left: 4px; cursor: help; }
+
+/* Bảng phân nhóm ngành */
+.breadth-sectors { margin: 16px 0; }
+
+/* Box sức mạnh thị trường — 4 chỉ báo */
+.breadth-insights {
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+#breadth-insights-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+}
+@media (max-width: 900px) { #breadth-insights-list { grid-template-columns: 1fr; } }
+.breadth-insight-item {
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.breadth-insight-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.breadth-insight-head strong { color: var(--text-primary); font-size: 0.85rem; }
+.breadth-insight-val { font-size: 0.8rem; color: var(--accent-blue, #4472C4); font-weight: 600; white-space: nowrap; }
+.breadth-insight-read { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+
+/* Nút refresh trong header breadth */
+#breadth-refresh { padding: 4px 12px; font-size: 0.8rem; }
+
