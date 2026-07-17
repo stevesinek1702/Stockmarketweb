@@ -230,7 +230,7 @@ const EOD_KEYS = [
 // Subset EOD keys có toDate/date trong response → validate toDate trước khi trả cache.
 // Khi toDate trong cache < hôm nay (VN) → coi như miss → fetch data mới.
 // Tránh serve data hôm qua cho ngày hôm nay (lúc đầu ngày khi Fiintrade chưa update).
-const EOD_KEYS_WITH_DATE = ['investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
+const EOD_KEYS_WITH_DATE = ['industry-flow', 'investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
 function isEODKey(key) {
     return EOD_KEYS.some(k => key === k || key.startsWith(k + ':') || key.startsWith(k));
 }

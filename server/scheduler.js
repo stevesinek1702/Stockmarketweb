@@ -48,6 +48,7 @@ const EOD_TARGETS = [
     { key: 'investor-detail', url: '/api/investor-detail', validateToDate: true },
     { key: 'industry-stats',  url: '/api/industry-stats',  validateToDate: false },
     { key: 'top-net-stocks',  url: '/api/top-net-stocks',  validateToDate: false }
+    // industry-flow: dynamic key (timeRange:level) — user-driven, scheduler không pre-warm
 ];
 const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
 
