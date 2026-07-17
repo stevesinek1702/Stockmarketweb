@@ -1014,6 +1014,41 @@ h1, h2, h3,
     border-color: var(--accent-blue);
 }
 
+/* Bảng Dòng tiền thông minh theo mã (table view) */
+.stock-flow-table-wrap {
+    border: 1px solid var(--border-color, #3a3f55);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.stock-flow-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-primary, #1a1f2e);
+    color: var(--text-secondary, #9ba3b4);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 8px 10px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color, #3a3f55);
+    z-index: 2;
+}
+.stock-flow-table thead th:first-child { text-align: left; }
+.stock-flow-table thead th:nth-child(2) { text-align: right; }
+.stock-flow-table tbody td {
+    padding: 6px 10px;
+    text-align: right;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: var(--text-primary, #e4e7ef);
+    font-variant-numeric: tabular-nums;
+}
+.stock-flow-table tbody td:first-child { text-align: left; color: var(--text-secondary, #9ba3b4); }
+.stock-flow-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+/* pos/neg trong bảng: xanh cho dương, đỏ cho âm */
+.stock-flow-table .pos { color: var(--color-up, #2ee68a); font-weight: 600; }
+.stock-flow-table .neg { color: var(--color-down, #ff5c78); font-weight: 600; }
+
 .stock-list li:last-child {
     border-bottom: none;
 }

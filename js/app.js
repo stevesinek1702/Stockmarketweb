@@ -2417,8 +2417,13 @@ async function loadStockInvestorFlow(symbol, freq) {
             if (window.StockCharts) window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', []);
             return;
         }
-        if (window.StockCharts) window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', res.points);
-        const last = res.points[res.points.length - 1];
+        // Lưu points để render lại table khi toggle view (không cần fetch lại)
+        window._stockFlowPoints = res.points;
+        if (window._stockFlowView === 'table') {
+            renderStockInvestorFlowTable(res.points);
+        } else if (window.StockCharts) {
+            window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', res.points);
+        }
         if (statusEl) statusEl.textContent = `${symbol} · ${freq} · ${res.points.length} phiên · GT khớp ròng (tỷ) — Tổ chức = -(Cá nhân + Tự doanh + Nước ngoài)`;
     } catch (e) {
         console.error('loadStockInvestorFlow error:', e);
@@ -2426,10 +2431,79 @@ async function loadStockInvestorFlow(symbol, freq) {
     }
 }
 
+/**
+ * Render bảng dòng tiền thông minh theo mã (data points từ Fiintrade).
+ * Mỗi point: {date, close, percentChange, caNhan, toChuc, tuDoanh, nuocNgoai}
+ * Hiển thị mới nhất trước (đảo ngược), values làm tròn 1 số lẻ, màu theo dấu.
+ */
+function renderStockInvestorFlowTable(points) {
+    const wrap = document.getElementById('stock-flow-table-wrap');
+    if (!wrap || !Array.isArray(points) || points.length === 0) {
+        if (wrap) wrap.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Không có dữ liệu</p>';
+        return;
+    }
+    const fmt = (v) => {
+        const n = Number(v) || 0;
+        const cls = n > 0 ? 'pos' : (n < 0 ? 'neg' : '');
+        return `<span class="${cls}">${n > 0 ? '+' : ''}${n.toFixed(1)}</span>`;
+    };
+    // Đảo ngược: ngày mới nhất trên cùng
+    const rows = [...points].reverse().map(p => {
+        const date = (p.date || '').slice(0, 10);
+        const close = Number(p.close) || 0;
+        const pct = Number(p.percentChange) || 0;
+        const pctCls = pct > 0 ? 'pos' : (pct < 0 ? 'neg' : '');
+        return `<tr>
+            <td>${date}</td>
+            <td>${close.toLocaleString('vi-VN', { maximumFractionDigits: 2 })}</td>
+            <td class="${pctCls}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</td>
+            <td>${fmt(p.caNhan)}</td>
+            <td>${fmt(p.toChuc)}</td>
+            <td>${fmt(p.tuDoanh)}</td>
+            <td>${fmt(p.nuocNgoai)}</td>
+        </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+        <table class="data-table stock-flow-table" style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+            <thead><tr>
+                <th>Ngày</th>
+                <th>Giá đóng</th>
+                <th>%</th>
+                <th>Cá nhân</th>
+                <th>Tổ chức</th>
+                <th>Tự doanh</th>
+                <th>Nước ngoài</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+/**
+ * Toggle giữa Chart view và Table view cho Dòng tiền thông minh theo mã.
+ */
+function toggleStockFlowView(view) {
+    window._stockFlowView = view;
+    const chartWrap = document.getElementById('stock-flow-chart-wrap');
+    const tableWrap = document.getElementById('stock-flow-table-wrap');
+    if (!chartWrap || !tableWrap) return;
+    if (view === 'table') {
+        chartWrap.style.display = 'none';
+        tableWrap.style.display = 'block';
+        if (window._stockFlowPoints) renderStockInvestorFlowTable(window._stockFlowPoints);
+    } else {
+        tableWrap.style.display = 'none';
+        chartWrap.style.display = '';
+        if (window._stockFlowPoints && window.StockCharts) {
+            window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', window._stockFlowPoints);
+        }
+    }
+}
+
 function setupStockInvestorFlowControls() {
     const input = document.getElementById('stock-flow-symbol');
     const btn = document.getElementById('stock-flow-search-btn');
     const freqWrap = document.getElementById('stock-flow-freq');
+    const viewWrap = document.getElementById('stock-flow-view');
     if (btn) btn.addEventListener('click', () => loadStockInvestorFlow(input ? input.value : 'HPG', window._stockFlowFreq));
     if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadStockInvestorFlow(input.value, window._stockFlowFreq); });
     if (freqWrap) freqWrap.querySelectorAll('.top-net-tab').forEach(b => {
@@ -2437,6 +2511,13 @@ function setupStockInvestorFlowControls() {
             freqWrap.querySelectorAll('.top-net-tab').forEach(x => x.classList.remove('active'));
             b.classList.add('active');
             loadStockInvestorFlow(input ? input.value : 'HPG', b.dataset.freq);
+        });
+    });
+    if (viewWrap) viewWrap.querySelectorAll('.top-net-tab').forEach(b => {
+        b.addEventListener('click', () => {
+            viewWrap.querySelectorAll('.top-net-tab').forEach(x => x.classList.remove('active'));
+            b.classList.add('active');
+            toggleStockFlowView(b.dataset.view);
         });
     });
 }

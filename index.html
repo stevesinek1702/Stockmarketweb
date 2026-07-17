@@ -500,12 +500,17 @@
                             <button class="top-net-tab" data-freq="Weekly">Tuần</button>
                             <button class="top-net-tab" data-freq="Monthly">Tháng</button>
                         </div>
+                        <div class="top-net-tabs" id="stock-flow-view" title="Chuyển đổi dạng xem">
+                            <button class="top-net-tab active" data-view="chart">📈 Chart</button>
+                            <button class="top-net-tab" data-view="table">📋 Bảng</button>
+                        </div>
                     </div>
                 </div>
                 <div class="stock-flow-status" id="stock-flow-status" style="font-size:12px;color:var(--text-muted);margin:4px 0;"></div>
-                <div class="line-chart-container" style="position:relative;height:340px;">
+                <div class="line-chart-container" id="stock-flow-chart-wrap" style="position:relative;height:340px;">
                     <canvas id="stock-investor-flow-chart"></canvas>
                 </div>
+                <div id="stock-flow-table-wrap" class="stock-flow-table-wrap" style="display:none;max-height:340px;overflow:auto;"></div>
             </div>
 
             <!-- Breakout Signals -->
