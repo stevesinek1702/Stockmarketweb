@@ -2128,11 +2128,21 @@ app.get('/api/industry-stats', async (req, res) => {
 
         console.log(`📊 Fetched ${allQuotes.length} quotes with IndustryCode, ${Object.keys(ma10Map).length} MA10 entries`);
 
+        // Build set các symbol thuộc custom themes (Cá tra, Tôm, Vingroup...).
+        // Các mã này sẽ bị LOẠI khỏi ngành ICB2 (chỉ thuộc custom theme, không trùng lặp).
+        const customThemeSymbols = new Set();
+        Object.values(CUSTOM_THEMES).forEach(theme => {
+            theme.symbols.forEach(sym => customThemeSymbols.add(sym));
+        });
+
         // Group by ICB2 code using Quotes (has IndustryCode) + MA10 from TradingStatistic
         const industryGroups = {};
 
         allQuotes.forEach(quote => {
             if (!quote.Symbol) return;
+
+            // Mã thuộc custom theme → LOẠI khỏi ngành ICB2 (chỉ thuộc custom theme)
+            if (customThemeSymbols.has(quote.Symbol)) return;
 
             // Get ICB2 code (first 2 digits + "00")
             // Override cho các mã FireAnt phân loại sai (xem INDUSTRY_OVERRIDE)
@@ -2406,6 +2416,10 @@ app.get('/api/industry-top-stocks', async (req, res) => {
         const themeSymbols = isCustomTheme && CUSTOM_THEMES[industryCode]
             ? new Set(CUSTOM_THEMES[industryCode].symbols)
             : null;
+        // Set tất cả symbol thuộc custom themes — dùng để LOẠI khỏi ngành ICB2
+        // (mã thuộc custom theme không còn hiện ở ngành ICB2 cũ)
+        const allCustomThemeSymbols = new Set();
+        Object.values(CUSTOM_THEMES).forEach(t => t.symbols.forEach(s => allCustomThemeSymbols.add(s)));
         const icb2Prefix = isCustomTheme ? null : industryCode.substring(0, 2);
         const industryStocks = []; // chỉ mã đủ thanh khoản (≥100tr GD)
         let countAboveMA10 = 0;
@@ -2419,7 +2433,9 @@ app.get('/api/industry-top-stocks', async (req, res) => {
                 // Custom theme: chỉ lấy mã trong danh sách symbols của theme
                 if (!themeSymbols.has(quote.Symbol)) return;
             } else {
-                // ICB2 ngành: filter theo prefix (có override cho mã FireAnt sai)
+                // ICB2 ngành: loại mã đã thuộc custom theme (chỉ thuộc 1 nhóm)
+                if (allCustomThemeSymbols.has(quote.Symbol)) return;
+                // Filter theo prefix (có override cho mã FireAnt sai)
                 const stockIndustryCode = INDUSTRY_OVERRIDE[quote.Symbol]
                     ? INDUSTRY_OVERRIDE[quote.Symbol].substring(0, 2)
                     : (quote.IndustryCode || '').substring(0, 2);
