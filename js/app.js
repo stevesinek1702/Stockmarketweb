@@ -2362,10 +2362,13 @@ async function loadInvestorTop(range) {
             return `<td class="ig-val-${isBuy?'pos':'neg'}">${sign}${fmt(s.net)}</td>`;
         };
 
-        // ── Hàng tổng SUM (Mua/Bán/Ròng hôm nay cho mỗi nhóm) ──
+        // ── Hàng tổng SUM (Ròng cho mỗi nhóm, theo range đang chọn) ──
+        // range param → field name trong response (API trả tất cả range, chọn đúng field)
+        const rangeFieldMap = { today: 'today', oneWeek: 'oneWeek', oneMonth: 'oneMonth', yearToDate: 'yearToDate' };
+        const sumField = rangeFieldMap[range] || 'today';
         html += '<tr class="ig-sum-row"><td class="ig-rank" style="font-weight:700;color:var(--text-primary);">Σ</td>';
         GROUPS.forEach(g => {
-            const t = byKey[g.key] && byKey[g.key].today;
+            const t = byKey[g.key] && byKey[g.key][sumField];
             if (!t) {
                 html += '<td colspan="4" style="text-align:center;color:var(--text-muted);">—</td>';
                 return;
