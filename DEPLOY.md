@@ -125,6 +125,29 @@ cat backup.sql | docker compose exec -T postgres psql -U vnstock vnstock
 docker compose down
 ```
 
+## Cập nhật code mới (1-click với `deploy.sh`)
+
+Repo kèm sẵn `deploy.sh` — script 1-click tự động `git pull` + rebuild + health check + auto-rollback nếu fail. **Chạy trên VPS Ubuntu**:
+
+```bash
+cd /opt/vnstock
+chmod +x deploy.sh          # chỉ lần đầu
+
+./deploy.sh                 # pull + rebuild express + verify (mặc định)
+./deploy.sh --no-build      # chỉ restart (khi chỉ đổi file tĩnh HTML/CSS/JS)
+./deploy.sh --status        # xem container + git log + health
+./deploy.sh --logs          # theo dõi log realtime (Ctrl+C thoát)
+./deploy.sh --rollback      # quay về commit trước nếu deploy fail
+```
+
+Tính năng:
+- **Auto health check** trong 60s sau deploy; nếu server không healthy → tự rollback về commit trước.
+- **Rollback point** lưu tại `/tmp/vnstock_last_good_commit`.
+- **Color output** + summary thời gian deploy.
+- Phát hiện "không có code mới" để tránh rebuild thừa.
+
+> Lần đầu sau khi `git pull` chứa `deploy.sh`, nhớ `chmod +x deploy.sh` để executable.
+
 ## Kiến trúc triển khai
 
 ```
