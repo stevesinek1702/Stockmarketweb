@@ -2413,8 +2413,14 @@ async function loadStockInvestorFlow(symbol, freq) {
     try {
         const res = await fetch(`${window.StockAPI.SERVER_BASE}/api/stock-investor-flow?symbol=${encodeURIComponent(symbol)}&freq=${encodeURIComponent(freq)}`).then(r => r.json());
         if (!res || !res.success || !Array.isArray(res.points) || res.points.length === 0) {
-            if (statusEl) statusEl.textContent = `Không có dữ liệu cho ${symbol}.`;
-            if (window.StockCharts) window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', []);
+            if (statusEl) statusEl.textContent = `Không có dữ liệu cho ${symbol} (${freq}).`;
+            // Clear data cũ + render rỗng (tránh hiển thị data của freq trước khi không có data mới)
+            window._stockFlowPoints = [];
+            if (window._stockFlowView === 'table') {
+                renderStockInvestorFlowTable([]);
+            } else if (window.StockCharts) {
+                window.StockCharts.renderStockInvestorFlowChart('stock-investor-flow-chart', []);
+            }
             return;
         }
         // Lưu points để render lại table khi toggle view (không cần fetch lại)
