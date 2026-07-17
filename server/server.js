@@ -1264,6 +1264,7 @@ app.get('/api/breadth-breakout', async (req, res) => {
                         sector: it.sector,
                         price: it.price,
                         value: it.value,
+                        volume: it.volume,
                         marketCap: it.marketCap,
                         pct3M: it.pct3M,
                         pct6M: it.pct6M,
@@ -1275,8 +1276,9 @@ app.get('/api/breadth-breakout', async (req, res) => {
                     });
                 }
                 const o = mergeMap.get(it.ticker);
-                // Giữ giá trị/GTGD/rsi lớn nhất (mã phá đỉnh gần nhất thường ở 3T)
+                // Giữ giá trị/GTGD/volume/rsi lớn nhất (mã phá đỉnh gần nhất thường ở 3T)
                 if ((it.value || 0) > (o.value || 0)) o.value = it.value;
+                if ((it.volume || 0) > (o.volume || 0)) o.volume = it.volume;
                 if ((it.rsi || 0) > (o.rsi || 0)) o.rsi = it.rsi;
                 const tag = TFMAP[tf];
                 if (type === 'high') o.highTfs.push(tag);

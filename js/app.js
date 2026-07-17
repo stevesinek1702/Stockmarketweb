@@ -5218,9 +5218,9 @@ function renderBreadthVerdict(data) {
     // (2) Cap multiplier (3T)
     const cap3 = data.capSummary[0];
     if (cap3.lowOverHigh >= 3) {
-        lines.push(`Vốn hóa nhóm phá đáy gấp ${cap3.lowOverHigh}× nhóm phá đỉnh — tiền lớn đang chảy ra khỏi phe yếu chứ không đổ vào phe mạnh.`);
+        lines.push(`Vốn hóa nhóm phá đáy gấp ${cap3.lowOverHigh} lần nhóm phá đỉnh — tiền lớn đang chảy ra khỏi phe yếu chứ không đổ vào phe mạnh.`);
     } else if (cap3.lowOverHigh <= 0.5) {
-        lines.push(`Vốn hóa nhóm phá đỉnh vượt trội (Low/High = ${cap3.lowOverHigh}×) — dòng tiền lớn đang tích cực vào mã mạnh.`);
+        lines.push(`Vốn hóa nhóm phá đỉnh vượt trội (Low/High = ${cap3.lowOverHigh} lần) — dòng tiền lớn đang tích cực vào mã mạnh.`);
     }
 
     // (3) Quality of leadership
@@ -5242,31 +5242,48 @@ function renderBreadthVerdict(data) {
     text.innerHTML = lines.map(l => `<p>${l}</p>`).join('');
 }
 
-/** 4 stat cards. */
+/** Box thống kê theo từng timeframe (3 cột: 3T/6T/1N). */
 function renderBreadthStats(data) {
-    const setCard = (id, ratio, verdict, hi, lo) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.querySelector('.stat-number').textContent = ratio.toFixed(2);
-        el.querySelector('.stat-sub').textContent = `${hi} đỉnh · ${lo} đáy · ${verdict}`;
-        el.className = 'stat-card ' + verdict.toLowerCase();
-    };
-    const s = data.summary;
-    setCard('breadth-stat-3m', s[0].ratio, s[0].verdict, s[0].high, s[0].low);
-    setCard('breadth-stat-6m', s[1].ratio, s[1].verdict, s[1].high, s[1].low);
-    setCard('breadth-stat-1y', s[2].ratio, s[2].verdict, s[2].high, s[2].low);
-
-    // Cap card
-    const capEl = document.getElementById('breadth-stat-cap');
-    if (capEl) {
-        const c = data.capSummary[0];
-        capEl.querySelector('.stat-number').textContent = c.lowOverHigh.toFixed(2) + '×';
-        capEl.querySelector('.stat-sub').textContent = `Low ${c.capLow.toLocaleString('vi-VN')} tỷ · High ${c.capHigh.toLocaleString('vi-VN')} tỷ`;
-        capEl.className = 'stat-card ' + (c.lowOverHigh >= 2 ? 'bearish' : (c.lowOverHigh <= 0.5 ? 'bullish' : 'neutral'));
-    }
+    const TF_KEYS = { ThreeMonths: '3M', SixMonths: '6M', OneYear: '1Y' };
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    data.summary.forEach((s, i) => {
+        const k = TF_KEYS[s.tf];
+        const cap = data.capSummary[i];
+        set(`breadth-tf-high-${k}`, `${s.high} mã`);
+        set(`breadth-tf-low-${k}`, `${s.low} mã`);
+        set(`breadth-tf-ratio-${k}`, `${s.ratio.toFixed(2)} (${s.verdict})`);
+        set(`breadth-tf-cap-${k}`, `${cap.capHigh.toLocaleString('vi-VN')} / ${cap.capLow.toLocaleString('vi-VN')} tỷ`);
+    });
 }
 
-/** Chart 1: grouped bar — H vs L count theo 3 timeframe. */
+/** Helper: label trong cột (hiện số trên đỉnh bar). */
+function barLabelPlugin() {
+    return {
+        id: 'barLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = '600 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            chart.data.datasets.forEach((ds, di) => {
+                const meta = chart.getDatasetMeta(di);
+                meta.data.forEach((bar, bi) => {
+                    const val = ds.data[bi];
+                    if (val == null) return;
+                    const color = di === 0 ? '#2ee68a' : '#ff5c78';
+                    ctx.fillStyle = color;
+                    const txt = typeof val === 'number' && val >= 1000
+                        ? val.toLocaleString('vi-VN')
+                        : String(val);
+                    ctx.fillText(txt, bar.x, bar.y - 6);
+                });
+            });
+            ctx.restore();
+        }
+    };
+}
+
+/** Chart 1: grouped bar — H vs L count theo 3 timeframe (có data label + click để filter bảng). */
 function renderBreadthCountChart(data) {
     const ctx = document.getElementById('breadth-count-chart');
     if (!ctx) return;
@@ -5277,6 +5294,7 @@ function renderBreadthCountChart(data) {
     const lows = data.summary.map(s => s.low);
     const green = cssVar('--accent-green') || '#26a65b';
     const red = cssVar('--accent-red') || '#e84142';
+    const TF_TO_SHORT = { '3 Tháng': '3T', '6 Tháng': '6T', '1 Năm': '1N' };
 
     BreadthBreakoutState.countChart = new Chart(ctx, {
         type: 'bar',
@@ -5290,19 +5308,28 @@ function renderBreadthCountChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            onClick: (e, els) => {
+                if (!els.length) return;
+                const el = els[0];
+                const tfLabel = labels[el.index];
+                const tfShort = TF_TO_SHORT[tfLabel];
+                if (tfShort) setBreadthTfFilter(tfShort);
+            },
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
             plugins: {
                 legend: { position: 'top', labels: { color: cssVar('--text-secondary') } },
-                tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw} mã` } }
+                tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw} mã (click để lọc bảng theo ${labels[c.dataIndex]})` } }
             },
             scales: {
                 x: { ticks: { color: cssVar('--text-secondary') }, grid: { display: false } },
                 y: { beginAtZero: true, ticks: { color: cssVar('--text-secondary'), precision: 0 }, grid: { color: cssVar('--border-color') } }
             }
-        }
+        },
+        plugins: [barLabelPlugin()]
     });
 }
 
-/** Chart 2: grouped bar — Vốn hóa H vs L (tỷ VND) theo 3 timeframe. */
+/** Chart 2: grouped bar — Vốn hóa H vs L (tỷ VND) theo 3 timeframe (có data label + click filter). */
 function renderBreadthCapChart(data) {
     const ctx = document.getElementById('breadth-cap-chart');
     if (!ctx) return;
@@ -5313,6 +5340,7 @@ function renderBreadthCapChart(data) {
     const capsL = data.capSummary.map(c => c.capLow);
     const green = cssVar('--accent-green') || '#26a65b';
     const red = cssVar('--accent-red') || '#e84142';
+    const TF_TO_SHORT = { '3 Tháng': '3T', '6 Tháng': '6T', '1 Năm': '1N' };
 
     BreadthBreakoutState.capChart = new Chart(ctx, {
         type: 'bar',
@@ -5326,6 +5354,13 @@ function renderBreadthCapChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            onClick: (e, els) => {
+                if (!els.length) return;
+                const tfLabel = labels[els[0].index];
+                const tfShort = TF_TO_SHORT[tfLabel];
+                if (tfShort) setBreadthTfFilter(tfShort);
+            },
+            onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
             plugins: {
                 legend: { position: 'top', labels: { color: cssVar('--text-secondary') } },
                 tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw.toLocaleString('vi-VN')} tỷ` } }
@@ -5334,18 +5369,30 @@ function renderBreadthCapChart(data) {
                 x: { ticks: { color: cssVar('--text-secondary') }, grid: { display: false } },
                 y: { beginAtZero: true, ticks: { color: cssVar('--text-secondary'), callback: (v) => v.toLocaleString('vi-VN') }, grid: { color: cssVar('--border-color') } }
             }
-        }
+        },
+        plugins: [barLabelPlugin()]
     });
 }
 
 /** Bảng mã Phá Đỉnh 3T (sort GTGD desc). */
-// State cho bảng tổng hợp (filter + search + sort)
+// State cho bảng tổng hợp (filter + tfFilter + search + sort)
 const BreadthAllTableState = {
     filter: 'all',      // 'all' | 'high' | 'low'
+    tfFilter: 'all',    // 'all' | '3T' | '6T' | '1N'
     search: '',
     sortKey: null,      // null = dùng thứ tự server (type → marketCap)
     sortAsc: true
 };
+
+/** Set timeframe filter (từ click chart hoặc nút) + re-render. */
+function setBreadthTfFilter(tfShort) {
+    BreadthAllTableState.tfFilter = tfShort;
+    // Sync nút
+    document.querySelectorAll('#breadth-tf-btns .breadth-tf-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-tf') === tfShort);
+    });
+    if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
+}
 
 /**
  * Bảng tổng hợp tất cả mã (gộp Phá Đỉnh + Phá Đáy vào 1 bảng).
@@ -5358,11 +5405,19 @@ function renderBreadthAllTable(data) {
 
     let items = (data.allStocks || []).slice();
 
-    // Lọc theo filter
+    // Lọc theo filter (Đỉnh/Đáy/Tất cả)
     if (BreadthAllTableState.filter === 'high') {
         items = items.filter(it => it.highTfs.length > 0);
     } else if (BreadthAllTableState.filter === 'low') {
         items = items.filter(it => it.lowTfs.length > 0);
+    }
+
+    // Lọc theo timeframe (3T/6T/1N) — mã phải có badge tf đó ở Đỉnh hoặc Đáy
+    if (BreadthAllTableState.tfFilter !== 'all') {
+        const tf = BreadthAllTableState.tfFilter;
+        items = items.filter(it =>
+            (it.highTfs || []).includes(tf) || (it.lowTfs || []).includes(tf)
+        );
     }
 
     // Lọc theo search
@@ -5391,7 +5446,7 @@ function renderBreadthAllTable(data) {
     if (countEl) countEl.textContent = `${items.length} mã`;
 
     if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted);">Không có mã nào khớp bộ lọc.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted);">Không có mã nào khớp bộ lọc.</td></tr>';
         return;
     }
 
@@ -5409,6 +5464,13 @@ function renderBreadthAllTable(data) {
             ? '<span class="breadth-turnaround" title="Turnaround: đang phục hồi dù vừa lập đáy mới">🔄</span>' : '';
         const highBadges = (it.highTfs || []).map(tf => `<span class="breadth-tf-badge high">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
         const lowBadges = (it.lowTfs || []).map(tf => `<span class="breadth-tf-badge low">${tf}</span>`).join(' ') || '<span class="breadth-dash">—</span>';
+        // Format volume: số lớn → rút gọn (1.2 triệu, 350 nghìn)
+        const fmtVol = (v) => {
+            v = v || 0;
+            if (v >= 1e6) return (v / 1e6).toFixed(2) + 'tr';
+            if (v >= 1e3) return (v / 1e3).toFixed(0) + 'k';
+            return v.toFixed(0);
+        };
         return `<tr>
             <td class="stock-code"><strong>${it.ticker}</strong>${trap}${turnaround}</td>
             <td>${it.sector}</td>
@@ -5416,6 +5478,7 @@ function renderBreadthAllTable(data) {
             <td class="${pctClass}">${(it.pct1Y || 0) >= 0 ? '+' : ''}${(it.pct1Y || 0).toFixed(1)}%</td>
             <td class="${pctYtdClass}">${(it.pctYTD || 0) >= 0 ? '+' : ''}${(it.pctYTD || 0).toFixed(1)}%</td>
             <td>${(it.value || 0).toFixed(2)}</td>
+            <td>${fmtVol(it.volume)}</td>
             <td class="${rsiClass}">${rsi.toFixed(1)}</td>
             <td>${highBadges}</td>
             <td>${lowBadges}</td>
@@ -5425,12 +5488,22 @@ function renderBreadthAllTable(data) {
 
 /** Bind sự kiện filter + search + sort cho bảng tổng hợp. */
 function setupBreadthAllTableEvents() {
-    // Filter buttons
+    // Filter buttons (Đỉnh/Đáy/Tất cả)
     document.querySelectorAll('#breadth-filter-btns .breadth-filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('#breadth-filter-btns .breadth-filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             BreadthAllTableState.filter = btn.getAttribute('data-filter');
+            if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
+        });
+    });
+
+    // Timeframe filter buttons (3T/6T/1N/Mọi TF)
+    document.querySelectorAll('#breadth-tf-btns .breadth-tf-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#breadth-tf-btns .breadth-tf-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            BreadthAllTableState.tfFilter = btn.getAttribute('data-tf');
             if (BreadthBreakoutState.data) renderBreadthAllTable(BreadthBreakoutState.data);
         });
     });
@@ -5514,7 +5587,7 @@ function renderBreadthInsights(data) {
     const items = [
         {
             title: 'Cap-weighted breadth (breadth có trọng số vốn hóa)',
-            val: cap3.lowOverHigh.toFixed(2) + '×',
+            val: cap3.lowOverHigh.toFixed(2) + ' lần',
             read: cap3.lowOverHigh >= 3
                 ? 'Tiền lớn đang RỜI BỎ phe yếu, KHÔNG tham gia phe mạnh → breadth "giả mạnh".'
                 : (cap3.lowOverHigh <= 0.5

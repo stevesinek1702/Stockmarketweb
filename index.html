@@ -805,27 +805,45 @@
                     <div class="breadth-verdict-text" id="breadth-verdict-text">Đang tải dữ liệu breadth...</div>
                 </div>
 
-                <!-- 4 stat cards -->
-                <div class="breadth-stats">
-                    <div class="stat-card" id="breadth-stat-3m">
-                        <div class="stat-label">H/L Ratio · 3 Tháng</div>
-                        <div class="stat-number">—</div>
-                        <div class="stat-sub"></div>
+                <!-- Box thống kê đầy đủ theo từng timeframe -->
+                <div class="breadth-stat-box" id="breadth-stat-box">
+                    <div class="breadth-stat-header">
+                        <div class="chart-title">📊 Thống Kê Breadth Theo Timeframe</div>
+                        <div class="breadth-legend">
+                            <span class="breadth-legend-item"><span class="breadth-tf-badge high">3T</span>=Phá đỉnh</span>
+                            <span class="breadth-legend-item"><span class="breadth-tf-badge low">3T</span>=Phá đáy</span>
+                            <span class="breadth-legend-item">⚠️=Bẫy thanh khoản</span>
+                            <span class="breadth-legend-item">🔄=Turnaround</span>
+                        </div>
                     </div>
-                    <div class="stat-card" id="breadth-stat-6m">
-                        <div class="stat-label">H/L Ratio · 6 Tháng</div>
-                        <div class="stat-number">—</div>
-                        <div class="stat-sub"></div>
-                    </div>
-                    <div class="stat-card" id="breadth-stat-1y">
-                        <div class="stat-label">H/L Ratio · 1 Năm</div>
-                        <div class="stat-number">—</div>
-                        <div class="stat-sub"></div>
-                    </div>
-                    <div class="stat-card" id="breadth-stat-cap">
-                        <div class="stat-label">Vốn Hóa Low ÷ High (3T)</div>
-                        <div class="stat-number">—</div>
-                        <div class="stat-sub"></div>
+                    <div class="breadth-stat-grid" id="breadth-stat-grid">
+                        <div class="breadth-tf-card" data-tf="ThreeMonths">
+                            <div class="breadth-tf-title">3 Tháng</div>
+                            <div class="breadth-tf-rows">
+                                <div class="breadth-tf-row"><span>🟢 Phá đỉnh</span><strong class="pos" id="breadth-tf-high-3M">—</strong></div>
+                                <div class="breadth-tf-row"><span>🔴 Phá đáy</span><strong class="neg" id="breadth-tf-low-3M">—</strong></div>
+                                <div class="breadth-tf-row"><span>⚖️ Ratio</span><strong id="breadth-tf-ratio-3M">—</strong></div>
+                                <div class="breadth-tf-row"><span>💰 Vốn hóa H/L</span><span id="breadth-tf-cap-3M">—</span></div>
+                            </div>
+                        </div>
+                        <div class="breadth-tf-card" data-tf="SixMonths">
+                            <div class="breadth-tf-title">6 Tháng</div>
+                            <div class="breadth-tf-rows">
+                                <div class="breadth-tf-row"><span>🟢 Phá đỉnh</span><strong class="pos" id="breadth-tf-high-6M">—</strong></div>
+                                <div class="breadth-tf-row"><span>🔴 Phá đáy</span><strong class="neg" id="breadth-tf-low-6M">—</strong></div>
+                                <div class="breadth-tf-row"><span>⚖️ Ratio</span><strong id="breadth-tf-ratio-6M">—</strong></div>
+                                <div class="breadth-tf-row"><span>💰 Vốn hóa H/L</span><span id="breadth-tf-cap-6M">—</span></div>
+                            </div>
+                        </div>
+                        <div class="breadth-tf-card" data-tf="OneYear">
+                            <div class="breadth-tf-title">1 Năm</div>
+                            <div class="breadth-tf-rows">
+                                <div class="breadth-tf-row"><span>🟢 Phá đỉnh</span><strong class="pos" id="breadth-tf-high-1Y">—</strong></div>
+                                <div class="breadth-tf-row"><span>🔴 Phá đáy</span><strong class="neg" id="breadth-tf-low-1Y">—</strong></div>
+                                <div class="breadth-tf-row"><span>⚖️ Ratio</span><strong id="breadth-tf-ratio-1Y">—</strong></div>
+                                <div class="breadth-tf-row"><span>💰 Vốn hóa H/L</span><span id="breadth-tf-cap-1Y">—</span></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -860,6 +878,12 @@
                                 <button class="breadth-filter-btn" data-filter="high">🟢 Phá Đỉnh</button>
                                 <button class="breadth-filter-btn" data-filter="low">🔴 Phá Đáy</button>
                             </div>
+                            <div class="breadth-filter-btns" id="breadth-tf-btns">
+                                <button class="breadth-tf-btn active" data-tf="all">Mọi TF</button>
+                                <button class="breadth-tf-btn" data-tf="3T">3 Tháng</button>
+                                <button class="breadth-tf-btn" data-tf="6T">6 Tháng</button>
+                                <button class="breadth-tf-btn" data-tf="1N">1 Năm</button>
+                            </div>
                             <span class="breadth-count" id="breadth-all-count"></span>
                         </div>
                     </div>
@@ -873,6 +897,7 @@
                                     <th class="sortable" data-sort="pct1Y">% 1N <span class="sort-icon">⇅</span></th>
                                     <th class="sortable" data-sort="pctYTD">% YTD <span class="sort-icon">⇅</span></th>
                                     <th class="sortable" data-sort="value">GTGD <span class="sort-icon">⇅</span></th>
+                                    <th class="sortable" data-sort="volume">Volume <span class="sort-icon">⇅</span></th>
                                     <th class="sortable" data-sort="rsi">RSI <span class="sort-icon">⇅</span></th>
                                     <th>🟢 Đỉnh</th>
                                     <th>🔴 Đáy</th>

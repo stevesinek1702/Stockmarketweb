@@ -4805,30 +4805,7 @@ button.scanning::after {
 .breadth-verdict-text p:first-child { margin-top: 0; }
 .breadth-verdict-text p:last-child  { margin-bottom: 0; }
 
-/* 4 stat cards (grid responsive) */
-.breadth-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin: 16px 0;
-}
-@media (max-width: 900px) { .breadth-stats { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 500px) { .breadth-stats { grid-template-columns: 1fr; } }
-
-.breadth-stats .stat-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 14px 16px;
-    border-left: 3px solid var(--text-muted);
-}
-.breadth-stats .stat-card.bullish { border-left-color: var(--accent-green); }
-.breadth-stats .stat-card.bearish { border-left-color: var(--accent-red); }
-.breadth-stats .stat-card.neutral { border-left-color: var(--text-muted); }
-.breadth-stats .stat-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
-.breadth-stats .stat-number { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
-.breadth-stats .stat-sub { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
-
+/* 4 stat cards (grid responsive) - DEPRECATED, dùng .breadth-stat-box */
 /* 2 biểu đồ cạnh nhau */
 .breadth-charts {
     display: grid;
@@ -4884,6 +4861,81 @@ button.scanning::after {
 
 /* Nút refresh trong header breadth */
 #breadth-refresh { padding: 4px 12px; font-size: 0.8rem; }
+
+/* ═══ Box thống kê breadth theo timeframe ═══ */
+.breadth-stat-box {
+    margin: 16px 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+.breadth-stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.breadth-legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+.breadth-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.breadth-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+@media (max-width: 900px) { .breadth-stat-grid { grid-template-columns: 1fr; } }
+.breadth-tf-card {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.breadth-tf-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    font-size: 0.95rem;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+.breadth-tf-rows { display: flex; flex-direction: column; gap: 6px; }
+.breadth-tf-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.breadth-tf-row strong { color: var(--text-primary); font-size: 0.9rem; }
+.breadth-tf-row strong.pos { color: var(--accent-green); }
+.breadth-tf-row strong.neg { color: var(--accent-red); }
+
+/* Timeframe filter buttons */
+.breadth-tf-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.breadth-tf-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.breadth-tf-btn.active {
+    background: var(--accent-purple, #9b59b6);
+    border-color: var(--accent-purple, #9b59b6);
+    color: #fff;
+    font-weight: 600;
+}
 
 /* ═══ Bảng tổng hợp tất cả mã (Phá Đỉnh + Phá Đáy) ═══ */
 .breadth-all-table {

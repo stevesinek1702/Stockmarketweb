@@ -395,6 +395,8 @@ async function getTopMover(endpoint, timeRange) {
             price: round1(it.price),
             // GTGD phiên hiện tại (VND) → tỷ
             value: round1((it.value || 0) / BILLION),
+            // Khối lượng khớp lệnh phiên (số CP)
+            volume: it.volume || 0,
             // Vốn hóa (rtd11 = MarketCap VND) → tỷ
             marketCap: round1((fin.rtd11 || 0) / BILLION),
             // % thay đổi các mốc (Fiintrade trả về dạng thập phân 0.05 = 5%)
