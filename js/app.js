@@ -2177,7 +2177,7 @@ const bubbleLabelPlugin = {
                 const { x, y } = element;
                 const lines = [];
                 if (opts.showLabels) lines.push(dataset.label);
-                if (opts.showForce && dataset.forceValues?.[idx] !== undefined) {
+                if (opts.showForce && dataset.forceValues?.[idx] != null) {
                     lines.push(dataset.forceValues[idx].toFixed(1) + '%');
                 }
                 if (lines.length === 0) return;
