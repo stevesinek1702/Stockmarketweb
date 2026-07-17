@@ -5109,24 +5109,8 @@ button.scanning::after {
 .breadth-tf-row strong.pos { color: var(--accent-green); }
 .breadth-tf-row strong.neg { color: var(--accent-red); }
 
-/* Timeframe filter buttons */
-.breadth-tf-btn {
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.78rem;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-.breadth-tf-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
-.breadth-tf-btn.active {
-    background: var(--accent-purple, #9b59b6);
-    border-color: var(--accent-purple, #9b59b6);
-    color: #fff;
-    font-weight: 600;
-}
+/* Style nút filter (.breadth-tf-btn + .breadth-filter-btn) được gộp chung
+   tại block .breadth-filter-btns ở dưới — đồng bộ padding/font/active. */
 
 /* ═══ Bảng tổng hợp tất cả mã (Phá Đỉnh + Phá Đáy) ═══ */
 .breadth-all-table {
@@ -5160,23 +5144,57 @@ button.scanning::after {
     width: 180px;
 }
 .breadth-search:focus { outline: none; border-color: var(--accent-blue, #4472C4); }
-.breadth-filter-btns { display: flex; gap: 4px; }
-.breadth-filter-btn {
+/* Cụm filter: label + nhóm nút, có viền riêng để tách 2 nhóm Loại / Khung TG */
+.breadth-filter-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px 3px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-main, rgba(0, 0, 0, 0.15));
+}
+.breadth-filter-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.breadth-filter-btns {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: nowrap;
+}
+/* Đồng bộ style 2 nhóm nút (Loại + Khung TG) — cùng padding/font/border */
+.breadth-filter-btn,
+.breadth-tf-btn {
     background: transparent;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
     padding: 4px 12px;
     border-radius: 6px;
     font-size: 0.8rem;
+    line-height: 1.2;
     cursor: pointer;
     transition: all 0.15s;
+    white-space: nowrap;
 }
-.breadth-filter-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
-.breadth-filter-btn.active {
+.breadth-filter-btn:hover,
+.breadth-tf-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+/* Active: cùng tông xanh (nhấn mạnh) cho cả 2 nhóm — tránh 2 màu khác nhau gây rối */
+.breadth-filter-btn.active,
+.breadth-tf-btn.active {
     background: var(--accent-blue, #4472C4);
     border-color: var(--accent-blue, #4472C4);
     color: #fff;
     font-weight: 600;
+}
+/* Bộ lọc Timeframe lúc active có thể chọn màu tím để phân biệt với Loại (tùy chọn) */
+.breadth-tf-btn.active {
+    background: var(--accent-purple, #9b59b6);
+    border-color: var(--accent-purple, #9b59b6);
 }
 
 /* Bảng scroll dọc (max 500px) để không chiếm hết trang.

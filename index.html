@@ -922,16 +922,22 @@
                         <div class="chart-title">📋 Danh Sách Mã Tổng Hợp (Phá Đỉnh + Phá Đáy)</div>
                         <div class="breadth-filter-bar">
                             <input type="text" id="breadth-search" class="breadth-search" placeholder="🔍 Tìm mã / ngành...">
-                            <div class="breadth-filter-btns" id="breadth-filter-btns" title="Lọc theo loại">
-                                <button class="breadth-filter-btn active" data-filter="all">Tất cả</button>
-                                <button class="breadth-filter-btn" data-filter="high">🟢 Phá Đỉnh</button>
-                                <button class="breadth-filter-btn" data-filter="low">🔴 Phá Đáy</button>
+                            <div class="breadth-filter-group">
+                                <span class="breadth-filter-label">Loại</span>
+                                <div class="breadth-filter-btns" id="breadth-filter-btns">
+                                    <button class="breadth-filter-btn active" data-filter="all">Tất cả</button>
+                                    <button class="breadth-filter-btn" data-filter="high">🟢 Phá Đỉnh</button>
+                                    <button class="breadth-filter-btn" data-filter="low">🔴 Phá Đáy</button>
+                                </div>
                             </div>
-                            <div class="breadth-filter-btns" id="breadth-tf-btns" title="Lọc theo timeframe (kết hợp với loại ở trên)">
-                                <button class="breadth-tf-btn active" data-tf="all">Mọi TF</button>
-                                <button class="breadth-tf-btn" data-tf="3T">3 Tháng</button>
-                                <button class="breadth-tf-btn" data-tf="6T">6 Tháng</button>
-                                <button class="breadth-tf-btn" data-tf="1N">1 Năm</button>
+                            <div class="breadth-filter-group">
+                                <span class="breadth-filter-label">Khung TG</span>
+                                <div class="breadth-filter-btns" id="breadth-tf-btns">
+                                    <button class="breadth-tf-btn active" data-tf="all">Mọi TF</button>
+                                    <button class="breadth-tf-btn" data-tf="3T">3 Tháng</button>
+                                    <button class="breadth-tf-btn" data-tf="6T">6 Tháng</button>
+                                    <button class="breadth-tf-btn" data-tf="1N">1 Năm</button>
+                                </div>
                             </div>
                             <span class="breadth-count" id="breadth-all-count"></span>
                         </div>
