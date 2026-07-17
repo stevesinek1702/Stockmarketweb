@@ -168,18 +168,26 @@ async function getMeta() {
          FROM breadth_daily_snapshot`
     );
     const row = res.rows[0] || {};
+    const fmt = (d) => {
+        if (!d) return null;
+        const dt = d instanceof Date ? d : new Date(d);
+        return dt.toISOString().split('T')[0];
+    };
     return {
         total: row.total || 0,
-        firstDate: row.first_date || null,
-        lastDate: row.last_date || null,
+        firstDate: fmt(row.first_date),
+        lastDate: fmt(row.last_date),
         hasToday: await hasToday()
     };
 }
 
 /** Convert pg row (snake_case) → camelCase cho frontend dễ dùng. */
 function _normalizeRow(r) {
+    // Force date thành 'YYYY-MM-DD' (bỏ phần thời gian do pg trả về object Date)
+    const d = r.snapshot_date instanceof Date ? r.snapshot_date : new Date(r.snapshot_date);
+    const dateStr = d.toISOString().split('T')[0];
     return {
-        date: r.snapshot_date,
+        date: dateStr,
         high3T: r.high_3t, low3T: r.low_3t, ratio3T: parseFloat(r.ratio_3t),
         capHigh3T: r.cap_high_3t, capLow3T: r.cap_low_3t,
         high6T: r.high_6t, low6T: r.low_6t, ratio6T: parseFloat(r.ratio_6t),
