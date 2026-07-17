@@ -2326,8 +2326,14 @@ app.get('/api/industry-top-stocks', async (req, res) => {
             '9500': 'Công nghệ'
         };
 
-        if (!ICB2_MAP[industryCode]) {
+        // Validate industryCode: phải là ICB2 code hợp lệ (trong ICB2_MAP)
+        // HOẶC custom theme code (bắt đầu 'CT:' + có trong CUSTOM_THEMES)
+        const isCustomTheme = industryCode && industryCode.startsWith('CT:');
+        if (!isCustomTheme && !ICB2_MAP[industryCode]) {
             return res.status(400).json({ success: false, error: 'Invalid industry code' });
+        }
+        if (isCustomTheme && !CUSTOM_THEMES[industryCode]) {
+            return res.status(400).json({ success: false, error: 'Unknown custom theme: ' + industryCode });
         }
 
         // Get cookie for authenticated requests
@@ -2395,9 +2401,8 @@ app.get('/api/industry-top-stocks', async (req, res) => {
         }
 
         // Filter ALL stocks by industry code and calculate lucCau per stock (value-weighted)
-        // Custom theme (code bắt đầu 'CT:') → filter theo danh sách symbol trong theme
-        // thay vì theo ICB2 prefix.
-        const isCustomTheme = industryCode.startsWith('CT:');
+        // isCustomTheme đã xác định ở validation trên. Custom theme → filter theo danh sách
+        // symbol trong theme, ICB2 → filter theo prefix.
         const themeSymbols = isCustomTheme && CUSTOM_THEMES[industryCode]
             ? new Set(CUSTOM_THEMES[industryCode].symbols)
             : null;
