@@ -5181,8 +5181,22 @@ button.scanning::after {
 
 /* Bảng scroll dọc (max 500px) để không chiếm hết trang */
 .breadth-table-scroll { max-height: 520px; overflow-y: auto; }
-.breadth-table-scroll thead { position: sticky; top: 0; background: var(--bg-card); z-index: 2; }
-.breadth-table-scroll thead th { border-bottom: 2px solid var(--border-color); }
+/* Sticky thead: áp dụng cho th + nền ĐỤC để row không lộ qua header */
+.breadth-table-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--bg-primary);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+}
+/* Bảng sector có 2 row header → row thứ 2 phải top đúng vị trí */
+.breadth-table-scroll thead tr:first-child th { top: 0; }
+.breadth-table-scroll thead tr:nth-child(2) th { top: 35px; }  /* cao = header row 1 */
+/* Sector table: override background mờ → nền đục */
+#breadth-sector-table thead th,
+#breadth-all-table thead th {
+    background: var(--bg-primary) !important;
+}
 
 /* Badge timeframe (3T/6T/1N) trong cột Đỉnh/Đáy */
 .breadth-tf-badge {
