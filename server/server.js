@@ -1114,6 +1114,31 @@ const INDUSTRY_OVERRIDE = {
     TIN: '8700'   // Công ty Tài chính Tổng hợp Tín Việt → Dịch vụ tài chính (không phải Ngân hàng)
 };
 
+// ═══════════════════════════════════════════════════════════════════
+// CUSTOM THEMES — nhóm chủ đề tùy chỉnh (không theo ICB2)
+// ═══════════════════════════════════════════════════════════════════
+// User muốn tách nhỏ theo chủ đề kinh doanh (Cá tra, Tôm, Vingroup...)
+// thay vì chỉ theo ngành ICB2 chính thức.
+// Prefix 'CT:' (Custom Theme) tránh đụng ICB2 code (là số).
+// Mỗi theme tự định nghĩa danh sách symbol thuộc nhóm.
+// Endpoint /api/industry-stats sẽ tính lucCau/stats cho các theme này
+// giống như ngành ICB2, và append vào results.
+// ═══════════════════════════════════════════════════════════════════
+const CUSTOM_THEMES = {
+    'CT:CA_TRA': {
+        name: '🐟 Cá tra',
+        symbols: ['VHC', 'IDI', 'ANV', 'ASM', 'AGF', 'ABT', 'ACL', 'HVG']
+    },
+    'CT:TOM': {
+        name: '🦐 Tôm',
+        symbols: ['MPC', 'FMC', 'CMX']
+    },
+    'CT:VINGROUP': {
+        name: '🏢 Vingroup',
+        symbols: ['VIC', 'VHM', 'VRE', 'VPL']
+    }
+};
+
 // Map symbol → ICB code (top stocks)
 const SYMBOL_TO_ICB = {
     // Ngân hàng
@@ -2186,7 +2211,70 @@ app.get('/api/industry-stats', async (req, res) => {
 
         results.sort((a, b) => b.stockCount - a.stockCount);
 
-        console.log(`✅ Industry stats: ${results.length} industries`);
+        // ═══ Custom themes: nhóm chủ đề tùy chỉnh (Cá tra, Tôm, Vingroup...) ═══
+        // Tính lucCau/stats giống ngành ICB2 nhưng filter theo danh sách symbol.
+        // allQuotes đã fetch ở trên (có IndustryCode, TotalValue, TotalVolume, ...).
+        const quoteMap = {};
+        allQuotes.forEach(q => { if (q.Symbol) quoteMap[q.Symbol] = q; });
+
+        const ma10For = (sym) => ma10Map[sym] || 0;
+        Object.entries(CUSTOM_THEMES).forEach(([themeCode, theme]) => {
+            const themeStocks = [];
+            const themeQuotes = [];
+            let totalMarketCap = 0;
+
+            theme.symbols.forEach(sym => {
+                const quote = quoteMap[sym];
+                if (!quote) return; // mã chưa fetch / IPO mới chưa trong batch
+                const priceCurrent = quote.PriceCurrent || 0;
+                const sharesOutstanding = sharesMap[sym] || 0;
+                const marketCap = priceCurrent * sharesOutstanding;
+                const ma10 = ma10For(sym);
+
+                themeStocks.push({
+                    symbol: sym,
+                    priceCurrent,
+                    ma10,
+                    aboveMA10: priceCurrent > ma10 && ma10 > 0,
+                    percentChange: quote.PricePercentChange ? quote.PricePercentChange * 100 : 0,
+                    marketCap
+                });
+                themeQuotes.push(quote);
+                totalMarketCap += marketCap;
+            });
+
+            if (themeStocks.length === 0) return; // theme rỗng (mã chưa fetch)
+
+            const totalStocks = themeStocks.length;
+            const stocksAboveMA10 = themeStocks.filter(s => s.aboveMA10).length;
+            const percentAboveMA10 = totalStocks > 0 ? (stocksAboveMA10 / totalStocks) * 100 : 0;
+            let upCount = 0, downCount = 0, flatCount = 0;
+            themeStocks.forEach(s => {
+                const change = s.percentChange || 0;
+                if (change > 0) upCount++;
+                else if (change < 0) downCount++;
+                else flatCount++;
+            });
+
+            const { lucCau, liquidCount, filteredCount } = aggregateLucCauByValue(themeQuotes);
+
+            results.push({
+                code: themeCode,
+                name: theme.name,
+                stockCount: totalStocks,
+                liquidCount,
+                filteredCount,
+                percentAboveMA10: Math.round(percentAboveMA10 * 10) / 10,
+                lucCau,
+                upCount,
+                downCount,
+                flatCount,
+                marketCap: totalMarketCap,
+                isCustomTheme: true   // flag để frontend phân biệt
+            });
+        });
+
+        console.log(`✅ Industry stats: ${results.length} industries (gồm ${Object.keys(CUSTOM_THEMES).length} custom themes)`);
 
         const responseData = {
             success: true,
@@ -2307,7 +2395,13 @@ app.get('/api/industry-top-stocks', async (req, res) => {
         }
 
         // Filter ALL stocks by industry code and calculate lucCau per stock (value-weighted)
-        const icb2Prefix = industryCode.substring(0, 2);
+        // Custom theme (code bắt đầu 'CT:') → filter theo danh sách symbol trong theme
+        // thay vì theo ICB2 prefix.
+        const isCustomTheme = industryCode.startsWith('CT:');
+        const themeSymbols = isCustomTheme && CUSTOM_THEMES[industryCode]
+            ? new Set(CUSTOM_THEMES[industryCode].symbols)
+            : null;
+        const icb2Prefix = isCustomTheme ? null : industryCode.substring(0, 2);
         const industryStocks = []; // chỉ mã đủ thanh khoản (≥100tr GD)
         let countAboveMA10 = 0;
         let totalStocks = 0;     // tổng mã trong ngành (kể cả bị loại)
@@ -2316,11 +2410,16 @@ app.get('/api/industry-top-stocks', async (req, res) => {
         allQuotes.forEach(quote => {
             if (!quote.Symbol) return;
 
-            // Override IndustryCode cho mã FireAnt phân loại sai (xem INDUSTRY_OVERRIDE)
-            const stockIndustryCode = INDUSTRY_OVERRIDE[quote.Symbol]
-                ? INDUSTRY_OVERRIDE[quote.Symbol].substring(0, 2)
-                : (quote.IndustryCode || '').substring(0, 2);
-            if (stockIndustryCode !== icb2Prefix) return;
+            if (isCustomTheme) {
+                // Custom theme: chỉ lấy mã trong danh sách symbols của theme
+                if (!themeSymbols.has(quote.Symbol)) return;
+            } else {
+                // ICB2 ngành: filter theo prefix (có override cho mã FireAnt sai)
+                const stockIndustryCode = INDUSTRY_OVERRIDE[quote.Symbol]
+                    ? INDUSTRY_OVERRIDE[quote.Symbol].substring(0, 2)
+                    : (quote.IndustryCode || '').substring(0, 2);
+                if (stockIndustryCode !== icb2Prefix) return;
+            }
             totalStocks++;
 
             const priceCurrent = quote.PriceCurrent || 0;
@@ -2357,17 +2456,23 @@ app.get('/api/industry-top-stocks', async (req, res) => {
             return lb - la;
         });
 
-        console.log(`✅ Industry ${industryCode} (${ICB2_MAP[industryCode]}): ${totalStocks} mã tổng, ${industryStocks.length} đủ thanh khoản, ${filteredCount} bị loại, ${countAboveMA10} trên MA10`);
+        // Industry name: custom theme lấy từ CUSTOM_THEMES, ICB2 lấy từ ICB2_MAP
+        const industryName = isCustomTheme && CUSTOM_THEMES[industryCode]
+            ? CUSTOM_THEMES[industryCode].name
+            : ICB2_MAP[industryCode];
+
+        console.log(`✅ Industry ${industryCode} (${industryName}): ${totalStocks} mã tổng, ${industryStocks.length} đủ thanh khoản, ${filteredCount} bị loại, ${countAboveMA10} trên MA10`);
 
         res.json({
             success: true,
             industryCode: industryCode,
-            industryName: ICB2_MAP[industryCode],
+            industryName: industryName,
             totalStocks: totalStocks,            // tổng mã trong ngành
             liquidCount: industryStocks.length,  // mã đủ thanh khoản (hiện trên bảng)
             filteredCount: filteredCount,        // mã bị ẩn (vol thấp)
             totalAboveMA10: countAboveMA10,
-            stocks: industryStocks
+            stocks: industryStocks,
+            isCustomTheme: isCustomTheme
         });
     } catch (error) {
         console.error('Industry top stocks error:', error);
