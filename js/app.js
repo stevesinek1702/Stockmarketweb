@@ -5405,16 +5405,22 @@ function renderBreadthAllTable(data) {
 
     let items = (data.allStocks || []).slice();
 
-    // Lọc theo filter (Đỉnh/Đáy/Tất cả)
-    if (BreadthAllTableState.filter === 'high') {
-        items = items.filter(it => it.highTfs.length > 0);
-    } else if (BreadthAllTableState.filter === 'low') {
-        items = items.filter(it => it.lowTfs.length > 0);
-    }
-
-    // Lọc theo timeframe (3T/6T/1N) — mã phải có badge tf đó ở Đỉnh hoặc Đáy
-    if (BreadthAllTableState.tfFilter !== 'all') {
-        const tf = BreadthAllTableState.tfFilter;
+    // Lọc theo filter (Đỉnh/Đáy/Tất cả) + timeframe (3T/6T/1N) kết hợp.
+    // Logic: nếu chọn cả 2 (vd Phá Đỉnh + 3T) → mã phải có badge 3T trong ĐỈNH.
+    //        Nếu chỉ chọn Đỉnh/Đáy → bất kỳ tf nào của bên đó.
+    //        Nếu chỉ chọn tf → tf đó xuất hiện ở Đỉnh HOẶC Đáy.
+    const f = BreadthAllTableState.filter;       // 'all' | 'high' | 'low'
+    const tf = BreadthAllTableState.tfFilter;     // 'all' | '3T' | '6T' | '1N'
+    if (f !== 'all' && tf !== 'all') {
+        // Cả 2 đều chọn: phải match đúng loại VÀ timeframe
+        const arrKey = f === 'high' ? 'highTfs' : 'lowTfs';
+        items = items.filter(it => (it[arrKey] || []).includes(tf));
+    } else if (f !== 'all') {
+        // Chỉ chọn loại
+        const arrKey = f === 'high' ? 'highTfs' : 'lowTfs';
+        items = items.filter(it => it[arrKey].length > 0);
+    } else if (tf !== 'all') {
+        // Chỉ chọn tf
         items = items.filter(it =>
             (it.highTfs || []).includes(tf) || (it.lowTfs || []).includes(tf)
         );
