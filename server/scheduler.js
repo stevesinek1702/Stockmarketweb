@@ -39,13 +39,15 @@ const REFRESH_TARGETS = [
 ];
 
 // EOD endpoints: data chỉ đổi 1 lần/ngày (cuối phiên). Cache 24h.
-// Scheduler refresh mỗi 30 phút trong khoảng 19:00-22:00, skip nếu data hôm nay đã có.
+// Scheduler refresh mỗi 30 phút trong khoảng 15:00-22:00 VN, skip nếu data hôm nay đã có.
+// (Fiintrade update data sau 15:00 đóng cửa; trước đó vẫn là data hôm qua.)
+// validateToDate: endpoint có toDate trong response → kiểm tra toDate thực = hôm nay.
 const EOD_TARGETS = [
-    { key: 'investor-flow',   url: '/api/investor-flow' },
-    { key: 'foreign-flow',    url: '/api/foreign-flow' },
-    { key: 'investor-detail', url: '/api/investor-detail' },
-    { key: 'industry-stats',  url: '/api/industry-stats' },
-    { key: 'top-net-stocks',  url: '/api/top-net-stocks' }
+    { key: 'investor-flow',   url: '/api/investor-flow',   validateToDate: true },
+    { key: 'foreign-flow',    url: '/api/foreign-flow',    validateToDate: true },
+    { key: 'investor-detail', url: '/api/investor-detail', validateToDate: true },
+    { key: 'industry-stats',  url: '/api/industry-stats',  validateToDate: false },
+    { key: 'top-net-stocks',  url: '/api/top-net-stocks',  validateToDate: false }
 ];
 const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
 
@@ -68,13 +70,14 @@ async function refreshOne(target, port) {
 
 /**
  * EOD refresh: gọi endpoint → nếu server cache miss sẽ fetch Fiintrade + set EOD cache.
- * Skip nếu data hôm nay đã có (tránh gọi thừa khi 600 user cùng xem).
+ * Skip nếu data hôm nay đã có (tránh gọi thỡ khi 600 user cùng xem).
+ * validateToDate: nếu true, hasEODToday kiểm tra toDate thực = hôm nay (không chỉ key tồn tại).
  */
 async function refreshEOD(target, port) {
     const { hasEODToday } = require('./cache');
-    // Đã có data hôm nay → skip
-    if (await hasEODToday(target.key)) {
-        console.log(`✅ [scheduler-eod] ${target.key} đã có data hôm nay — skip`);
+    // Đã có data hôm nay (và toDate đúng) → skip
+    if (await hasEODToday(target.key, { validateToDate: target.validateToDate })) {
+        console.log(`✅ [scheduler-eod] ${target.key} đã có data hôm nay (toDate OK) — skip`);
         return;
     }
     // Chưa có → gọi endpoint (cache miss → fetch + cache EOD)
@@ -82,13 +85,14 @@ async function refreshEOD(target, port) {
 }
 
 /**
- * Kiểm tra có trong khoảng giờ EOD refresh (19:00-22:00 giờ VN) không.
+ * Kiểm tra có trong khoảng giờ EOD refresh (15:00-22:00 giờ VN) không.
+ * Fiintrade update data sau 15:00 đóng cửa → bắt đầu refresh từ 15:00.
  */
 function isInEODWindow() {
     const now = new Date();
-    // VPS chạy UTC; giờ VN = UTC+7. 19:00 VN = 12:00 UTC, 22:00 VN = 15:00 UTC.
+    // VPS chạy UTC; giờ VN = UTC+7. 15:00 VN = 08:00 UTC, 22:00 VN = 15:00 UTC.
     const vnHour = (now.getUTCHours() + 7) % 24;
-    return vnHour >= 19 && vnHour < 22;
+    return vnHour >= 15 && vnHour < 22;
 }
 
 function startScheduler(port) {

@@ -115,33 +115,67 @@ async function invalidate(key) {
 // mọi request trong ngày đều trả cache → 0 call Fiintrade.
 
 /**
- * EOD cache key đánh thêm ngày hiện tại để tự expire sang ngày mới.
+ * Ngày hiện tại theo giờ VN (GMT+7) — định dạng 'YYYY-MM-DD'.
+ * QUAN TRỌNG: không dùng new Date().toISOString() vì nó trả về UTC.
+ * VPS chạy UTC, nhưng thị trường VN đóng cửa 15:00 VN = 08:00 UTC.
+ * Nếu dùng UTC thì 0:00-7:00 sáng VN (17-24h UTC hôm trước) sẽ lệch ngày
+ * → cache key sai → serve stale data tới 7h sáng.
+ */
+function vnToday() {
+    // Cộng 7h rồi mới lấy date part → ra ngày VN đúng.
+    return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * EOD cache key đánh thêm ngày hiện tại (VN) để tự expire sang ngày mới.
  * Vd 'industry-flow:1:2' + ngày 2026-07-15 → 'eod:2026-07-15:industry-flow:1:2'
  */
 function eodKey(key) {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    return `eod:${today}:${key}`;
+    return `eod:${vnToday()}:${key}`;
 }
 
 /**
  * Đọc EOD cache. TTL = 24h (đủ an toàn, key đổi theo ngày nên qua ngày mới miss).
+ *
+ * Tùy chọn validateToDate: nếu truyền, kiểm tra toDate/toDate trong data cache.
+ * Khi toDate trong cache < hôm nay (VN) → coi như miss (trả null) → endpoint fetch lại.
+ * Tránh serve data hôm qua cho ngày hôm nay khi Fiintrade đã update data mới.
+ *
+ * @param {string} key cache key
+ * @param {object} [opts] { validateToDate?: boolean } — mặc định false
  */
-async function getCachedEOD(key) {
-    return getCached(eodKey(key), 24 * 3600 * 1000);
+async function getCachedEOD(key, opts) {
+    const data = await getCached(eodKey(key), 24 * 3600 * 1000);
+    if (!data) return null;
+    if (opts && opts.validateToDate) {
+        // Lấy toDate từ data (endpoint investor-flow/foreign-flow lưu ở top-level)
+        const toDate = data.toDate || (data.today && data.today.date) || null;
+        if (toDate && String(toDate).slice(0, 10) !== vnToday()) {
+            // Cache chứa data ngày cũ → miss để endpoint fetch data mới
+            console.log(`♻️  [cache-eod] ${key}: toDate ${toDate} ≠ today ${vnToday()} → cache miss (refresh)`);
+            return null;
+        }
+    }
+    return data;
 }
 
 /**
  * Ghi EOD cache.
+ * @param {string} key
+ * @param {object} data
+ * @param {number} [ttlMs=24h] TTL tùy chọn (15 phút khi Fiintrade chưa update cho hôm nay)
  */
-async function setCachedEOD(key, data) {
-    return setCached(eodKey(key), data, 24 * 3600 * 1000);
+async function setCachedEOD(key, data, ttlMs) {
+    return setCached(eodKey(key), data, ttlMs || 24 * 3600 * 1000);
 }
 
 /**
  * Kiểm tra EOD data của hôm nay đã có chưa (để scheduler biết có cần retry).
+ * Có validate toDate: data "hôm nay" phải thực sự có toDate = hôm nay.
+ * Nếu data chỉ là của ngày hôm qua (toDate < today) → trả false để scheduler retry.
  */
-async function hasEODToday(key) {
-    const v = await getCached(eodKey(key), 24 * 3600 * 1000);
+async function hasEODToday(key, opts) {
+    const v = await getCachedEOD(key, { validateToDate: opts && opts.validateToDate });
     return v !== null;
 }
 
@@ -157,7 +191,7 @@ const apiCounter = {
      * @param {'fireant'|'fiintrade'} source
      */
     async bump(source) {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = vnToday();
         const k = `api_calls:${today}:${source}`;
         try { await redis.incr(k); await redis.expire(k, 86400 * 2); } catch (e) { /* ignore */ }
     },
@@ -166,7 +200,7 @@ const apiCounter = {
      * Đọc counter hôm nay. Trả { fireant, fiintrade }.
      */
     async today() {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = vnToday();
         let fireant = 0, fiintrade = 0;
         try {
             const f = await redis.get(`api_calls:${today}:fireant`);
@@ -178,4 +212,4 @@ const apiCounter = {
     }
 };
 
-module.exports = { getCached, setCached, getStale, invalidate, getCachedEOD, setCachedEOD, hasEODToday, apiCounter };
+module.exports = { getCached, setCached, getStale, invalidate, getCachedEOD, setCachedEOD, hasEODToday, apiCounter, vnToday };

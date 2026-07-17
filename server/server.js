@@ -218,7 +218,7 @@ const CACHE_TTL_MS = {
 };
 
 // EOD keys: data chỉ đổi 1 lần/ngày (cuối phiên) → cache 24h, không TTL cố định.
-// Prefix match. Scheduler sẽ refresh 19-22h.
+// Prefix match. Scheduler sẽ refresh 15-22h VN (xem scheduler.js).
 const EOD_KEYS = [
     'industry-flow',
     'investor-flow',
@@ -227,8 +227,15 @@ const EOD_KEYS = [
     'industry-stats',
     'top-net-stocks'
 ];
+// Subset EOD keys có toDate/date trong response → validate toDate trước khi trả cache.
+// Khi toDate trong cache < hôm nay (VN) → coi như miss → fetch data mới.
+// Tránh serve data hôm qua cho ngày hôm nay (lúc đầu ngày khi Fiintrade chưa update).
+const EOD_KEYS_WITH_DATE = ['investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
 function isEODKey(key) {
     return EOD_KEYS.some(k => key === k || key.startsWith(k + ':') || key.startsWith(k));
+}
+function shouldValidateToDate(key) {
+    return EOD_KEYS_WITH_DATE.some(k => key === k || key.startsWith(k + ':'));
 }
 
 function ttlForKey(key) {
@@ -241,13 +248,30 @@ function ttlForKey(key) {
 
 // Wrappers async — caller PHẢI await (giữ tên cũ để ít đổi call site).
 // EOD keys dùng smart-cache 24h (key đổi theo ngày) thay vì TTL cố định.
+// EOD keys có toDate (investor-flow, foreign-flow, ...) validate toDate: nếu cache chứa
+// data ngày cũ → miss → endpoint fetch data mới (tránh serve stale data cho ngày hôm nay).
 const { getCachedEOD, setCachedEOD } = require('./cache');
 async function getCachedResponse(key, ttlMs) {
-    if (isEODKey(key)) return getCachedEOD(key);
+    if (isEODKey(key)) {
+        return getCachedEOD(key, { validateToDate: shouldValidateToDate(key) });
+    }
     return getCached(key, ttlMs);
 }
 async function setCachedResponse(key, data) {
-    if (isEODKey(key)) return setCachedEOD(key, data);
+    if (isEODKey(key)) {
+        // EOD key có toDate: nếu data fetch về vẫn là ngày hôm qua (Fiintrade chưa update
+        // cho hôm nay, vd trước 15h VN) → cache TTL ngắn (15 phút) để retry sớm.
+        // Khi toDate = hôm nay → cache 24h (data ổn định cả ngày).
+        if (shouldValidateToDate(key)) {
+            const toDate = data.toDate || (data.today && data.today.date) || null;
+            const today = require('./cache').vnToday();
+            if (toDate && String(toDate).slice(0, 10) !== today) {
+                console.log(`⏳ [cache-eod] ${key}: toDate ${toDate} ≠ today ${today} → cache TTL ngắn 15 phút (đợi Fiintrade update)`);
+                return setCachedEOD(key, data, 15 * 60 * 1000);
+            }
+        }
+        return setCachedEOD(key, data);
+    }
     return _setCached(key, data, ttlForKey(key));
 }
 async function getStaleResponse(key) {
