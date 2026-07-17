@@ -102,14 +102,27 @@ async function fetchAPI(url, headers = {}) {
 //   → mã không giao dịch (vol=0) bị gán 0% hoặc 50% giả định → tạo nhiễu
 //   → mẫu số phình ở ngành nhiều mã (BDS 125, SPDV CN 236, Hạ tầng 155)
 //
-// GIẢI PHÁP: tính theo GIÁ TRỊ (VND) + lọc thanh khoản
+// GIẢI PHÁP: tính theo GIÁ TRỊ (VND) + lọc thanh khoản + lọc nhiễu
 //   lucCau = activeBuyValue / totalValue × 100
 //   activeBuyValue = TotalActiveBuyVolume × PriceAverage (giá TB khớp lệnh)
-//   Chỉ tính mã có TotalValue ≥ LIQUIDITY_MIN_VALUE (100 triệu VND)
-//   → mã rác (1-2 lô, dorman) bị loại hoàn toàn khỏi calculation
-//   → dòng tiền lớn (PDR 55 tỷ) dominate đúng mức, dòng nhỏ (CID 760K) pha loãng ≈ 0
+//   Loại mã nếu:
+//     - TotalValue < LIQUIDITY_MIN_VALUE (100 triệu VND) — rác/dorman
+//     - TotalVolume < LIQUIDITY_MIN_VOLUME (30k CP) — quá ít lô, nhiễu
+//     - lucCau > LUC_CAU_MAX (80%) — outlier, 1 lệnh mua trúng ceiling → nhiễu
 // ═══════════════════════════════════════════════════════════════════
-const LIQUIDITY_MIN_VALUE = 100_000_000; // 100 triệu VND — ngưỡng thanh khoản tối thiểu
+const LIQUIDITY_MIN_VALUE = 100_000_000; // 100 triệu VND — ngưỡng GTGD tối thiểu
+const LIQUIDITY_MIN_VOLUME = 30_000;     // 30k CP — ngưỡng volume tối thiểu (mã dưới 30k CP = rác)
+const LUC_CAU_MAX = 80;                  // 80% — lucCau > 80 = outlier, loại (1 lệnh trúng ceiling)
+
+/**
+ * Kiểm tra 1 quote có đủ điều kiện thanh khoản để tính lucCau không.
+ * Trả về true nếu ĐỦ (đưa vào calculation), false nếu bị loại (nhiễu).
+ */
+function isLiquidEnough(quote) {
+    const tv = quote.TotalValue || quote.totalValue || 0;
+    const vol = quote.TotalVolume || quote.totalVolume || 0;
+    return tv >= LIQUIDITY_MIN_VALUE && vol >= LIQUIDITY_MIN_VOLUME;
+}
 
 /**
  * Tính lực cầu cho 1 quote theo GIÁ TRỊ (VND).
@@ -117,25 +130,30 @@ const LIQUIDITY_MIN_VALUE = 100_000_000; // 100 triệu VND — ngưỡng thanh 
  * @returns {number|null} lucCau (0-100, 1 số lẻ) hoặc null nếu không đủ thanh khoản
  */
 function computeLucCauByValue(quote) {
+    // Mã không đủ thanh khoản → loại khỏi calculation, trả null
+    if (!isLiquidEnough(quote)) return null;
     const totalValue = quote.TotalValue || quote.totalValue || 0;
-    // Mã không đủ thanh khoản (GD < 100 triệu) → loại khỏi calculation, trả null
-    if (totalValue < LIQUIDITY_MIN_VALUE) return null;
     const activeBuyValue = (quote.TotalActiveBuyVolume || 0) * (quote.PriceAverage || 0);
     if (totalValue <= 0) return null;
-    return Math.round((activeBuyValue / totalValue) * 1000) / 10; // 1 số lẻ
+    const lc = Math.round((activeBuyValue / totalValue) * 1000) / 10; // 1 số lẻ
+    // lucCau > 80% = outlier (1 lệnh mua trúng ceiling) → loại, trả null
+    return lc > LUC_CAU_MAX ? null : lc;
 }
 
 /**
  * Tổng hợp lucCau value-weighted cho 1 nhóm (ngành / cap-group).
  * Sum(activeBuyValue) / Sum(totalValue) — dòng tiền lớn có weight đúng.
+ * Loại mã nhiễu: vol<30k, value<100tr, lucCau>80%.
  * @param {Array} quotes - mảng FireAnt quote thuộc nhóm
  * @returns {{lucCau:number|null, liquidCount:number, filteredCount:number}}
  */
 function aggregateLucCauByValue(quotes) {
     let sumBuyValue = 0, sumTotalValue = 0, liquidCount = 0, filteredCount = 0;
     quotes.forEach(q => {
+        if (!isLiquidEnough(q)) { filteredCount++; return; }
+        const lc = computeLucCauByValue(q);
+        if (lc === null) { filteredCount++; return; } // lucCau > 80% hoặc lỗi → loại
         const tv = q.TotalValue || q.totalValue || 0;
-        if (tv < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
         sumBuyValue += (q.TotalActiveBuyVolume || 0) * (q.PriceAverage || 0);
         sumTotalValue += tv;
         liquidCount++;
@@ -2310,11 +2328,11 @@ app.get('/api/industry-top-stocks', async (req, res) => {
             const totalVol = quote.TotalVolume || 0;
             const totalValue = quote.TotalValue || 0;
 
-            // Lọc thanh khoản: mã GD < 100 triệu → ẩn khỏi bảng (tránh nhiễu lực cầu)
-            if (totalValue < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
-
-            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted)
+            // Lọc thanh khoản + nhiễu:
+            // - GTGD < 100 triệu hoặc Volume < 30k CP → loại (mã rác/dorman)
+            // - lucCau > 80% → loại (outlier, 1 lệnh mua trúng ceiling)
             const lucCau = computeLucCauByValue(quote);
+            if (lucCau === null) { filteredCount++; return; }  // không đủ ĐK hoặc > 80%
             const aboveMA10 = ma10 > 0 && priceCurrent > ma10;
             if (aboveMA10) countAboveMA10++;
 
@@ -2663,11 +2681,11 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
             const ma10 = stock.AvgPrice10d || 0;
             const totalValue = quote.TotalValue || 0;
 
-            // Lọc thanh khoản: mã GD < 100 triệu → ẩn (tránh nhiễu lực cầu)
-            if (totalValue < LIQUIDITY_MIN_VALUE) { filteredCount++; return; }
-
-            // Lực cầu = activeBuyValue / totalValue × 100 (value-weighted)
+            // Lọc thanh khoản + nhiễu:
+            // - GTGD < 100 triệu hoặc Volume < 30k CP → loại (mã rác/dorman)
+            // - lucCau > 80% → loại (outlier, 1 lệnh mua trúng ceiling)
             const lucCau = computeLucCauByValue(quote);
+            if (lucCau === null) { filteredCount++; return; }  // không đủ ĐK hoặc > 80%
             const aboveMA10 = ma10 > 0 && priceCurrent > ma10;
 
             if (aboveMA10) countAboveMA10++;
