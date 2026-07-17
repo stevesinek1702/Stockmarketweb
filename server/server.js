@@ -1274,7 +1274,7 @@ app.get('/api/breadth-breakout', async (req, res) => {
         };
 
         await setCachedResponse(cacheKey, responseData);
-        console.log(`✅ Breadth breakout: H=${high3T.length}/${high6T.length}/${high1T.length} L=${low3T.length}/${low6T.length}/${low1Y.length}`);
+        console.log(`✅ Breadth breakout: H=${high3T.length}/${high6T.length}/${high1Y.length} L=${low3T.length}/${low6T.length}/${low1Y.length}`);
         res.json(responseData);
     } catch (error) {
         console.error('Breadth breakout error:', error.message);
