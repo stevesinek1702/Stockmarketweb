@@ -3962,7 +3962,8 @@ function switchTab(tabId) {
         try {
             if (!BreadthBreakoutState.data) setupBreadthBreakoutEvents();
             loadBreadthBreakout();
-        } catch (e) { console.error('Breadth breakout load error:', e); }
+            loadBreadthSnapshot();
+        } catch (e) { console.error('Breadth load error:', e); }
     }
 }
 
@@ -5664,4 +5665,188 @@ function setupBreadthBreakoutEvents() {
         loadBreadthBreakout();
     });
     setupBreadthAllTableEvents();
+    setupBreadthSnapshotEvents();
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// BREADTH SNAPSHOT — Xu hướng breadth theo lịch sử (ratio line, area, calendar)
+// ════════════════════════════════════════════════════════════════════════
+
+const BreadthSnapshotState = {
+    data: null,
+    range: 90,
+    ratioChart: null,
+    areaChart: null,
+    isLoading: false
+};
+
+/** Tải snapshot history + render 3 charts. */
+async function loadBreadthSnapshot() {
+    if (BreadthSnapshotState.isLoading) return;
+    BreadthSnapshotState.isLoading = true;
+    const metaEl = document.getElementById('breadth-snapshot-meta');
+    if (metaEl) metaEl.textContent = 'Đang tải lịch sử breadth...';
+    try {
+        const resp = await fetch(`${SERVER_BASE}/api/breadth-snapshot?days=${BreadthSnapshotState.range}&_t=${Date.now()}`);
+        const result = await resp.json();
+        if (!result.success) {
+            if (metaEl) metaEl.textContent = 'Lỗi: ' + (result.error || 'không rõ');
+            return;
+        }
+        BreadthSnapshotState.data = result;
+        renderBreadthSnapshotMeta(result);
+        renderBreadthRatioChart(result.series);
+        renderBreadthAreaChart(result.series);
+        renderBreadthCalendar(result.series);
+    } catch (e) {
+        console.error('Breadth snapshot load error:', e);
+        if (metaEl) metaEl.textContent = 'Lỗi tải dữ liệu lịch sử';
+    } finally {
+        BreadthSnapshotState.isLoading = false;
+    }
+}
+
+/** Meta line: "X ngày · từ AAA → BBB · đã có hôm nay ✓/✗". */
+function renderBreadthSnapshotMeta(result) {
+    const el = document.getElementById('breadth-snapshot-meta');
+    if (!el) return;
+    const m = result.meta || {};
+    const today = m.hasToday ? '✓ đã có hôm nay' : '⏳ chưa có hôm nay (sẽ tự chụp 15:00-22:00 VN)';
+    if (!m.total) {
+        el.innerHTML = `<span class="breadth-warn">⚠️ Chưa có dữ liệu lịch sử. Snapshot đầu tiên sẽ được tạo hôm nay (chạy capture thủ công hoặc đợi scheduler EOD).</span>`;
+        return;
+    }
+    el.innerHTML = `<strong>${m.total}</strong> ngày · từ <strong>${m.firstDate}</strong> → <strong>${m.lastDate}</strong> · ${today}`;
+}
+
+/** Chart 1: Ratio line (3T/6T/1N) + đường tham chiếu 1.0. */
+function renderBreadthRatioChart(series) {
+    const ctx = document.getElementById('breadth-ratio-chart');
+    if (!ctx) return;
+    if (BreadthSnapshotState.ratioChart) BreadthSnapshotState.ratioChart.destroy();
+    if (!series || !series.length) { ctx.parentElement.innerHTML = '<div class="breadth-empty">Chưa có data</div>'; return; }
+
+    const labels = series.map(s => s.date);
+    const ref1 = labels.map(() => 1.0);
+    const green = cssVar('--accent-green') || '#2ee68a';
+    const red = cssVar('--accent-red') || '#ff5c78';
+    const blue = cssVar('--accent-blue') || '#4472C4';
+    const purple = cssVar('--accent-purple') || '#9b59b6';
+
+    BreadthSnapshotState.ratioChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Ratio 3T', data: series.map(s => s.ratio3T), borderColor: blue, backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                { label: 'Ratio 6T', data: series.map(s => s.ratio6T), borderColor: purple, backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                { label: 'Ratio 1N', data: series.map(s => s.ratio1Y), borderColor: green, backgroundColor: 'transparent', tension: 0.3, borderWidth: 2, pointRadius: 2 },
+                { label: 'Bull/Bear (1.0)', data: ref1, borderColor: red, borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, backgroundColor: 'transparent' }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { color: cssVar('--text-secondary'), font: { size: 11 } } },
+                tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw.toFixed(2)}` } }
+            },
+            scales: {
+                x: { ticks: { color: cssVar('--text-secondary'), maxTicksLimit: 10, font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: cssVar('--text-secondary'), font: { size: 10 } }, grid: { color: cssVar('--border-color') } }
+            }
+        }
+    });
+}
+
+/** Chart 2: Count H/L area chart. */
+function renderBreadthAreaChart(series) {
+    const ctx = document.getElementById('breadth-count-area-chart');
+    if (!ctx) return;
+    if (BreadthSnapshotState.areaChart) BreadthSnapshotState.areaChart.destroy();
+    if (!series || !series.length) { ctx.parentElement.innerHTML = '<div class="breadth-empty">Chưa có data</div>'; return; }
+
+    const labels = series.map(s => s.date);
+    const green = cssVar('--accent-green') || '#2ee68a';
+    const red = cssVar('--accent-red') || '#ff5c78';
+    // alpha helper
+    const alpha = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
+
+    BreadthSnapshotState.areaChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: '🟢 Phá Đỉnh 3T', data: series.map(s => s.high3T), borderColor: green, backgroundColor: alpha(green, 0.3), fill: true, tension: 0.3, pointRadius: 1 },
+                { label: '🔴 Phá Đáy 3T', data: series.map(s => s.low3T), borderColor: red, backgroundColor: alpha(red, 0.3), fill: true, tension: 0.3, pointRadius: 1 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { color: cssVar('--text-secondary'), font: { size: 11 } } },
+                tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.raw} mã` } }
+            },
+            scales: {
+                x: { ticks: { color: cssVar('--text-secondary'), maxTicksLimit: 10, font: { size: 10 } }, grid: { display: false } },
+                y: { beginAtZero: true, ticks: { color: cssVar('--text-secondary'), font: { size: 10 }, precision: 0 }, grid: { color: cssVar('--border-color') } }
+            }
+        }
+    });
+}
+
+/** Chart 3: Calendar heatmap (GitHub-style) — custom CSS grid. */
+function renderBreadthCalendar(series) {
+    const el = document.getElementById('breadth-calendar');
+    if (!el) return;
+    if (!series || !series.length) { el.innerHTML = '<div class="breadth-empty">Chưa có data</div>'; return; }
+
+    // Map date → snapshot để tra nhanh
+    const map = new Map(series.map(s => [s.date, s]));
+
+    // Tính range ngày: từ firstDate → today (để fill cả ngày trống = empty cell)
+    const first = new Date(series[0].date + 'T00:00:00Z');
+    const last = new Date(series[series.length - 1].date + 'T00:00:00Z');
+    const days = [];
+    for (let d = new Date(first); d <= last; d.setUTCDate(d.getUTCDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        days.push(ds);
+    }
+
+    // Đẩy về thứ 2 đầu (để canh lề lịch). weekday: 0=CN..6=T7. Muốn T2 làm đầu → lùi về T2.
+    const firstDow = new Date(days[0] + 'T00:00:00Z').getUTCDay(); // 0=CN
+    // Quy ước: T2=0 (đầu tuần). CN=6 → dời sang cuối. CN sẽ thành 6.
+    const offset = (firstDow + 6) % 7;
+    for (let i = 0; i < offset; i++) days.unshift(null);
+
+    // Cell intensity: theo ratio1Y. bearish mạnh = đỏ đậm, bullish mạnh = xanh đậm.
+    const cellHTML = days.map(ds => {
+        if (!ds) return '<div class="breadth-cal-cell pad"></div>';
+        const s = map.get(ds);
+        if (!s) return `<div class="breadth-cal-cell empty" title="${ds}: chưa có data"></div>`;
+        const ratio = s.ratio1Y;
+        // opacity theo độ lệch khỏi 1.0 (xa 1 = đậm)
+        const intensity = Math.min(Math.abs(ratio - 1.0) / 1.0, 1);
+        const op = 0.3 + intensity * 0.7;
+        const verdict = s.verdict.toLowerCase();
+        const tooltip = `${ds}: ratio1N=${ratio.toFixed(2)} (${s.verdict}) · H3T=${s.high3T} L3T=${s.low3T}`;
+        return `<div class="breadth-cal-cell ${verdict}" style="--intensity:${op.toFixed(2)}" title="${tooltip}"></div>`;
+    }).join('');
+
+    // Header weekday labels (T2-CN)
+    const wdLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+        .map(w => `<div class="breadth-cal-wd">${w}</div>`).join('');
+
+    el.innerHTML = `<div class="breadth-cal-grid">${wdLabels}${cellHTML}</div>`;
+}
+
+/** Bind range selector. */
+function setupBreadthSnapshotEvents() {
+    document.querySelectorAll('#breadth-range-btns .breadth-range-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#breadth-range-btns .breadth-range-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            BreadthSnapshotState.range = parseInt(btn.getAttribute('data-range'));
+            loadBreadthSnapshot();
+        });
+    });
 }

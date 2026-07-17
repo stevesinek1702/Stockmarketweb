@@ -1370,6 +1370,67 @@ app.get('/api/breadth-breakout', async (req, res) => {
 });
 
 /**
+ * GET /api/breadth-snapshot?days=90
+ * Lịch sử snapshot breadth theo ngày (cho vẽ trend chart).
+ */
+app.get('/api/breadth-snapshot', async (req, res) => {
+    const cacheKey = 'breadth-snapshot';
+    const cached = await getCachedResponse(cacheKey, 60000);
+    if (cached) return res.json(cached);
+    try {
+        const days = Math.min(Math.max(parseInt(req.query.days) || 90, 1), 730);
+        const breadthSnapshot = require('./breadth-snapshot');
+        const [series, meta] = await Promise.all([
+            breadthSnapshot.getHistory(days),
+            breadthSnapshot.getMeta()
+        ]);
+        const responseData = {
+            success: true,
+            days,
+            meta,
+            series,
+            timestamp: new Date().toISOString()
+        };
+        await setCachedResponse(cacheKey, responseData);
+        res.json(responseData);
+    } catch (error) {
+        console.error('Breadth snapshot error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/breadth-snapshot/meta
+ */
+app.get('/api/breadth-snapshot/meta', async (req, res) => {
+    try {
+        const breadthSnapshot = require('./breadth-snapshot');
+        const meta = await breadthSnapshot.getMeta();
+        res.json({ success: true, meta });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/breadth-snapshot/capture
+ * Trigger snapshot hôm nay (admin only — cho lần đầu bật + test).
+ */
+app.post('/api/breadth-snapshot/capture', async (req, res) => {
+    if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Admin only' });
+    }
+    try {
+        const breadthSnapshot = require('./breadth-snapshot');
+        const snapshot = await breadthSnapshot.buildToday();
+        res.json({ success: true, snapshot });
+    } catch (error) {
+        console.error('Breadth snapshot capture error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/investor-flow
  * "Phân tích lệnh" — dòng tiền ròng (khớp lệnh) toàn thị trường theo 4 nhóm NĐT:
  * cá nhân / tổ chức / tự doanh / nước ngoài, cho nhiều mốc thời gian (1D, 5D, 20D).
@@ -2872,6 +2933,24 @@ setInterval(async () => {
         }
     }
 }, BREADTH_CHECK_INTERVAL);
+
+// Job nền auto-save breadth daily snapshot (Phá Đỉnh/Phá Đáy) mỗi ngày EOD.
+// Cùng window 15:00-22:00 VN (sau giờ đóng cửa). Idempotent: UPSERT tự xử lý trùng.
+let _breadthSnapshotMod = null;
+setInterval(async () => {
+    const vnHour = (new Date(Date.now() + 7 * 3600 * 1000)).getUTCHours();
+    if (vnHour >= 15 && vnHour < 22) {
+        try {
+            if (!_breadthSnapshotMod) _breadthSnapshotMod = require('./breadth-snapshot');
+            if (!await _breadthSnapshotMod.hasToday()) {
+                console.log('📸 [breadth-snapshot] Auto-capturing today...');
+                await _breadthSnapshotMod.buildToday({ silent: false });
+            }
+        } catch (e) {
+            console.error('[breadth-snapshot] auto-capture error:', e.message);
+        }
+    }
+}, 30 * 60 * 1000);
 
 
 app.get('/api/health', (req, res) => {
