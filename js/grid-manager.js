@@ -76,6 +76,12 @@
             const saved = savedLayout && savedLayout[cfg.id];
             const pos = saved || cfg;
 
+            // Nếu panel đã bị ẩn (hidden=true trong state) → skip, không tạo lại khi F5
+            if (panelStates[cfg.id] && panelStates[cfg.id].hidden) {
+                panel.style.display = 'none';  // ẩn DOM luôn
+                return;
+            }
+
             // Tạo cấu trúc grid-stack-item
             const item = document.createElement('div');
             item.className = 'grid-stack-item';
