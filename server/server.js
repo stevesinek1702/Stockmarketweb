@@ -3494,13 +3494,38 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
         };
     }
 
-    // 6. Breadth breakout (phá đỉnh/đáy)
+    // 6. Breadth breakout (phá đỉnh/đáy) — full insight cho AI phân tích
     if (breakout?.success) {
+        const summary = breakout.summary || [];
+        // Verdict tổng (theo 1N — timeframe dài nhất, đáng tin nhất)
+        const verdictTong = summary.length > 0 ? summary[summary.length - 1].verdict : null;
         ctx.phaDinhDay = {
-            summary: (breakout.summary || []).map(s => ({
+            // summary: số mã phá đỉnh vs đáy + ratio + verdict từng tf (3T/6T/1N)
+            summary: summary.map(s => ({
                 tf: s.tf, phaDinh: s.high, phaDay: s.low, ratio: s.ratio, verdict: s.verdict
             })),
+            // verdict tổng: Bullish/Bearish/Neutral (theo 1N)
+            verdictTong: verdictTong,
+            // capSummary: vốn hóa phá đỉnh vs đáy + tỷ lệ lowOverHigh
+            // (VD lowOverHigh=4.19 nghĩa là vốn hóa phá đáy gấp 4.19 lần phá đỉnh → rất Bearish)
+            vonHoaPhaDinhDay: (breakout.capSummary || []).map(c => ({
+                tf: c.tf, vonHoaPhaDinhTy: c.capHigh, vonHoaPhaDayTy: c.capLow,
+                tyLeDayDinh: c.lowOverHigh  // >1 = vốn hóa đáy > đỉnh → Bearish mạnh
+            })),
             rsi: breakout.rsiSummary || null,
+            // Top 5 ngành bị thủng đáy nhiều nhất (theo vốn hóa phá đáy)
+            // field impact = 'Cao'|'Trung bình'|'Thấp' mức độ tác động
+            nganhThuungDayNhieuNhat: (breakout.sectorBreakdown || [])
+                .sort((a, b) => (b.totalLowCap || 0) - (a.totalLowCap || 0))
+                .slice(0, 5)
+                .map(s => ({
+                    nganh: s.sector,
+                    vonHoaPhaDay3T: s.perTf?.ThreeMonths?.lCap,
+                    vonHoaPhaDay1N: s.perTf?.OneYear?.lCap,
+                    soMaPhaDay: s.totalLCnt,
+                    soMaPhaDinh: s.totalHCnt,
+                    tacDong: s.impact
+                })),
             topPhaDinh3T: (breakout.topHighs3T || []).slice(0, 5).map(s => ({
                 ma: s.ticker, nganh: s.sector, gia: s.price, phanTram3T: s.pct3M, rsi: s.rsi
             })),

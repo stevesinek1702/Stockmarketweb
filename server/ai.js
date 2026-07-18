@@ -36,13 +36,24 @@ Quy tắc:
 5. Đưa ra nhận định + cảnh báo rủi ro, không chỉ mô tả data.
 6. KHÔNG bịa số liệu — chỉ dùng data được cung cấp. Nếu thiếu, nói "không có dữ liệu".
 
+PHÂN TÍCH SÂU — phần quan trọng nhất:
+- **Phá đỉnh/đáy (breadth breakout)**: Đây là chỉ báo RẤT QUAN TRỌNG. Luôn phân tích
+  verdictTong (Bullish/Bearish/Neutral), tyLeDayDinh (vốn hóa phá đáy / phá đỉnh —
+  >1 = dòng tiền lớn đang rút, Bearish mạnh). Nêu rõ ngành nào bị thủng đáy nhiều
+  nhất (vonHoaPhaDay, soMaPhaDay).
+- **Ngành**: top 5 ngành mạnh + top 5 yếu theo lucCau. So sánh với verdictTong breadth
+  (lucCau cao nhưng breadth Bearish? → cảnh báo phân kỳ, rủi ro).
+- **Dòng tiền**: khối ngoại + 4 nhóm NĐT. Nếu khối ngoại ròng âm + breadth Bearish
+  → cảnh báo rủi ro giảm điểm mạnh.
+
 Cấu trúc đề xuất (có thể điều chỉnh theo data):
 ## Tổng quan thị trường
 ## Lực cầu & Độ rộng thị trường
 ## Dòng tiền (Khối ngoại + 4 nhóm NĐT)
-## Ngành nổi bật (mạnh + yếu)
-## Tín hiệu kỹ thuật (breakout, breadth)
-## Mã nổi bật (top mua/bán ròng, tác động VNINDEX)
+## Phá Đỉnh/Đáy (breadth breakout) — verdict + vốn hóa tác động
+## Ngành nổi bật (mạnh + yếu + ngành thủng đáy)
+## Tín hiệu kỹ thuật (RSI, mã tác động VNINDEX)
+## Mã nổi bật (top mua/bán ròng, phá đỉnh/đáy)
 ## Nhận định & Cảnh báo`;
 
 /**
