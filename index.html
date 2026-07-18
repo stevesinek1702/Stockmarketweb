@@ -476,8 +476,10 @@
             <!-- Danh Mục Mua Bán Ròng Khớp Lệnh (Fiintrade GetStatisticInvestor)
                  Nguồn: Fiintrade MoneyFlow — KHÔNG dùng Google Sheets -->
             <div class="card full-width" id="panel-investor-top">
-                <div class="card-header" style="flex-wrap:wrap;gap:10px;">
-                    <h3>🏆 Danh Mục Mua Bán Ròng Khớp Lệnh</h3>
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:baseline;">
+                    <h3>🏆 Mua Bán Ròng Khớp Lệnh
+                        <span id="investor-top-title" class="investor-top-subtitle"></span>
+                    </h3>
                     <div class="top-net-tabs" id="investor-top-range" style="display:flex;gap:4px;">
                         <button class="top-net-tab active" data-range="today" onclick="loadInvestorTop('today')">1 Ngày</button>
                         <button class="top-net-tab" data-range="oneWeek" onclick="loadInvestorTop('oneWeek')">1 Tuần</button>
@@ -485,7 +487,6 @@
                         <button class="top-net-tab" data-range="yearToDate" onclick="loadInvestorTop('yearToDate')">YTD</button>
                     </div>
                 </div>
-                <div id="investor-top-title" style="text-align:center;font-size:0.85rem;color:var(--text-secondary);font-weight:600;margin-bottom:8px;"></div>
                 <div class="ig-table-wrap" style="overflow-x:auto;">
                     <table class="ig-table" id="investor-top-table" style="width:100%;border-collapse:collapse;font-size:0.78rem;">
                         <thead id="investor-top-thead"></thead>

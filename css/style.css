@@ -1030,6 +1030,14 @@ h1, h2, h3,
     border-color: var(--accent-blue);
 }
 
+/* Subtitle trong h3 (range + date động, nhỏ hơn + mờ hơn tiêu đề) */
+.investor-top-subtitle {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-secondary, #9ba3b4);
+    margin-left: 4px;
+}
+
 /* Bảng Dòng tiền thông minh theo mã (table view) */
 .stock-flow-table-wrap {
     border: 1px solid var(--border-color, #3a3f55);

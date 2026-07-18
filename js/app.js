@@ -2335,7 +2335,8 @@ async function loadInvestorTop(range) {
                     ? fmtDate(res.toDate)
                     : `${fmtDate(res.fromDate)} → ${fmtDate(res.toDate)}`;
             }
-            titleEl.textContent = `Danh Mục Mua Bán Ròng Khớp Lệnh · ${rangeLabels[range] || range} · ${dateStr}`;
+            // Chỉ hiện range + date (tiêu đề đã ở h3, không lặp lại)
+            titleEl.textContent = ` · ${rangeLabels[range] || range} · ${dateStr}`;
         }
 
         const fmt = (v) => (typeof v === 'number' && isFinite(v)) ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '--';
