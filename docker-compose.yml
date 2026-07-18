@@ -72,6 +72,9 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       GSHEET_SYNC_URL: ${GSHEET_SYNC_URL:-}
       GSHEET_SYNC_TOKEN: ${GSHEET_SYNC_TOKEN:-}
+      # AI Market Report (tab 🤖 Báo Cáo AI) — Gemini primary, DeepSeek fallback
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     # MỞ CỔNG 8080 TỚI HOST (không đụng cổng 80/443 của nginx host)
     ports:
       - "8080:3000"
