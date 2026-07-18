@@ -345,6 +345,22 @@ h1, h2, h3,
     overflow: visible;
 }
 
+/* Gộp VNINDEX + VN30 vào 1 panel pair (grid 2 cột, responsive) */
+.index-cards-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md, 12px);
+    width: 100%;
+}
+.index-cards-pair > .index-card {
+    min-width: 0; /* grid item co giãn đúng, không tràn */
+}
+@media (max-width: 768px) {
+    .index-cards-pair {
+        grid-template-columns: 1fr; /* màn nhỏ → stack dọc */
+    }
+}
+
 /* Cho phép chart-card nằm trong market-overview cũng tự giãn */
 .market-overview > .chart-card {
     flex: 1 1 400px;
