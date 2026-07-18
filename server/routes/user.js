@@ -296,7 +296,8 @@ const aiModule = require('../ai');
 
 /**
  * GET /api/user/ai-settings — trả settings của user đang login.
- * Bao gồm: provider, deepseekKey (FULL), geminiKey (FULL), systemPrompt.
+ * User thấy FULL key của chính họ (để biết key nào đang dùng, có thể đổi key cá nhân).
+ * Admin cũng thấy full key tất cả user qua /api/admin/users-with-ai.
  * Nếu chưa có row → trả default (provider=auto, keys rỗng, prompt=null).
  */
 router.get('/ai-settings', async (req, res) => {
@@ -337,7 +338,8 @@ router.get('/ai-settings', async (req, res) => {
 });
 
 /**
- * POST /api/user/ai-settings — upsert settings cho user đang login.
+ * POST /api/user/ai-settings — user tự update toàn bộ settings (provider + keys + prompt).
+ * User có thể set key riêng của họ (nếu có key cá nhân) hoặc dùng key admin cấp.
  * Body: { provider, deepseekKey, geminiKey, systemPrompt }
  */
 router.post('/ai-settings', async (req, res) => {

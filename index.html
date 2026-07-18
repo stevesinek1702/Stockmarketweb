@@ -1366,11 +1366,11 @@
                             </label>
                             <label class="ai-field">
                                 <span class="ai-field-label">DeepSeek API Key</span>
-                                <input type="password" id="ai-key-deepseek" placeholder="sk-..." autocomplete="off">
+                                <input type="password" id="ai-key-deepseek" placeholder="sk-... (để trống = dùng key chung)" autocomplete="off">
                             </label>
                             <label class="ai-field">
                                 <span class="ai-field-label">Gemini API Key</span>
-                                <input type="password" id="ai-key-gemini" placeholder="AIza... hoặc AQ.Ab..." autocomplete="off">
+                                <input type="password" id="ai-key-gemini" placeholder="AIza... hoặc AQ.Ab... (để trống = dùng key chung)" autocomplete="off">
                             </label>
                         </div>
                         <label class="ai-field ai-field-prompt">
@@ -1385,8 +1385,9 @@
                             <span id="ai-settings-status" style="font-size:0.8rem;color:var(--text-muted);"></span>
                         </div>
                         <p class="ai-settings-hint">
-                            💡 Mỗi user dùng API key riêng. Để trống key = dùng key chung của admin (env).
-                            Prompt để trống = dùng mặc định. Provider "Auto" = thử Gemini trước, lỗi thì DeepSeek.
+                            🔑 <strong>User tự nhập API key riêng</strong> hoặc dùng key admin cấp (nếu admin đã set qua /admin).
+                            Để trống key = dùng key chung (env). Bạn thấy được full key đang dùng.
+                            <br>Prompt để trống = dùng mặc định. Provider "Auto" = thử Gemini trước, lỗi thì DeepSeek.
                         </p>
                     </div>
                 </details>
