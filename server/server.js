@@ -233,7 +233,8 @@ const CACHE_TTL_MS = {
     'industry-stats': 60000,
     'marketcap-stats': 60000,
     'top-net-stocks': 60000,
-    'news': 120000
+    'news': 120000,
+    'ai-report': 24 * 3600 * 1000  // 24h — AI report 1 lần/ngày đủ (data thị trường EOD)
 };
 
 // EOD keys: data chỉ đổi 1 lần/ngày (cuối phiên) → cache 24h, không TTL cố định.
