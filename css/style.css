@@ -5424,3 +5424,88 @@ button.scanning::after {
 #breadth-all-table th.sortable.sort-asc .sort-icon::after { content: " ↑"; }
 #breadth-all-table th.sortable.sort-desc .sort-icon::after { content: " ↓"; }
 
+/* ═══ AI Market Report — render markdown ═══ */
+.ai-report-content {
+    padding: 20px 24px;
+    line-height: 1.7;
+    color: var(--text-primary, #e4e7ef);
+    font-size: 0.95rem;
+    max-width: 900px;
+}
+.ai-report-content h1,
+.ai-report-content h2 {
+    color: var(--accent-blue, #4472C4);
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color, #3a3f55);
+}
+.ai-report-content h2:first-child { margin-top: 0; }
+.ai-report-content h3 {
+    color: var(--text-primary, #e4e7ef);
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 18px 0 8px;
+}
+.ai-report-content h4 {
+    color: var(--text-secondary, #9ba3b4);
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 14px 0 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.ai-report-content p { margin: 8px 0; }
+.ai-report-content strong {
+    color: var(--accent-blue, #4472C4);
+    font-weight: 600;
+}
+.ai-report-content ul,
+.ai-report-content ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+.ai-report-content li {
+    margin: 4px 0;
+    line-height: 1.6;
+}
+.ai-report-content ul li::marker { color: var(--accent-blue, #4472C4); }
+.ai-report-content blockquote {
+    margin: 12px 0;
+    padding: 10px 16px;
+    border-left: 3px solid var(--accent-blue, #4472C4);
+    background: rgba(68, 114, 196, 0.08);
+    color: var(--text-secondary, #9ba3b4);
+    border-radius: 0 6px 6px 0;
+}
+.ai-report-content code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-family: 'Space Grotesk', monospace;
+}
+.ai-report-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.85rem;
+}
+.ai-report-content th,
+.ai-report-content td {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, #3a3f55);
+    text-align: left;
+}
+.ai-report-content th {
+    background: var(--bg-primary, #1a1f2e);
+    font-weight: 600;
+    color: var(--text-secondary, #9ba3b4);
+}
+.ai-report-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color, #3a3f55);
+    margin: 20px 0;
+}
+

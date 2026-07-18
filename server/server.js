@@ -12,6 +12,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { scanPotential, getCachedSignals } = require('./potential-scanner');
 const fiintrade = require('./fiintrade');
+const aiModule = require('./ai');
 const breadthHistory = require('./breadth-history');
 const { authenticate } = require('./auth');
 
@@ -3393,6 +3394,216 @@ app.get('/api/top-net-stocks', async (req, res) => {
         console.error('top-net-stocks error:', error.message);
         // Chưa có cache: trả 200 success:false — frontend xử lý null an toàn, không phát sinh lỗi 500.
         res.json({ success: false, error: error.message, data: null });
+    }
+});
+
+// ==========================================
+// AI MARKET REPORT — Báo cáo thị trường tự động (DeepSeek + Gemini)
+// ==========================================
+
+/**
+ * Gọi nội bộ 1 endpoint của chính server (localhost) — dùng để gom data cho AI.
+ * Truyền req (có cookies auth) để đi qua requireAuth middleware.
+ */
+async function fetchInternal(req, path) {
+    try {
+        const url = `http://localhost:${PORT}${path}`;
+        const resp = await axios.get(url, {
+            headers: { Cookie: req.headers.cookie || '' },
+            timeout: 10000
+        });
+        return resp.data;
+    } catch (e) {
+        console.warn(`⚠️  [ai] fetchInternal ${path} fail:`, e.message);
+        return null;
+    }
+}
+
+/**
+ * Gom data từ 8 endpoint thành 1 object gọn để feed vào AI.
+ * Chỉ trích fields quan trọng — bỏ noise để prompt gọn (~2-3K tokens).
+ */
+function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, topNet) {
+    const ctx = { date: new Date().toLocaleDateString('vi-VN') };
+
+    // 1. VNINDEX + VN30
+    if (dashboard?.success && dashboard.data) {
+        const d = dashboard.data;
+        const idx = (name) => d[name] ? {
+            gia: d[name].indexCurrent,
+            phanTram: d[name].percentChange,
+            lucCau: d[name].demandStrength,
+            gtgdTy: d[name].totalValue,
+            tang: d[name].advances,
+            giam: d[name].declines
+        } : null;
+        ctx.vnindex = idx('vnindex');
+        ctx.vn30 = idx('vn30');
+    }
+
+    // 2. Breadth (số mã tăng/giảm tổng)
+    if (breadth?.success && breadth.data?.hostc) {
+        const h = breadth.data.hostc;
+        ctx.breadthHostc = {
+            tang: h.advances, giam: h.declines, dung: h.unchanged,
+            gtTangTy: (h.totalPositiveValue / 1e9).toFixed(0),
+            gtGiamTy: (h.totalNegativeValue / 1e9).toFixed(0),
+            khoiNgoaiMuaTy: (h.buyForeignValue / 1e9).toFixed(1),
+            khoiNgoaiBanTy: (h.sellForeignValue / 1e9).toFixed(1)
+        };
+    }
+
+    // 3. Lực cầu ngành (top 5 mạnh + top 5 yếu + custom themes)
+    if (industry?.success && Array.isArray(industry.data)) {
+        const valid = industry.data.filter(g => g.lucCau != null && !g.isCustomTheme);
+        const byLucCau = [...valid].sort((a, b) => (b.lucCau || 0) - (a.lucCau || 0));
+        ctx.nganhManhNhat = byLucCau.slice(0, 5).map(g => ({
+            nganh: g.name, lucCau: g.lucCau, phanTramTrenMA10: g.percentAboveMA10,
+            maDuDK: g.liquidCount, tongMa: g.stockCount
+        }));
+        ctx.nganhYeuNhat = byLucCau.slice(-5).reverse().map(g => ({
+            nganh: g.name, lucCau: g.lucCau, phanTramTrenMA10: g.percentAboveMA10
+        }));
+        // Custom themes (Cá tra, Tôm, Vingroup)
+        const themes = industry.data.filter(g => g.isCustomTheme);
+        if (themes.length > 0) {
+            ctx.nhomChuDe = themes.map(g => ({
+                nhom: g.name, lucCau: g.lucCau, maDuDK: g.liquidCount, tongMa: g.stockCount
+            }));
+        }
+    }
+
+    // 4. Dòng tiền 4 nhóm NĐT (net today)
+    if (investor?.success && Array.isArray(investor.groups)) {
+        ctx.dongTienNhomNDT = investor.groups.map(g => ({
+            nhom: g.name,
+            netHomNayTy: g.today?.net,
+            net1TuanTy: g.oneWeek?.net,
+            net1ThangTy: g.oneMonth?.net,
+            topMua: (g.topBuy || []).slice(0, 5).map(s => ({ ma: s.ticker, netTy: s.net, gia: s.price })),
+            topBan: (g.topSell || []).slice(0, 5).map(s => ({ ma: s.ticker, netTy: s.net, gia: s.price }))
+        }));
+    }
+
+    // 5. Khối ngoại
+    if (foreign?.success && foreign.today) {
+        ctx.khoiNgoai = {
+            netHomNayTy: foreign.today.net,
+            trend: (foreign.trend || []).map(t => ({ moc: t.label, netTy: t.net }))
+        };
+    }
+
+    // 6. Breadth breakout (phá đỉnh/đáy)
+    if (breakout?.success) {
+        ctx.phaDinhDay = {
+            summary: (breakout.summary || []).map(s => ({
+                tf: s.tf, phaDinh: s.high, phaDay: s.low, ratio: s.ratio, verdict: s.verdict
+            })),
+            rsi: breakout.rsiSummary || null,
+            topPhaDinh3T: (breakout.topHighs3T || []).slice(0, 5).map(s => ({
+                ma: s.ticker, nganh: s.sector, gia: s.price, phanTram3T: s.pct3M, rsi: s.rsi
+            })),
+            topPhaDay1Y: (breakout.topLows1Y || []).slice(0, 5).map(s => ({
+                ma: s.ticker, nganh: s.sector, gia: s.price, phanTram1Y: s.pct1Y, rsi: s.rsi
+            }))
+        };
+    }
+
+    // 7. Mã tác động VNINDEX
+    if (influential?.success && influential.data) {
+        ctx.maTacDong = {
+            tangManhNhat: (influential.data.positive || []).slice(0, 5).map(s => ({
+                ma: s.symbol, diemDongGop: s.value, phanTram: s.percent
+            })),
+            giamManhNhat: (influential.data.negative || []).slice(0, 5).map(s => ({
+                ma: s.symbol, diemDongGop: s.value, phanTram: s.percent
+            }))
+        };
+    }
+
+    // 8. Top mua/bán ròng (Google Sheet)
+    if (topNet?.success && topNet.data?.daily) {
+        ctx.topMuaRong1Ngay = (topNet.data.daily.buy || []).slice(0, 10).map(s => ({
+            ma: s.symbol, giaTriTy: s.value
+        }));
+        ctx.topBanRong1Ngay = (topNet.data.daily.sell || []).slice(0, 10).map(s => ({
+            ma: s.symbol, giaTriTy: s.value
+        }));
+    }
+
+    return ctx;
+}
+
+/**
+ * POST /api/ai/market-report?refresh=true
+ * Sinh báo cáo thị trường hôm nay bằng AI (DeepSeek primary, Gemini fallback).
+ * Cache 24h EOD (tiết kiệm API call). Force refresh qua ?refresh=true.
+ */
+app.post('/api/ai/market-report', async (req, res) => {
+    // Auth: bypass requireAuth bằng INTERNAL_SECRET (scheduler), hoặc check cookie JWT
+    // (endpoint này được gọi từ frontend đã login → cookie có JWT)
+
+    // Check AI available
+    if (!aiModule.isAvailable()) {
+        return res.status(503).json({
+            success: false,
+            error: 'AI service chưa cấu hình. Cần set DEEPSEEK_API_KEY hoặc GEMINI_API_KEY trong .env'
+        });
+    }
+
+    const forceRefresh = req.query.refresh === 'true';
+    const cacheKey = 'ai-report';
+
+    // 1. Cache check (EOD 24h) — skip nếu forceRefresh
+    if (!forceRefresh) {
+        const cached = await getCachedResponse(cacheKey, 24 * 3600 * 1000);
+        if (cached) {
+            console.log('🤖 Returning cached AI report');
+            return res.json(cached);
+        }
+    }
+
+    try {
+        console.log('🤖 [ai] Generating market report...');
+
+        // 2. Gom data song song (8 endpoint, đều có cache 30-60s)
+        const [dashboard, breadth, industry, investor, foreign, breakout, influential, topNet] = await Promise.all([
+            fetchInternal(req, '/api/market-dashboard'),
+            fetchInternal(req, '/api/market-breadth'),
+            fetchInternal(req, '/api/industry-stats'),
+            fetchInternal(req, '/api/investor-detail?range=today'),
+            fetchInternal(req, '/api/foreign-flow'),
+            fetchInternal(req, '/api/breadth-breakout'),
+            fetchInternal(req, '/api/influential-stocks'),
+            fetchInternal(req, '/api/top-net-stocks')
+        ]);
+
+        // 3. Build context gọn
+        const dateStr = require('./cache').vnToday();
+        const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, topNet);
+
+        // 4. Generate AI report
+        const { text, provider } = await aiModule.generateMarketReport(context, dateStr);
+
+        const responseData = {
+            success: true,
+            report: text,
+            provider,
+            generatedAt: new Date().toISOString(),
+            date: dateStr
+        };
+
+        // 5. Cache 24h EOD
+        await setCachedResponse(cacheKey, responseData);
+        console.log(`✅ [ai] Report generated (provider: ${provider}, ${text.length} chars)`);
+        res.json(responseData);
+    } catch (error) {
+        console.error('[ai] market-report error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            providerErrors: error.providerErrors || null
+        });
     }
 });
 

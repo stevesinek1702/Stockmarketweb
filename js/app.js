@@ -4038,6 +4038,82 @@ function setupNewsEventListeners() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// AI MARKET REPORT — Tóm tắt thị trường hôm nay (DeepSeek + Gemini)
+// ═══════════════════════════════════════════════════════════════════
+
+const AIReportState = { loading: false };
+
+/**
+ * Load AI report từ server. force=true → regenerate (skip cache).
+ * @param {boolean} force — true = "Tạo Báo Cáo" (refresh), false = switchTab (dùng cache)
+ */
+async function loadAIReport(force) {
+    const body = document.getElementById('ai-report-body');
+    const metaEl = document.getElementById('ai-report-meta');
+    const genBtn = document.getElementById('ai-report-generate');
+    if (!body) return;
+
+    if (AIReportState.loading) return;
+    AIReportState.loading = true;
+    if (genBtn) { genBtn.disabled = true; genBtn.textContent = '⏳ Đang phân tích...'; }
+    if (metaEl) metaEl.textContent = '';
+
+    // Loading state (chỉ khi force regenerate — LLM mất 10-30s)
+    if (force) {
+        body.innerHTML = `
+            <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                <div style="font-size:2.5rem;margin-bottom:16px;">🤖</div>
+                <p style="font-size:1rem;">Đang phân tích dữ liệu thị trường...</p>
+                <p style="font-size:0.8rem;margin-top:8px;opacity:0.7;">AI cần 10-30 giây để xử lý. Vui lòng chờ.</p>
+            </div>`;
+    }
+
+    try {
+        const url = `${window.StockAPI.SERVER_BASE}/api/ai/market-report${force ? '?refresh=true' : ''}`;
+        const resp = await fetch(url, { method: 'POST', credentials: 'same-origin' });
+        const data = await resp.json();
+
+        if (!data || !data.success) {
+            const errMsg = data?.error || 'Không tạo được báo cáo';
+            const isConfigError = errMsg.includes('chưa cấu hình');
+            body.innerHTML = `
+                <div style="text-align:center;padding:40px 20px;">
+                    <div style="font-size:2.5rem;margin-bottom:12px;">${isConfigError ? '🔑' : '⚠️'}</div>
+                    <p style="color:var(--accent-red);font-size:0.95rem;margin-bottom:8px;">${errMsg}</p>
+                    ${isConfigError ? '<p style="font-size:0.8rem;color:var(--text-muted);">Liên hệ admin để cấu hình API key.</p>' : ''}
+                </div>`;
+            return;
+        }
+
+        // Render markdown → HTML (dùng marked.js)
+        const html = window.marked ? marked.parse(data.report) : `<pre>${data.report}</pre>`;
+        body.innerHTML = `<div class="ai-report-content">${html}</div>`;
+
+        // Meta: provider + generated time
+        const providerName = data.provider === 'gemini' ? 'Google Gemini' : (data.provider === 'deepseek' ? 'DeepSeek' : data.provider);
+        const genTime = new Date(data.generatedAt).toLocaleString('vi-VN');
+        if (metaEl) metaEl.textContent = `⚡ ${providerName} · tạo lúc ${genTime}`;
+    } catch (e) {
+        console.error('loadAIReport error:', e);
+        body.innerHTML = `
+            <div style="text-align:center;padding:40px 20px;">
+                <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
+                <p style="color:var(--accent-red);">Lỗi kết nối: ${e.message}</p>
+            </div>`;
+    } finally {
+        AIReportState.loading = false;
+        if (genBtn) { genBtn.disabled = false; genBtn.textContent = '🤖 Tạo Báo Cáo'; }
+    }
+}
+
+function setupAIReportEvents() {
+    const genBtn = document.getElementById('ai-report-generate');
+    if (genBtn) {
+        genBtn.addEventListener('click', () => loadAIReport(true));  // force=true → regenerate
+    }
+}
+
 // Override switchTab to load news when switching to news tab
 function switchTab(tabId) {
     // Call original switch tab function
@@ -4074,6 +4150,11 @@ function switchTab(tabId) {
     // Load news when switching to news tab
     if (tabId === 'news') {
         loadNews();
+    }
+
+    // Load AI report khi switch sang tab ai-report (lazy-load, dùng cache nếu có)
+    if (tabId === 'ai-report') {
+        try { loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
     }
 
     // Init MA breadth khi switch sang tab industry lần đầu (lazy-load)
@@ -4127,6 +4208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     initApp();
     setupNewsEventListeners();
+    setupAIReportEvents();
     setupIndustryTableSort();
 });
 

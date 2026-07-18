@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script
         src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
 </head>
 
 <body>
@@ -34,6 +35,7 @@
                 <button class="nav-btn" data-tab="breakout">Breakout</button>
                 <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
                 <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
+                <button class="nav-btn" data-tab="ai-report">🤖 Báo Cáo AI</button>
 
             </nav>
             <div class="header-actions">
@@ -1337,6 +1339,24 @@
                 </div>
                 <div class="news-sources">
                     <p><strong>Nguồn tin:</strong> Vietstock, CafeF, VnExpress, Báo Đầu Tư, CafeBiz</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 🤖 Báo Cáo AI — Tóm tắt thị trường hôm nay (DeepSeek + Gemini) -->
+        <section class="tab-content" id="ai-report">
+            <div class="card full-width">
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                    <h3>🤖 Báo Cáo Thị Trường AI</h3>
+                    <button class="btn-secondary" id="ai-report-generate" title="AI phân tích toàn bộ data dashboard → viết báo cáo">🤖 Tạo Báo Cáo</button>
+                    <span id="ai-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                </div>
+                <div id="ai-report-body">
+                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                        <div style="font-size:3rem;margin-bottom:16px;">📊</div>
+                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo thị trường tự động bằng AI</p>
+                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo"</strong> để AI phân tích VNINDEX, lực cầu, dòng tiền, breadth, breakout và viết báo cáo tóm tắt.</p>
+                    </div>
                 </div>
             </div>
         </section>
