@@ -11,8 +11,8 @@
 (function () {
     'use strict';
 
-    const LAYOUT_KEY = 'vnstock_gridstack_layout_v1';
-    const STATE_KEY = 'vnstock_gridstack_state_v1';
+    const LAYOUT_KEY = 'vnstock_gridstack_layout_v2';
+    const STATE_KEY = 'vnstock_gridstack_state_v2';
 
     let grid = null;
     let panelStates = {};   // { panelId: { collapsed, prevH } }
@@ -20,8 +20,7 @@
     // ── Cấu hình panel mặc định (12-column grid) ───────────────────────────────
     // id: id của panel trong HTML | x,y: vị trí | w,h: kích thước (đơn vị grid)
     const DEFAULT_PANELS = [
-        { id: 'panel-vnindex',         x: 0, y: 0,  w: 6,  h: 4, title: 'VNINDEX' },
-        { id: 'panel-vn30',            x: 6, y: 0,  w: 6,  h: 4, title: 'VN30' },
+        { id: 'panel-vnindex-vn30',    x: 0, y: 0,  w: 12, h: 4, title: 'VNINDEX & VN30' },
         { id: 'card-industry-bubble',  x: 0, y: 4,  w: 6,  h: 6, title: 'Chuyển Động Ngành' },
         { id: 'card-marketcap-bubble', x: 6, y: 4,  w: 6,  h: 6, title: 'Vốn Hóa' },
         { id: 'card-vnindex-demand',   x: 0, y: 10, w: 6,  h: 5, title: 'VNINDEX & Lực Cầu' },

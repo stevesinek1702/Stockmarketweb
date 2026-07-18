@@ -1032,10 +1032,15 @@ h1, h2, h3,
 
 /* Subtitle trong h3 (range + date động, nhỏ hơn + mờ hơn tiêu đề) */
 .investor-top-subtitle {
-    font-size: 0.72rem;
-    font-weight: 500;
+    font-size: 0.92rem;
+    font-weight: 600;
     color: var(--text-secondary, #9ba3b4);
-    margin-left: 4px;
+    margin-left: 6px;
+}
+/* Panel investor-top: h3 to hơn mặc định card-header */
+#panel-investor-top .card-header h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
 }
 
 /* Bảng Dòng tiền thông minh theo mã (table view) */
