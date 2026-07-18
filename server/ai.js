@@ -1,7 +1,7 @@
 /**
  * AI MODULE — Báo cáo thị trường tự động
  * ─────────────────────────────────────────────────────────────────────────
- * DeepSeek (primary) + Google Gemini (fallback).
+ * Google Gemini (primary) + DeepSeek (fallback).
  *
  * Cả 2 đều dùng REST API (axios thuần, không cần SDK), OpenAI-compatible:
  *   - DeepSeek: POST https://api.deepseek.com/chat/completions
@@ -109,7 +109,7 @@ async function geminiChat(prompt) {
 
 /**
  * Sinh báo cáo thị trường từ context JSON.
- * DeepSeek primary → nếu fail → Gemini fallback.
+ * Gemini primary → nếu fail → DeepSeek fallback.
  * @param {object} context — data thị trường (đã được buildMarketContext gọn)
  * @param {string} dateStr — ngày báo cáo (YYYY-MM-DD) cho tiêu đề
  * @returns {Promise<{text:string, provider:'deepseek'|'gemini'}>}
@@ -125,7 +125,17 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
 
     const errors = [];
 
-    // 1. DeepSeek (primary)
+    // 1. Gemini (primary)
+    try {
+        const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n${userPrompt}`;
+        const text = await geminiChat(fullPrompt);
+        return { text, provider: 'gemini' };
+    } catch (e) {
+        errors.push(`Gemini: ${e.message}`);
+        console.warn('⚠️  [ai] Gemini fail, thử DeepSeek:', e.message);
+    }
+
+    // 2. DeepSeek (fallback)
     try {
         const text = await deepseekChat([
             { role: 'system', content: SYSTEM_PROMPT },
@@ -134,17 +144,7 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
         return { text, provider: 'deepseek' };
     } catch (e) {
         errors.push(`DeepSeek: ${e.message}`);
-        console.warn('⚠️  [ai] DeepSeek fail, thử Gemini:', e.message);
-    }
-
-    // 2. Gemini (fallback) — gộp system + user thành 1 prompt (Gemini không có system role)
-    try {
-        const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n${userPrompt}`;
-        const text = await geminiChat(fullPrompt);
-        return { text, provider: 'gemini' };
-    } catch (e) {
-        errors.push(`Gemini: ${e.message}`);
-        console.warn('⚠️  [ai] Gemini fail:', e.message);
+        console.warn('⚠️  [ai] DeepSeek fail:', e.message);
     }
 
     // Cả 2 đều fail
