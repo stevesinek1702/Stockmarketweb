@@ -4826,7 +4826,7 @@ function addFilterCondition(presetCondition = null) {
             <option value="lte">Nhỏ hơn hoặc bằng (≤)</option>
             <option value="eq">Bằng (=)</option>
             <option value="ne">Khác (≠)</option>
-            <option value="contains">Chứa</option>
+            <option value="contains">Tín hiệu</option>
         </select>
         <input type="text" class="cond-value" placeholder="Giá trị..." step="0.1">
         <button class="remove-condition-btn" onclick="removeFilterCondition('${id}')">×</button>
