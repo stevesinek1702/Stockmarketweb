@@ -3424,7 +3424,7 @@ async function fetchInternal(req, path) {
  * Gom data từ 8 endpoint thành 1 object gọn để feed vào AI.
  * Chỉ trích fields quan trọng — bỏ noise để prompt gọn (~2-3K tokens).
  */
-function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, topNet) {
+function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential) {
     const ctx = { date: new Date().toLocaleDateString('vi-VN') };
 
     // 1. VNINDEX + VN30
@@ -3547,81 +3547,100 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
         };
     }
 
-    // 8. Top mua/bán ròng (Google Sheet)
-    if (topNet?.success && topNet.data?.daily) {
-        ctx.topMuaRong1Ngay = (topNet.data.daily.buy || []).slice(0, 10).map(s => ({
-            ma: s.symbol, giaTriTy: s.value
-        }));
-        ctx.topBanRong1Ngay = (topNet.data.daily.sell || []).slice(0, 10).map(s => ({
-            ma: s.symbol, giaTriTy: s.value
-        }));
-    }
+    // Lưu ý: đã bỏ top-net-stocks (Google Sheet đã xóa khỏi dashboard).
+    // Top mua/bán ròng 1 ngày đã có trong dongTienNhomNDT.topMua/topBan (từ investor-detail).
 
     return ctx;
 }
 
 /**
  * POST /api/ai/market-report?refresh=true
- * Sinh báo cáo thị trường hôm nay bằng AI (DeepSeek primary, Gemini fallback).
- * Cache 24h EOD (tiết kiệm API call). Force refresh qua ?refresh=true.
+ * Sinh báo cáo thị trường hôm nay bằng AI.
+ * Provider preference + API key + system prompt lấy từ user_ai_settings của user đang login.
+ * Nếu user chưa set → fallback env DEEPSEEK_API_KEY/GEMINI_API_KEY + SYSTEM_PROMPT default.
+ * Cache 24h per-user (mỗi user có prompt/key khác nhau → báo cáo khác nhau).
  */
-app.post('/api/ai/market-report', async (req, res) => {
-    // Auth: bypass requireAuth bằng INTERNAL_SECRET (scheduler), hoặc check cookie JWT
-    // (endpoint này được gọi từ frontend đã login → cookie có JWT)
+app.post('/api/ai/market-report', requireAuth, async (req, res) => {
+    const userId = req.user.id;
 
-    // Check AI available
-    if (!aiModule.isAvailable()) {
+    // Load user AI settings (nếu có)
+    let userSettings = { provider: 'auto', deepseekKey: null, geminiKey: null, systemPrompt: null };
+    try {
+        const { query } = require('./db');
+        const sr = await query(
+            `SELECT provider, deepseek_api_key, gemini_api_key, system_prompt
+             FROM user_ai_settings WHERE user_id = $1`, [userId]);
+        if (sr.rowCount > 0) {
+            const r = sr.rows[0];
+            userSettings = {
+                provider: r.provider || 'auto',
+                deepseekKey: r.deepseek_api_key || null,
+                geminiKey: r.gemini_api_key || null,
+                systemPrompt: r.system_prompt || null
+            };
+        }
+    } catch (e) { /* table chưa migrate hoặc lỗi → fallback default */ }
+
+    // Check AI available (cả env lẫn user key)
+    const hasAnyKey = aiModule.isAvailable() || userSettings.deepseekKey || userSettings.geminiKey;
+    if (!hasAnyKey) {
         return res.status(503).json({
             success: false,
-            error: 'AI service chưa cấu hình. Cần set DEEPSEEK_API_KEY hoặc GEMINI_API_KEY trong .env'
+            error: 'AI service chưa cấu hình. Vui lòng set API key trong ⚙️ Cấu hình AI hoặc liên hệ admin.'
         });
     }
 
     const forceRefresh = req.query.refresh === 'true';
-    const cacheKey = 'ai-report';
+    // Cache per-user: mỗi user có prompt/key khác nhau → cache key riêng
+    const cacheKey = `ai-report:user:${userId}`;
 
-    // 1. Cache check (EOD 24h) — skip nếu forceRefresh
+    // 1. Cache check (24h) — skip nếu forceRefresh
     if (!forceRefresh) {
         const cached = await getCachedResponse(cacheKey, 24 * 3600 * 1000);
         if (cached) {
-            console.log('🤖 Returning cached AI report');
+            console.log(`🤖 Returning cached AI report (user ${userId})`);
             return res.json(cached);
         }
     }
 
     try {
-        console.log('🤖 [ai] Generating market report...');
+        console.log(`🤖 [ai] Generating market report (user ${userId}, provider ${userSettings.provider})...`);
 
-        // 2. Gom data song song (8 endpoint, đều có cache 30-60s)
-        const [dashboard, breadth, industry, investor, foreign, breakout, influential, topNet] = await Promise.all([
+        // 2. Gom data song song (7 endpoint — đã bỏ top-net-stocks do Google Sheet xóa)
+        const [dashboard, breadth, industry, investor, foreign, breakout, influential] = await Promise.all([
             fetchInternal(req, '/api/market-dashboard'),
             fetchInternal(req, '/api/market-breadth'),
             fetchInternal(req, '/api/industry-stats'),
             fetchInternal(req, '/api/investor-detail?range=today'),
             fetchInternal(req, '/api/foreign-flow'),
             fetchInternal(req, '/api/breadth-breakout'),
-            fetchInternal(req, '/api/influential-stocks'),
-            fetchInternal(req, '/api/top-net-stocks')
+            fetchInternal(req, '/api/influential-stocks')
         ]);
 
         // 3. Build context gọn
         const dateStr = require('./cache').vnToday();
-        const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, topNet);
+        const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential);
 
-        // 4. Generate AI report
-        const { text, provider } = await aiModule.generateMarketReport(context, dateStr);
+        // 4. Generate AI report với user settings
+        const { text, provider } = await aiModule.generateMarketReport(context, dateStr, {
+            deepseekKey: userSettings.deepseekKey,
+            geminiKey: userSettings.geminiKey,
+            systemPrompt: userSettings.systemPrompt,
+            provider: userSettings.provider
+        });
 
         const responseData = {
             success: true,
             report: text,
             provider,
             generatedAt: new Date().toISOString(),
-            date: dateStr
+            date: dateStr,
+            userId
         };
 
-        // 5. Cache 24h EOD
+        // 5. Cache 24h per-user
         await setCachedResponse(cacheKey, responseData);
-        console.log(`✅ [ai] Report generated (provider: ${provider}, ${text.length} chars)`);
+        console.log(`✅ [ai] Report generated (user ${userId}, provider ${provider}, ${text.length} chars)`);
         res.json(responseData);
     } catch (error) {
         console.error('[ai] market-report error:', error.message);

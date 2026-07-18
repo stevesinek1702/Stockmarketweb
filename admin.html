@@ -81,6 +81,27 @@
         </tbody>
     </table>
 
+    <!-- 🤖 AI Settings — Provider + API Key per-user -->
+    <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;padding:16px;margin-bottom:20px;">
+        <h3 style="margin:0 0 12px 0;font-family:var(--font-display);color:var(--text-primary);font-size:1rem;">🤖 AI Settings — API Key + Provider</h3>
+        <p style="margin:0 0 12px 0;font-size:0.78rem;color:var(--text-muted);">Mỗi user dùng API key riêng. Admin thấy được full key. Để trống key = dùng key chung (env). Provider "auto" = Gemini → DeepSeek fallback.</p>
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Provider</th>
+                    <th>DeepSeek Key</th>
+                    <th>Gemini Key</th>
+                    <th>Prompt</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
+            <tbody id="aiSettingsTbody">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Đang tải...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <script src="js/auth.js"></script>
     <script>
         let currentUser = null;
@@ -93,6 +114,7 @@
                 return;
             }
             await loadUsers();
+            loadAIAdmin();
             loadApiStats();
             // Auto-refresh counter mỗi 60s
             setInterval(loadApiStats, 60000);
@@ -209,6 +231,71 @@
                 if (!json.success) throw new Error(json.error);
                 okBox.innerHTML = `✅ Đã reset mật khẩu cho <strong>${username}</strong>. Mật khẩu mới: <code>${pass}</code> — gửi cho KH qua kênh riêng.`;
                 okBox.classList.add('show');
+            } catch (err) {
+                errBox.textContent = err.message;
+                errBox.classList.add('show');
+            }
+        }
+
+        // ═══ AI Settings — list user + API keys (admin thấy full) ═══
+        async function loadAIAdmin() {
+            const tbody = document.getElementById('aiSettingsTbody');
+            if (!tbody) return;
+            try {
+                const res = await fetch('/api/admin/users-with-ai', { credentials: 'same-origin' });
+                const json = await res.json();
+                if (!json.success || !Array.isArray(json.users)) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Lỗi tải</td></tr>';
+                    return;
+                }
+                if (json.users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Chưa có user</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = json.users.map(u => {
+                    const a = u.ai || {};
+                    const promptLabel = a.systemPrompt ? `✏️ Tùy chỉnh` : 'Mặc định';
+                    return `<tr>
+                        <td><strong>${u.username}</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">${u.role} · ${u.status}</span></td>
+                        <td>
+                            <select id="ai-prov-${u.id}" style="background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.78rem;">
+                                <option value="auto" ${a.provider==='auto'?'selected':''}>Auto</option>
+                                <option value="gemini" ${a.provider==='gemini'?'selected':''}>Gemini</option>
+                                <option value="deepseek" ${a.provider==='deepseek'?'selected':''}>DeepSeek</option>
+                            </select>
+                        </td>
+                        <td><input type="text" id="ai-ds-${u.id}" value="${(a.deepseekKey||'').replace(/"/g,'&quot;')}" placeholder="(dùng chung)" style="width:180px;background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.75rem;font-family:monospace;"></td>
+                        <td><input type="text" id="ai-gm-${u.id}" value="${(a.geminiKey||'').replace(/"/g,'&quot;')}" placeholder="(dùng chung)" style="width:180px;background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.75rem;font-family:monospace;"></td>
+                        <td style="font-size:0.78rem;color:var(--text-muted);">${promptLabel}</td>
+                        <td><button class="btn-sm" onclick="saveUserAI(${u.id})" style="padding:5px 10px;">💾 Lưu</button></td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--accent-red);">Lỗi: ${e.message}</td></tr>`;
+            }
+        }
+
+        async function saveUserAI(id) {
+            const errBox = document.getElementById('errorBox');
+            const succBox = document.getElementById('successBox');
+            errBox.classList.remove('show'); succBox.classList.remove('show');
+            const body = {
+                provider: document.getElementById(`ai-prov-${id}`).value,
+                deepseekKey: document.getElementById(`ai-ds-${id}`).value,
+                geminiKey: document.getElementById(`ai-gm-${id}`).value
+            };
+            try {
+                const res = await fetch(`/api/admin/users/${id}/ai-settings`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body)
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error);
+                succBox.textContent = `✅ ${json.message}`;
+                succBox.classList.add('show');
+                setTimeout(() => succBox.classList.remove('show'), 2500);
             } catch (err) {
                 errBox.textContent = err.message;
                 errBox.classList.add('show');

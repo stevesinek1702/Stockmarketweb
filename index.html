@@ -1351,6 +1351,45 @@
                     <button class="btn-secondary" id="ai-report-generate" title="AI phân tích toàn bộ data dashboard → viết báo cáo">🤖 Tạo Báo Cáo</button>
                     <span id="ai-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
                 </div>
+                <!-- ⚙️ Cấu hình AI (collapsible) — Provider + API Key + Prompt -->
+                <details class="ai-settings-panel" id="ai-settings-details">
+                    <summary class="ai-settings-summary">⚙️ Cấu hình AI (Provider + API Key + Prompt)</summary>
+                    <div class="ai-settings-body">
+                        <div class="ai-settings-row">
+                            <label class="ai-field">
+                                <span class="ai-field-label">Provider ưu tiên</span>
+                                <select id="ai-provider">
+                                    <option value="auto">🤖 Auto (Gemini → DeepSeek)</option>
+                                    <option value="gemini">Gemini</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                </select>
+                            </label>
+                            <label class="ai-field">
+                                <span class="ai-field-label">DeepSeek API Key</span>
+                                <input type="password" id="ai-key-deepseek" placeholder="sk-..." autocomplete="off">
+                            </label>
+                            <label class="ai-field">
+                                <span class="ai-field-label">Gemini API Key</span>
+                                <input type="password" id="ai-key-gemini" placeholder="AIza... hoặc AQ.Ab..." autocomplete="off">
+                            </label>
+                        </div>
+                        <label class="ai-field ai-field-prompt">
+                            <span class="ai-field-label">
+                                System Prompt
+                                <button type="button" class="ai-preset-btn" id="ai-reset-prompt" title="Khôi phục prompt mặc định">↺ Mặc định</button>
+                            </span>
+                            <textarea id="ai-system-prompt" rows="8" placeholder="Để trống = dùng prompt mặc định. Hoặc paste prompt tùy chỉnh của bạn..."></textarea>
+                        </label>
+                        <div class="ai-settings-actions">
+                            <button class="btn-secondary" id="ai-save-settings">💾 Lưu Cấu Hình</button>
+                            <span id="ai-settings-status" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                        </div>
+                        <p class="ai-settings-hint">
+                            💡 Mỗi user dùng API key riêng. Để trống key = dùng key chung của admin (env).
+                            Prompt để trống = dùng mặc định. Provider "Auto" = thử Gemini trước, lỗi thì DeepSeek.
+                        </p>
+                    </div>
+                </details>
                 <div id="ai-report-body">
                     <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
                         <div style="font-size:3rem;margin-bottom:16px;">📊</div>

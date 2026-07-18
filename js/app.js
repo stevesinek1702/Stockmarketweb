@@ -4112,6 +4112,74 @@ function setupAIReportEvents() {
     if (genBtn) {
         genBtn.addEventListener('click', () => loadAIReport(true));  // force=true → regenerate
     }
+    const saveBtn = document.getElementById('ai-save-settings');
+    if (saveBtn) saveBtn.addEventListener('click', saveAISettings);
+    const resetBtn = document.getElementById('ai-reset-prompt');
+    if (resetBtn) resetBtn.addEventListener('click', resetAIPrompt);
+}
+
+/**
+ * Load AI settings của user từ server → fill form.
+ * Trả full key (user xem được key của họ) + default prompt.
+ */
+async function loadAISettings() {
+    try {
+        const res = await fetch(`${window.StockAPI.SERVER_BASE}/api/user/ai-settings`, { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!data?.success || !data.settings) return;
+        const s = data.settings;
+        const provEl = document.getElementById('ai-provider');
+        const dsEl = document.getElementById('ai-key-deepseek');
+        const gmEl = document.getElementById('ai-key-gemini');
+        const promptEl = document.getElementById('ai-system-prompt');
+        if (provEl) provEl.value = s.provider || 'auto';
+        if (dsEl) dsEl.value = s.deepseekKey || '';
+        if (gmEl) gmEl.value = s.geminiKey || '';
+        // Prompt: nếu user có prompt riêng → hiện; không thì hiện default (để user dễ edit)
+        if (promptEl) promptEl.value = s.systemPrompt || s.defaultPrompt || '';
+        // Lưu default prompt để nút reset dùng
+        window._aiDefaultPrompt = s.defaultPrompt || '';
+    } catch (e) {
+        console.error('loadAISettings error:', e);
+    }
+}
+
+async function saveAISettings() {
+    const statusEl = document.getElementById('ai-settings-status');
+    const body = {
+        provider: document.getElementById('ai-provider')?.value || 'auto',
+        deepseekKey: document.getElementById('ai-key-deepseek')?.value || '',
+        geminiKey: document.getElementById('ai-key-gemini')?.value || '',
+        systemPrompt: document.getElementById('ai-system-prompt')?.value || ''
+    };
+    if (statusEl) { statusEl.textContent = 'Đang lưu...'; statusEl.style.color = 'var(--text-muted)'; }
+    try {
+        const res = await fetch(`${window.StockAPI.SERVER_BASE}/api/user/ai-settings`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data?.success) {
+            if (statusEl) { statusEl.textContent = '✅ Đã lưu'; statusEl.style.color = 'var(--accent-green)'; }
+            // Clear cache báo cáo cũ (vì settings đổi → báo cáo sẽ khác)
+            setTimeout(() => loadAIReport(true), 500);
+        } else {
+            if (statusEl) { statusEl.textContent = '❌ ' + (data?.error || 'Lỗi'); statusEl.style.color = 'var(--accent-red)'; }
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = 'var(--accent-red)'; }
+    }
+}
+
+function resetAIPrompt() {
+    const promptEl = document.getElementById('ai-system-prompt');
+    if (promptEl && window._aiDefaultPrompt) {
+        promptEl.value = window._aiDefaultPrompt;
+        const statusEl = document.getElementById('ai-settings-status');
+        if (statusEl) { statusEl.textContent = '↺ Đã khôi phục mặc định (chưa lưu)'; statusEl.style.color = 'var(--text-muted)'; }
+    }
 }
 
 // Override switchTab to load news when switching to news tab
@@ -4154,7 +4222,7 @@ function switchTab(tabId) {
 
     // Load AI report khi switch sang tab ai-report (lazy-load, dùng cache nếu có)
     if (tabId === 'ai-report') {
-        try { loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
+        try { loadAISettings(); loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
     }
 
     // Init MA breadth khi switch sang tab industry lần đầu (lazy-load)

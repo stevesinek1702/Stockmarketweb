@@ -286,4 +286,84 @@ router.delete('/presets/:name', async (req, res) => {
     }
 });
 
+// ==========================================
+// AI SETTINGS — /api/user/ai-settings
+// ==========================================
+// Per-user: provider preference + API keys (plaintext, user xem full key của họ)
+// + system prompt override (null = dùng global default từ ai.js)
+
+const aiModule = require('../ai');
+
+/**
+ * GET /api/user/ai-settings — trả settings của user đang login.
+ * Bao gồm: provider, deepseekKey (FULL), geminiKey (FULL), systemPrompt.
+ * Nếu chưa có row → trả default (provider=auto, keys rỗng, prompt=null).
+ */
+router.get('/ai-settings', async (req, res) => {
+    try {
+        const r = await query(
+            `SELECT provider, deepseek_api_key, gemini_api_key, system_prompt
+             FROM user_ai_settings WHERE user_id = $1`,
+            [req.user.id]
+        );
+        if (r.rowCount === 0) {
+            // Chưa set → trả default + global prompt để frontend hiển thị
+            return res.json({
+                success: true,
+                settings: {
+                    provider: 'auto',
+                    deepseekKey: '',
+                    geminiKey: '',
+                    systemPrompt: null,
+                    defaultPrompt: aiModule.SYSTEM_PROMPT  // để frontend biết default
+                }
+            });
+        }
+        const row = r.rows[0];
+        res.json({
+            success: true,
+            settings: {
+                provider: row.provider,
+                deepseekKey: row.deepseek_api_key || '',
+                geminiKey: row.gemini_api_key || '',
+                systemPrompt: row.system_prompt,
+                defaultPrompt: aiModule.SYSTEM_PROMPT
+            }
+        });
+    } catch (err) {
+        console.error('get ai-settings error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
+/**
+ * POST /api/user/ai-settings — upsert settings cho user đang login.
+ * Body: { provider, deepseekKey, geminiKey, systemPrompt }
+ */
+router.post('/ai-settings', async (req, res) => {
+    try {
+        const { provider, deepseekKey, geminiKey, systemPrompt } = req.body;
+        // Validate provider
+        const validProvider = ['auto', 'gemini', 'deepseek'].includes(provider) ? provider : 'auto';
+        // systemPrompt rỗng → null (dùng default)
+        const prompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt.trim() : null;
+
+        await query(
+            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, system_prompt, updated_at)
+             VALUES ($1, $2, $3, $4, $5, now())
+             ON CONFLICT (user_id) DO UPDATE SET
+                provider = EXCLUDED.provider,
+                deepseek_api_key = EXCLUDED.deepseek_api_key,
+                gemini_api_key = EXCLUDED.gemini_api_key,
+                system_prompt = EXCLUDED.system_prompt,
+                updated_at = now()`,
+            [req.user.id, validProvider, deepseekKey || null, geminiKey || null, prompt]
+        );
+        res.json({ success: true, message: 'Đã lưu cấu hình AI' });
+    } catch (err) {
+        console.error('save ai-settings error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
 module.exports = router;

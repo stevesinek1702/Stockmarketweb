@@ -53,16 +53,18 @@ Cấu trúc đề xuất (có thể điều chỉnh theo data):
 ## Phá Đỉnh/Đáy (breadth breakout) — verdict + vốn hóa tác động
 ## Ngành nổi bật (mạnh + yếu + ngành thủng đáy)
 ## Tín hiệu kỹ thuật (RSI, mã tác động VNINDEX)
-## Mã nổi bật (top mua/bán ròng, phá đỉnh/đáy)
+## Mã nổi bật (phá đỉnh/đáy, tác động VNINDEX, top trong dòng tiền NĐT)
 ## Nhận định & Cảnh báo`;
 
 /**
  * Gọi DeepSeek chat completion (OpenAI-compatible API).
  * @param {Array<{role:string,content:string}>} messages
+ * @param {string} [apiKey] — override env key (cho per-user settings)
  * @returns {Promise<string>} text response
  */
-async function deepseekChat(messages) {
-    if (!DEEPSEEK_API_KEY) {
+async function deepseekChat(messages, apiKey) {
+    const key = apiKey || DEEPSEEK_API_KEY;
+    if (!key) {
         throw new Error('DEEPSEEK_API_KEY chưa cấu hình');
     }
     try { require('./cache').apiCounter.bump('deepseek').catch(() => {}); } catch (e) {}
@@ -77,7 +79,7 @@ async function deepseekChat(messages) {
         },
         {
             headers: {
-                'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+                'Authorization': `Bearer ${key}`,
                 'Content-Type': 'application/json'
             },
             timeout: AI_TIMEOUT
@@ -91,14 +93,16 @@ async function deepseekChat(messages) {
 /**
  * Gọi Google Gemini generateContent.
  * @param {string} prompt — system + user prompt gộp (Gemini không có system role riêng)
+ * @param {string} [apiKey] — override env key (cho per-user settings)
  * @returns {Promise<string>} text response
  */
-async function geminiChat(prompt) {
-    if (!GEMINI_API_KEY) {
+async function geminiChat(prompt, apiKey) {
+    const key = apiKey || GEMINI_API_KEY;
+    if (!key) {
         throw new Error('GEMINI_API_KEY chưa cấu hình');
     }
     try { require('./cache').apiCounter.bump('gemini').catch(() => {}); } catch (e) {}
-    const url = `${GEMINI_URL}?key=${GEMINI_API_KEY}`;
+    const url = `${GEMINI_URL}?key=${key}`;
     const res = await axios.post(
         url,
         {
@@ -120,12 +124,19 @@ async function geminiChat(prompt) {
 
 /**
  * Sinh báo cáo thị trường từ context JSON.
- * Gemini primary → nếu fail → DeepSeek fallback.
+ * Provider preference: 'auto' = Gemini primary → DeepSeek fallback.
+ *                      'gemini' = chỉ Gemini. 'deepseek' = chỉ DeepSeek.
  * @param {object} context — data thị trường (đã được buildMarketContext gọn)
  * @param {string} dateStr — ngày báo cáo (YYYY-MM-DD) cho tiêu đề
+ * @param {object} [opts] — { deepseekKey, geminiKey, systemPrompt, provider }
  * @returns {Promise<{text:string, provider:'deepseek'|'gemini'}>}
  */
-async function generateMarketReport(context, dateStr) {
+async function generateMarketReport(context, dateStr, opts = {}) {
+    const dsKey = opts.deepseekKey || DEEPSEEK_API_KEY;
+    const gmKey = opts.geminiKey || GEMINI_API_KEY;
+    const prompt = opts.systemPrompt || SYSTEM_PROMPT;
+    const providerPref = opts.provider || 'auto';
+
     const userPrompt = `Data thị trường chứng khoán Việt Nam ngày ${dateStr} (JSON):
 
 \`\`\`json
@@ -136,29 +147,43 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
 
     const errors = [];
 
-    // 1. Gemini (primary)
-    try {
-        const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n${userPrompt}`;
-        const text = await geminiChat(fullPrompt);
+    // Provider order theo preference
+    const tryGeminiFirst = providerPref !== 'deepseek';  // 'auto' và 'gemini' → Gemini trước
+    const tryDeepSeekFirst = providerPref === 'deepseek';
+
+    const attemptGemini = async () => {
+        const fullPrompt = `${prompt}\n\n---\n\n${userPrompt}`;
+        const text = await geminiChat(fullPrompt, gmKey);
         return { text, provider: 'gemini' };
-    } catch (e) {
-        errors.push(`Gemini: ${e.message}`);
-        console.warn('⚠️  [ai] Gemini fail, thử DeepSeek:', e.message);
-    }
-
-    // 2. DeepSeek (fallback)
-    try {
+    };
+    const attemptDeepSeek = async () => {
         const text = await deepseekChat([
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: prompt },
             { role: 'user', content: userPrompt }
-        ]);
+        ], dsKey);
         return { text, provider: 'deepseek' };
-    } catch (e) {
-        errors.push(`DeepSeek: ${e.message}`);
-        console.warn('⚠️  [ai] DeepSeek fail:', e.message);
+    };
+
+    // Build danh sách provider theo thứ tự preference
+    const attempts = [];
+    if (tryDeepSeekFirst) {
+        attempts.push({ name: 'DeepSeek', fn: attemptDeepSeek });
+        if (providerPref === 'auto') attempts.push({ name: 'Gemini', fn: attemptGemini });
+    } else {
+        attempts.push({ name: 'Gemini', fn: attemptGemini });
+        if (providerPref === 'auto') attempts.push({ name: 'DeepSeek', fn: attemptDeepSeek });
     }
 
-    // Cả 2 đều fail
+    for (const attempt of attempts) {
+        try {
+            return await attempt.fn();
+        } catch (e) {
+            errors.push(`${attempt.name}: ${e.message}`);
+            console.warn(`⚠️  [ai] ${attempt.name} fail:`, e.message);
+        }
+    }
+
+    // Tất cả provider đều fail
     const err = new Error(`Tất cả AI provider đều lỗi: ${errors.join('; ')}`);
     err.providerErrors = errors;
     throw err;

@@ -167,4 +167,80 @@ router.delete('/users/:id', async (req, res) => {
     }
 });
 
+// ==========================================
+// AI SETTINGS ADMIN — quản lý AI keys của tất cả user
+// ==========================================
+
+/**
+ * GET /api/admin/users-with-ai — list tất cả user + AI settings (LEFT JOIN).
+ * Trả FULL API key (admin thấy được theo yêu cầu).
+ */
+router.get('/users-with-ai', async (req, res) => {
+    try {
+        const r = await query(
+            `SELECT u.id, u.username, u.email, u.role, u.status,
+                    s.provider, s.deepseek_api_key, s.gemini_api_key, s.system_prompt, s.updated_at
+             FROM users u
+             LEFT JOIN user_ai_settings s ON s.user_id = u.id
+             ORDER BY u.created_at DESC`
+        );
+        const users = r.rows.map(u => ({
+            id: u.id,
+            username: u.username,
+            email: u.email,
+            role: u.role,
+            status: u.status,
+            ai: {
+                provider: u.provider || 'auto',
+                deepseekKey: u.deepseek_api_key || '',
+                geminiKey: u.gemini_api_key || '',
+                systemPrompt: u.system_prompt,
+                updatedAt: u.updated_at
+            }
+        }));
+        res.json({ success: true, users });
+    } catch (err) {
+        console.error('admin list users-with-ai error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
+/**
+ * PATCH /api/admin/users/:id/ai-settings — admin set AI settings cho 1 user.
+ * Body: { provider?, deepseekKey?, geminiKey?, systemPrompt? }
+ */
+router.patch('/users/:id/ai-settings', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id < 1) {
+            return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
+        }
+        const { provider, deepseekKey, geminiKey, systemPrompt } = req.body;
+        const validProvider = ['auto', 'gemini', 'deepseek'].includes(provider) ? (provider || 'auto') : 'auto';
+        const prompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt.trim() : null;
+
+        // Kiểm tra user tồn tại
+        const exists = await query('SELECT id FROM users WHERE id = $1', [id]);
+        if (exists.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'User không tồn tại' });
+        }
+
+        await query(
+            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, system_prompt, updated_at)
+             VALUES ($1, $2, $3, $4, $5, now())
+             ON CONFLICT (user_id) DO UPDATE SET
+                provider = EXCLUDED.provider,
+                deepseek_api_key = EXCLUDED.deepseek_api_key,
+                gemini_api_key = EXCLUDED.gemini_api_key,
+                system_prompt = EXCLUDED.system_prompt,
+                updated_at = now()`,
+            [id, validProvider, deepseekKey || null, geminiKey || null, prompt]
+        );
+        res.json({ success: true, message: `Đã cập nhật AI settings cho user ${id}` });
+    } catch (err) {
+        console.error('admin patch ai-settings error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server' });
+    }
+});
+
 module.exports = router;

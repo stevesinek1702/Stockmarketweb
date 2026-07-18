@@ -5424,6 +5424,109 @@ button.scanning::after {
 #breadth-all-table th.sortable.sort-asc .sort-icon::after { content: " ↑"; }
 #breadth-all-table th.sortable.sort-desc .sort-icon::after { content: " ↓"; }
 
+/* ═══ AI Settings Panel (collapsible) ═══ */
+.ai-settings-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color, #3a3f55);
+    border-radius: 8px;
+    margin-bottom: 14px;
+}
+.ai-settings-summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary, #9ba3b4);
+    list-style: none;
+    user-select: none;
+}
+.ai-settings-summary::-webkit-details-marker { display: none; }
+.ai-settings-summary::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform 0.15s;
+    color: var(--accent-blue, #4472C4);
+}
+.ai-settings-panel[open] .ai-settings-summary::before {
+    transform: rotate(90deg);
+}
+.ai-settings-body {
+    padding: 4px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.ai-settings-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.ai-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 200px;
+}
+.ai-field-label {
+    font-size: 0.72rem;
+    color: var(--text-muted, #6b7280);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.ai-field input,
+.ai-field select,
+.ai-field textarea {
+    background: var(--bg-main, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--border-color, #3a3f55);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text-primary, #e4e7ef);
+    font-size: 0.85rem;
+    font-family: inherit;
+}
+.ai-field input:focus,
+.ai-field select:focus,
+.ai-field textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue, #4472C4);
+}
+.ai-field-prompt { flex: 1 1 100%; }
+.ai-field textarea {
+    font-family: 'Space Grotesk', 'Consolas', monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 120px;
+}
+.ai-preset-btn {
+    background: transparent;
+    border: 1px solid var(--border-color, #3a3f55);
+    color: var(--text-muted, #6b7280);
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
+}
+.ai-preset-btn:hover { color: var(--accent-blue, #4472C4); border-color: var(--accent-blue, #4472C4); }
+.ai-settings-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.ai-settings-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted, #6b7280);
+    margin: 0;
+    line-height: 1.5;
+}
+
 /* ═══ AI Market Report — render markdown ═══ */
 .ai-report-content {
     padding: 20px 24px;
