@@ -3572,16 +3572,19 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
         };
     }
 
-    // 9. Mã tiềm năng (MACD/RSI crossover signals hôm nay từ potential-scanner)
+    // 9. Mã tiềm năng (RS-based scanner — Relative Strength + volume + MA)
+    // Fields: symbol, price, change, ma20, ma50, distMA20, rs (relative strength),
+    //         rsMA10, volume, avgVolume20, volumeRatio, rsTrend
     if (potential?.success && Array.isArray(potential.signals)) {
         ctx.maTiemNang = potential.signals.slice(0, 10).map(s => ({
-            ma: s.symbol || s.ticker,
-            gia: s.price || s.lastPrice,
-            rsi: s.rsi,
-            macdHist: s.macdHist,
-            tinHieu: s.signal || s.macdRsiSignal,  // VD: 'MACD cắt lên', 'RSI quá bán'
-            phanTram: s.percentChange,
-            giaTri: s.value  // GTGD nếu có
+            ma: s.symbol,
+            gia: s.price,
+            phanTram: s.change ? Math.round(s.change * 100) / 100 : null,
+            trenMA20: s.distMA20 ? Math.round(s.distMA20 * 100) / 100 : null,  // % giá trên MA20
+            trenMA50: s.ma50 ? Math.round(((s.price - s.ma50) / s.ma50) * 1000) / 10 : null,
+            relativeStrength: s.rs,           // RS score (cao = mạnh hơn thị trường)
+            rsTrend: s.rsTrend,               // 'up' | 'down' | 'sideways'
+            volumeRatio: s.volumeRatio ? Math.round(s.volumeRatio * 100) / 100 : null  // vol/avgVol20
         }));
         ctx.tongTinHieu = potential.total || potential.signals.length;
     }
