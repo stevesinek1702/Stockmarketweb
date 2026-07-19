@@ -41,9 +41,13 @@ PHÂN TÍCH SÂU — phần quan trọng nhất:
   verdictTong (Bullish/Bearish/Neutral), tyLeDayDinh (vốn hóa phá đáy / phá đỉnh —
   >1 = dòng tiền lớn đang rút, Bearish mạnh). Nêu rõ ngành nào bị thủng đáy nhiều
   nhất (vonHoaPhaDay, soMaPhaDay).
-- **Độ rộng kỹ thuật (doRongKyThuat)**: Tóm tắt NGẮN 1-2 câu về xu hướng dài hạn qua
-  MA50/MA100/MA200. VD: "MA50=35% thị trường yếu, MA200=34% xu hướng dài hạn xấu".
-  So sánh xuHuong (phiên trước → hôm nay) để xác nhận đang cải thiện hay xấu đi.
+- **Độ rộng kỹ thuật (doRongKyThuat)**: Đây là BREADTH = SỐ MÃ CỔ PHIẾU trên MA
+  (không phải giá trị điểm). VD: "530/1576 mã trên MA200 (33.6%)" nghĩa là chỉ 33.6%
+  mã đang giá trên MA200 → thị trường yếu. So sánh xuHuongMA50 (phiên trước → hôm nay).
+  TÓM TẮT NGẮN 1-2 câu.
+- **MA VNINDEX (vnindexMA)**: Đây là GIÁ TRỊ ĐIỂM VNINDEX + MA50/100/200 (~1771 điểm).
+  KHÁC HOÀN TOÀN với breadth. VD: "VNINDEX 1787 đang TRÊN MA200 1771 (+0.9%) → xu hướng
+  dài hạn tích cực". Luôn phân tích vị trí giá so với MA200 (trên/dưới, cách bao nhiêu %).
 - **Ngành**: top 5 ngành mạnh + top 5 yếu theo lucCau. So sánh với verdictTong breadth
   (lucCau cao nhưng breadth Bearish? → cảnh báo phân kỳ, rủi ro). ĐƯA RA NHẬN ĐỊNH
   2-3 ngành tiềm năng có thể ĐỠ thị trường (lucCau cao + breadth tốt + không thủng đáy)
@@ -58,7 +62,7 @@ PHÂN TÍCH SÂU — phần quan trọng nhất:
 
 Cấu trúc đề xuất (có thể điều chỉnh theo data):
 ## Tổng quan thị trường
-## Lực cầu & Độ rộng thị trường (kèm MA50/100/200 xu hướng)
+## Lực cầu & Độ rộng thị trường (breadth số mã + MA VNINDEX điểm)
 ## Dòng tiền (Khối ngoại + 4 nhóm NĐT)
 ## Phá Đỉnh/Đáy (breadth breakout) — verdict + vốn hóa tác động
 ## Ngành nổi bật (mạnh + yếu + ngành thủng đáy + NGÀNH TIỀM NĂNG đỡ thị trường)

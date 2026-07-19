@@ -3421,7 +3421,56 @@ async function fetchInternal(req, path) {
 }
 
 /**
- * Gom data từ 8 endpoint thành 1 object gọn để feed vào AI.
+ * Tính MA50/100/200 của VNINDEX (GIÁ TRỊ ĐIỂM, vd ~1771) — khác với breadth
+ * (số mã trên MA). Lấy history 250 ngày qua FireAnt HistoricalQuotes, tính SMA.
+ * Cache trong process 1h để tránh fetch lại.
+ * @returns {Promise<{close, ma50, ma100, ma200, aboveMA50, aboveMA100, aboveMA200}|null>}
+ */
+let _vnindexMACache = { time: 0, data: null };
+async function computeVNIndexMA() {
+    // Cache 1h
+    if (_vnindexMACache.data && Date.now() - _vnindexMACache.time < 3600000) {
+        return _vnindexMACache.data;
+    }
+    try {
+        const from = new Date();
+        from.setDate(from.getDate() - 400); // 400 ngày để có đủ data cho MA200
+        const fromStr = from.toISOString().split('T')[0];
+        const toStr = new Date().toISOString().split('T')[0];
+        const url = `${API_CONFIG.fireant.base}/Markets/HistoricalQuotes?symbol=VNINDEX&startDate=${fromStr}&endDate=${toStr}`;
+        const raw = await fetchAPI(url, API_CONFIG.fireant.headers);
+        const arr = Array.isArray(raw) ? raw : (raw && raw.value) || [];
+        const closes = arr.map(d => d.Close).filter(v => typeof v === 'number');
+        if (closes.length < 200) return null;
+
+        const close = closes[closes.length - 1];
+        const sma = (period) => {
+            if (closes.length < period) return null;
+            const slice = closes.slice(-period);
+            return Math.round(slice.reduce((a, b) => a + b, 0) / period * 100) / 100;
+        };
+        const ma50 = sma(50);
+        const ma100 = sma(100);
+        const ma200 = sma(200);
+
+        const data = {
+            close: Math.round(close * 100) / 100,
+            ma50, ma100, ma200,
+            aboveMA50: ma50 ? Math.round((close - ma50) / ma50 * 1000) / 10 : null,   // % giá trên MA50
+            aboveMA100: ma100 ? Math.round((close - ma100) / ma100 * 1000) / 10 : null,
+            aboveMA200: ma200 ? Math.round((close - ma200) / ma200 * 1000) / 10 : null
+        };
+        _vnindexMACache = { time: Date.now(), data };
+        console.log(`📈 [ai] VNINDEX MA: close=${close}, MA50=${ma50}, MA100=${ma100}, MA200=${ma200}`);
+        return data;
+    } catch (e) {
+        console.warn('⚠️  [ai] computeVNIndexMA fail:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Gom data từ 9 endpoint thành 1 object gọn để feed vào AI.
  * Chỉ trích fields quan trọng — bỏ noise để prompt gọn (~2-3K tokens).
  */
 function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential) {
@@ -3550,25 +3599,23 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
     // Lưu ý: đã bỏ top-net-stocks (Google Sheet đã xóa khỏi dashboard).
     // Top mua/bán ròng 1 ngày đã có trong dongTienNhomNDT.topMua/topBan (từ investor-detail).
 
-    // 8. Độ rộng kỹ thuật (MA10/20/50/100/200) — xu hướng dài hạn
+    // 8. Độ rộng kỹ thuật (BREADTH = SỐ MÃ trên MA10/20/50/100/200)
+    // QUAN TRỌNG: đây là số MÃ trên MA, KHÔNG PHẢI giá trị điểm MA của VNINDEX.
+    // Format rõ ràng để AI không nhầm lẫn.
     if (maBreadth?.success && Array.isArray(maBreadth.series) && maBreadth.series.length > 0) {
         const last = maBreadth.series[maBreadth.series.length - 1];
         const prev = maBreadth.series[maBreadth.series.length - 2] || last;
         const total = last.total || 1;
         const pct = (n) => Math.round((n / total) * 1000) / 10;
         ctx.doRongKyThuat = {
-            homNay: {
-                trenMA10: `${pct(last.ma10)}% (${last.ma10}/${total})`,
-                trenMA20: `${pct(last.ma20)}% (${last.ma20}/${total})`,
-                trenMA50: `${pct(last.ma50)}% (${last.ma50}/${total})`,
-                trenMA100: `${pct(last.ma100)}% (${last.ma100}/${total})`,
-                trenMA200: `${pct(last.ma200)}% (${last.ma200}/${total})`
+            chuThich: 'ĐỘ RỘNG = số mã cổ phiếu trên MA (không phải điểm VNINDEX)',
+            tongMa: total,
+            soMaTrenMA: {
+                MA10: last.ma10, MA20: last.ma20, MA50: last.ma50,
+                MA100: last.ma100, MA200: last.ma200
             },
-            // Biến động phiên trước → hôm nay (xu hướng ngắn hạn)
-            xuHuong: {
-                MA10: `${pct(prev.ma10)}% → ${pct(last.ma10)}%`,
-                MA50: `${pct(prev.ma50)}% → ${pct(last.ma50)}%`
-            }
+            phanTramMaTrenMA: `${pct(last.ma50)}% mã trên MA50, ${pct(last.ma100)}% trên MA100, ${pct(last.ma200)}% trên MA200`,
+            xuHuongMA50: `${pct(prev.ma50)}% → ${pct(last.ma50)}% (phiên trước → hôm nay)`
         };
     }
 
@@ -3661,6 +3708,21 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         // 3. Build context gọn
         const dateStr = require('./cache').vnToday();
         const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential);
+
+        // 3b. Thêm MA VNINDEX (giá trị điểm ~1771) — async, tính riêng
+        const vnindexMA = await computeVNIndexMA();
+        if (vnindexMA) {
+            context.vnindexMA = {
+                chuThich: 'GIÁ TRỊ ĐIỂM VNINDEX + MA (khác breadth số mã trên MA)',
+                close: vnindexMA.close,
+                MA50: vnindexMA.ma50,
+                MA100: vnindexMA.ma100,
+                MA200: vnindexMA.ma200,
+                viTri: `VNINDEX ${vnindexMA.close} ${vnindexMA.aboveMA200 >= 0 ? 'TRÊN' : 'DƯỚI'} MA200 (${vnindexMA.ma200}), cách ${Math.abs(vnindexMA.aboveMA200)}%`,
+                trenMA50Pct: vnindexMA.aboveMA50,
+                trenMA200Pct: vnindexMA.aboveMA200
+            };
+        }
 
         // 4. Generate AI report với user settings
         const { text, provider } = await aiModule.generateMarketReport(context, dateStr, {
