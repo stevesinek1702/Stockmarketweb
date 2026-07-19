@@ -303,7 +303,7 @@ const aiModule = require('../ai');
 router.get('/ai-settings', async (req, res) => {
     try {
         const r = await query(
-            `SELECT provider, deepseek_api_key, gemini_api_key, system_prompt
+            `SELECT provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key, system_prompt
              FROM user_ai_settings WHERE user_id = $1`,
             [req.user.id]
         );
@@ -315,6 +315,7 @@ router.get('/ai-settings', async (req, res) => {
                     provider: 'auto',
                     deepseekKey: '',
                     geminiKey: '',
+                    tokenrouterKey: '',
                     systemPrompt: null,
                     defaultPrompt: aiModule.SYSTEM_PROMPT  // để frontend biết default
                 }
@@ -327,6 +328,7 @@ router.get('/ai-settings', async (req, res) => {
                 provider: row.provider,
                 deepseekKey: row.deepseek_api_key || '',
                 geminiKey: row.gemini_api_key || '',
+                tokenrouterKey: row.tokenrouter_api_key || '',
                 systemPrompt: row.system_prompt,
                 defaultPrompt: aiModule.SYSTEM_PROMPT
             }
@@ -340,26 +342,27 @@ router.get('/ai-settings', async (req, res) => {
 /**
  * POST /api/user/ai-settings — user tự update toàn bộ settings (provider + keys + prompt).
  * User có thể set key riêng của họ (nếu có key cá nhân) hoặc dùng key admin cấp.
- * Body: { provider, deepseekKey, geminiKey, systemPrompt }
+ * Body: { provider, deepseekKey, geminiKey, tokenrouterKey, systemPrompt }
  */
 router.post('/ai-settings', async (req, res) => {
     try {
-        const { provider, deepseekKey, geminiKey, systemPrompt } = req.body;
+        const { provider, deepseekKey, geminiKey, tokenrouterKey, systemPrompt } = req.body;
         // Validate provider
-        const validProvider = ['auto', 'gemini', 'deepseek'].includes(provider) ? provider : 'auto';
+        const validProvider = ['auto', 'gemini', 'deepseek', 'glm'].includes(provider) ? provider : 'auto';
         // systemPrompt rỗng → null (dùng default)
         const prompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt.trim() : null;
 
         await query(
-            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, system_prompt, updated_at)
-             VALUES ($1, $2, $3, $4, $5, now())
+            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key, system_prompt, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, now())
              ON CONFLICT (user_id) DO UPDATE SET
                 provider = EXCLUDED.provider,
                 deepseek_api_key = EXCLUDED.deepseek_api_key,
                 gemini_api_key = EXCLUDED.gemini_api_key,
+                tokenrouter_api_key = EXCLUDED.tokenrouter_api_key,
                 system_prompt = EXCLUDED.system_prompt,
                 updated_at = now()`,
-            [req.user.id, validProvider, deepseekKey || null, geminiKey || null, prompt]
+            [req.user.id, validProvider, deepseekKey || null, geminiKey || null, tokenrouterKey || null, prompt]
         );
         res.json({ success: true, message: 'Đã lưu cấu hình AI' });
     } catch (err) {

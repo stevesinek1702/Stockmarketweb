@@ -15,13 +15,16 @@ const axios = require('axios');
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const TOKENROUTER_API_KEY = process.env.TOKENROUTER_API_KEY || '';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_MODEL = 'gemini-2.0-flash';
+const TOKENROUTER_URL = 'https://api.tokenrouter.com/v1/chat/completions';
+const TOKENROUTER_MODEL = 'z-ai/glm-5.2-free';  // GLM-5.2 (free tier trên TokenRouter)
 
-const AI_TIMEOUT = 60000; // 60s — LLM cần thời gian suy nghĩ (báo cáo dài)
+const AI_TIMEOUT = 180000; // 180s — GLM-5.2 free tier chậm (có reasoning), cần timeout dài
 
 // ── System prompt: persona + format ─────────────────────────────────────────
 const SYSTEM_PROMPT = `Bạn là chuyên gia phân tích chứng khoán Việt Nam với hơn 10 năm kinh nghiệm.
@@ -138,17 +141,62 @@ async function geminiChat(prompt, apiKey) {
 }
 
 /**
+ * Gọi TokenRouter (GLM-5.2) — OpenAI-compatible API.
+ * Free tier chậm (có reasoning) → timeout 180s.
+ * @param {Array<{role:string,content:string}>} messages
+ * @param {string} [apiKey] — override env key
+ * @returns {Promise<string>} text response
+ */
+async function tokenrouterChat(messages, apiKey) {
+    const key = apiKey || TOKENROUTER_API_KEY;
+    if (!key) {
+        throw new Error('TOKENROUTER_API_KEY chưa cấu hình');
+    }
+    try { require('./cache').apiCounter.bump('tokenrouter').catch(() => {}); } catch (e) {}
+    const res = await axios.post(
+        TOKENROUTER_URL,
+        {
+            model: TOKENROUTER_MODEL,
+            messages,
+            temperature: 0.3,
+            max_tokens: 3000,        // GLM-5.2 tốn nhiều tokens cho reasoning
+            stream: false
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: AI_TIMEOUT
+        }
+    );
+    // GLM-5.2 có thể trả content rỗng + reasoning_content (nếu max_tokens thấp)
+    // Ưu tiên content, fallback reasoning_content nếu content rỗng
+    const msg = res.data?.choices?.[0]?.message;
+    let text = msg?.content || '';
+    if (!text && msg?.reasoning_content) {
+        text = msg.reasoning_content;  // fallback: dùng reasoning nếu content rỗng
+    }
+    if (!text) throw new Error('TokenRouter/GLM trả response rỗng');
+    return text;
+}
+
+/**
  * Sinh báo cáo thị trường từ context JSON.
- * Provider preference: 'auto' = Gemini primary → DeepSeek fallback.
- *                      'gemini' = chỉ Gemini. 'deepseek' = chỉ DeepSeek.
+ * Provider preference:
+ *   'auto'  = GLM-5.2 → DeepSeek → Gemini (fallback chain)
+ *   'glm'   = chỉ GLM-5.2 (TokenRouter)
+ *   'deepseek' = chỉ DeepSeek
+ *   'gemini' = chỉ Gemini
  * @param {object} context — data thị trường (đã được buildMarketContext gọn)
  * @param {string} dateStr — ngày báo cáo (YYYY-MM-DD) cho tiêu đề
- * @param {object} [opts] — { deepseekKey, geminiKey, systemPrompt, provider }
- * @returns {Promise<{text:string, provider:'deepseek'|'gemini'}>}
+ * @param {object} [opts] — { deepseekKey, geminiKey, tokenrouterKey, systemPrompt, provider }
+ * @returns {Promise<{text:string, provider:string}>}
  */
 async function generateMarketReport(context, dateStr, opts = {}) {
     const dsKey = opts.deepseekKey || DEEPSEEK_API_KEY;
     const gmKey = opts.geminiKey || GEMINI_API_KEY;
+    const trKey = opts.tokenrouterKey || TOKENROUTER_API_KEY;
     const prompt = opts.systemPrompt || SYSTEM_PROMPT;
     const providerPref = opts.provider || 'auto';
 
@@ -162,10 +210,6 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
 
     const errors = [];
 
-    // Provider order theo preference
-    const tryGeminiFirst = providerPref !== 'deepseek';  // 'auto' và 'gemini' → Gemini trước
-    const tryDeepSeekFirst = providerPref === 'deepseek';
-
     const attemptGemini = async () => {
         const fullPrompt = `${prompt}\n\n---\n\n${userPrompt}`;
         const text = await geminiChat(fullPrompt, gmKey);
@@ -178,15 +222,30 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
         ], dsKey);
         return { text, provider: 'deepseek' };
     };
+    const attemptGLM = async () => {
+        const text = await tokenrouterChat([
+            { role: 'system', content: prompt },
+            { role: 'user', content: userPrompt }
+        ], trKey);
+        return { text, provider: 'glm' };
+    };
 
     // Build danh sách provider theo thứ tự preference
+    const providerMap = {
+        'glm':      { name: 'GLM-5.2', fn: attemptGLM },
+        'deepseek': { name: 'DeepSeek', fn: attemptDeepSeek },
+        'gemini':   { name: 'Gemini', fn: attemptGemini }
+    };
     const attempts = [];
-    if (tryDeepSeekFirst) {
-        attempts.push({ name: 'DeepSeek', fn: attemptDeepSeek });
-        if (providerPref === 'auto') attempts.push({ name: 'Gemini', fn: attemptGemini });
+    if (providerPref === 'auto') {
+        // Auto: GLM-5.2 → DeepSeek → Gemini (GLM free chậm nhưng mạnh)
+        attempts.push(providerMap.glm, providerMap.deepseek, providerMap.gemini);
+    } else if (providerMap[providerPref]) {
+        // Single provider
+        attempts.push(providerMap[providerPref]);
     } else {
-        attempts.push({ name: 'Gemini', fn: attemptGemini });
-        if (providerPref === 'auto') attempts.push({ name: 'DeepSeek', fn: attemptDeepSeek });
+        // Fallback auto
+        attempts.push(providerMap.glm, providerMap.deepseek, providerMap.gemini);
     }
 
     for (const attempt of attempts) {
@@ -208,12 +267,13 @@ Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã 
  * Kiểm tra AI có sẵn sàng không (ít nhất 1 key được cấu hình).
  */
 function isAvailable() {
-    return !!(DEEPSEEK_API_KEY || GEMINI_API_KEY);
+    return !!(TOKENROUTER_API_KEY || DEEPSEEK_API_KEY || GEMINI_API_KEY);
 }
 
 module.exports = {
     deepseekChat,
     geminiChat,
+    tokenrouterChat,
     generateMarketReport,
     isAvailable,
     SYSTEM_PROMPT

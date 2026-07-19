@@ -179,7 +179,7 @@ router.get('/users-with-ai', async (req, res) => {
     try {
         const r = await query(
             `SELECT u.id, u.username, u.email, u.role, u.status,
-                    s.provider, s.deepseek_api_key, s.gemini_api_key, s.system_prompt, s.updated_at
+                    s.provider, s.deepseek_api_key, s.gemini_api_key, s.tokenrouter_api_key, s.system_prompt, s.updated_at
              FROM users u
              LEFT JOIN user_ai_settings s ON s.user_id = u.id
              ORDER BY u.created_at DESC`
@@ -194,6 +194,7 @@ router.get('/users-with-ai', async (req, res) => {
                 provider: u.provider || 'auto',
                 deepseekKey: u.deepseek_api_key || '',
                 geminiKey: u.gemini_api_key || '',
+                tokenrouterKey: u.tokenrouter_api_key || '',
                 systemPrompt: u.system_prompt,
                 updatedAt: u.updated_at
             }
@@ -207,7 +208,7 @@ router.get('/users-with-ai', async (req, res) => {
 
 /**
  * PATCH /api/admin/users/:id/ai-settings — admin set AI settings cho 1 user.
- * Body: { provider?, deepseekKey?, geminiKey?, systemPrompt? }
+ * Body: { provider?, deepseekKey?, geminiKey?, tokenrouterKey?, systemPrompt? }
  */
 router.patch('/users/:id/ai-settings', async (req, res) => {
     try {
@@ -215,8 +216,8 @@ router.patch('/users/:id/ai-settings', async (req, res) => {
         if (!Number.isInteger(id) || id < 1) {
             return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
         }
-        const { provider, deepseekKey, geminiKey, systemPrompt } = req.body;
-        const validProvider = ['auto', 'gemini', 'deepseek'].includes(provider) ? (provider || 'auto') : 'auto';
+        const { provider, deepseekKey, geminiKey, tokenrouterKey, systemPrompt } = req.body;
+        const validProvider = ['auto', 'gemini', 'deepseek', 'glm'].includes(provider) ? (provider || 'auto') : 'auto';
         const prompt = (typeof systemPrompt === 'string' && systemPrompt.trim()) ? systemPrompt.trim() : null;
 
         // Kiểm tra user tồn tại
@@ -226,15 +227,16 @@ router.patch('/users/:id/ai-settings', async (req, res) => {
         }
 
         await query(
-            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, system_prompt, updated_at)
-             VALUES ($1, $2, $3, $4, $5, now())
+            `INSERT INTO user_ai_settings (user_id, provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key, system_prompt, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, now())
              ON CONFLICT (user_id) DO UPDATE SET
                 provider = EXCLUDED.provider,
                 deepseek_api_key = EXCLUDED.deepseek_api_key,
                 gemini_api_key = EXCLUDED.gemini_api_key,
+                tokenrouter_api_key = EXCLUDED.tokenrouter_api_key,
                 system_prompt = EXCLUDED.system_prompt,
                 updated_at = now()`,
-            [id, validProvider, deepseekKey || null, geminiKey || null, prompt]
+            [id, validProvider, deepseekKey || null, geminiKey || null, tokenrouterKey || null, prompt]
         );
         res.json({ success: true, message: `Đã cập nhật AI settings cho user ${id}` });
     } catch (err) {

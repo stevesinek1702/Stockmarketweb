@@ -4158,6 +4158,7 @@ async function saveAIPrompt() {
     // Giữ provider + keys hiện tại (đọc từ form), chỉ update prompt
     const body = {
         provider: document.getElementById('ai-provider')?.value || 'auto',
+        tokenrouterKey: document.getElementById('ai-key-tokenrouter')?.value || '',
         deepseekKey: document.getElementById('ai-key-deepseek')?.value || '',
         geminiKey: document.getElementById('ai-key-gemini')?.value || '',
         systemPrompt: promptEl.value || ''
@@ -4193,10 +4194,12 @@ async function loadAISettings() {
         if (!data?.success || !data.settings) return;
         const s = data.settings;
         const provEl = document.getElementById('ai-provider');
+        const trEl = document.getElementById('ai-key-tokenrouter');
         const dsEl = document.getElementById('ai-key-deepseek');
         const gmEl = document.getElementById('ai-key-gemini');
         const promptEl = document.getElementById('ai-system-prompt');
         if (provEl) provEl.value = s.provider || 'auto';
+        if (trEl) trEl.value = s.tokenrouterKey || '';
         if (dsEl) dsEl.value = s.deepseekKey || '';
         if (gmEl) gmEl.value = s.geminiKey || '';
         // Prompt: nếu user có prompt riêng → hiện; không thì hiện default (để user dễ edit)
@@ -4212,6 +4215,7 @@ async function saveAISettings() {
     const statusEl = document.getElementById('ai-settings-status');
     const body = {
         provider: document.getElementById('ai-provider')?.value || 'auto',
+        tokenrouterKey: document.getElementById('ai-key-tokenrouter')?.value || '',
         deepseekKey: document.getElementById('ai-key-deepseek')?.value || '',
         geminiKey: document.getElementById('ai-key-gemini')?.value || '',
         systemPrompt: document.getElementById('ai-system-prompt')?.value || ''

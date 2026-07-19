@@ -1360,10 +1360,15 @@
                             <label class="ai-field">
                                 <span class="ai-field-label">Provider ưu tiên</span>
                                 <select id="ai-provider">
-                                    <option value="auto">🤖 Auto (Gemini → DeepSeek)</option>
+                                    <option value="auto">🤖 Auto (GLM-5.2 → DeepSeek → Gemini)</option>
+                                    <option value="glm">GLM-5.2 (TokenRouter, miễn phí)</option>
                                     <option value="gemini">Gemini</option>
                                     <option value="deepseek">DeepSeek</option>
                                 </select>
+                            </label>
+                            <label class="ai-field">
+                                <span class="ai-field-label">TokenRouter API Key (GLM-5.2)</span>
+                                <input type="password" id="ai-key-tokenrouter" placeholder="sk-ayf... (để trống = dùng key chung)" autocomplete="off">
                             </label>
                             <label class="ai-field">
                                 <span class="ai-field-label">DeepSeek API Key</span>

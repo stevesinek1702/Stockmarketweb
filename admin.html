@@ -90,6 +90,7 @@
                 <tr>
                     <th>User</th>
                     <th>Provider</th>
+                    <th>TokenRouter (GLM)</th>
                     <th>DeepSeek Key</th>
                     <th>Gemini Key</th>
                     <th>Prompt</th>
@@ -97,7 +98,7 @@
                 </tr>
             </thead>
             <tbody id="aiSettingsTbody">
-                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Đang tải...</td></tr>
+                <tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Đang tải...</td></tr>
             </tbody>
         </table>
     </div>
@@ -245,28 +246,31 @@
                 const res = await fetch('/api/admin/users-with-ai', { credentials: 'same-origin' });
                 const json = await res.json();
                 if (!json.success || !Array.isArray(json.users)) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Lỗi tải</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Lỗi tải</td></tr>';
                     return;
                 }
                 if (json.users.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Chưa có user</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">Chưa có user</td></tr>';
                     return;
                 }
+                const keyInput = (id, val, ph) => `<input type="text" id="${id}" value="${(val||'').replace(/"/g,'&quot;')}" placeholder="${ph}" style="width:170px;background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.72rem;font-family:monospace;">`;
                 tbody.innerHTML = json.users.map(u => {
                     const a = u.ai || {};
                     const promptLabel = a.systemPrompt ? `✏️ Tùy chỉnh` : 'Mặc định';
                     return `<tr>
                         <td><strong>${u.username}</strong><br><span style="font-size:0.7rem;color:var(--text-muted);">${u.role} · ${u.status}</span></td>
                         <td>
-                            <select id="ai-prov-${u.id}" style="background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.78rem;">
+                            <select id="ai-prov-${u.id}" style="background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.72rem;">
                                 <option value="auto" ${a.provider==='auto'?'selected':''}>Auto</option>
+                                <option value="glm" ${a.provider==='glm'?'selected':''}>GLM-5.2</option>
                                 <option value="gemini" ${a.provider==='gemini'?'selected':''}>Gemini</option>
                                 <option value="deepseek" ${a.provider==='deepseek'?'selected':''}>DeepSeek</option>
                             </select>
                         </td>
-                        <td><input type="text" id="ai-ds-${u.id}" value="${(a.deepseekKey||'').replace(/"/g,'&quot;')}" placeholder="(dùng chung)" style="width:180px;background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.75rem;font-family:monospace;"></td>
-                        <td><input type="text" id="ai-gm-${u.id}" value="${(a.geminiKey||'').replace(/"/g,'&quot;')}" placeholder="(dùng chung)" style="width:180px;background:var(--bg-main);border:1px solid var(--border-color);color:var(--text-primary);padding:4px 6px;border-radius:4px;font-size:0.75rem;font-family:monospace;"></td>
-                        <td style="font-size:0.78rem;color:var(--text-muted);">${promptLabel}</td>
+                        <td>${keyInput('ai-tr-'+u.id, a.tokenrouterKey, '(chung)')}</td>
+                        <td>${keyInput('ai-ds-'+u.id, a.deepseekKey, '(chung)')}</td>
+                        <td>${keyInput('ai-gm-'+u.id, a.geminiKey, '(chung)')}</td>
+                        <td style="font-size:0.72rem;color:var(--text-muted);">${promptLabel}</td>
                         <td><button class="btn-sm" onclick="saveUserAI(${u.id})" style="padding:5px 10px;">💾 Lưu</button></td>
                     </tr>`;
                 }).join('');
@@ -281,6 +285,7 @@
             errBox.classList.remove('show'); succBox.classList.remove('show');
             const body = {
                 provider: document.getElementById(`ai-prov-${id}`).value,
+                tokenrouterKey: document.getElementById(`ai-tr-${id}`).value,
                 deepseekKey: document.getElementById(`ai-ds-${id}`).value,
                 geminiKey: document.getElementById(`ai-gm-${id}`).value
             };

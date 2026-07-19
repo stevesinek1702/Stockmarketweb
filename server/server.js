@@ -3650,11 +3650,11 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
     const userId = req.user.id;
 
     // Load user AI settings (nếu có)
-    let userSettings = { provider: 'auto', deepseekKey: null, geminiKey: null, systemPrompt: null };
+    let userSettings = { provider: 'auto', deepseekKey: null, geminiKey: null, tokenrouterKey: null, systemPrompt: null };
     try {
         const { query } = require('./db');
         const sr = await query(
-            `SELECT provider, deepseek_api_key, gemini_api_key, system_prompt
+            `SELECT provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key, system_prompt
              FROM user_ai_settings WHERE user_id = $1`, [userId]);
         if (sr.rowCount > 0) {
             const r = sr.rows[0];
@@ -3662,13 +3662,14 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
                 provider: r.provider || 'auto',
                 deepseekKey: r.deepseek_api_key || null,
                 geminiKey: r.gemini_api_key || null,
+                tokenrouterKey: r.tokenrouter_api_key || null,
                 systemPrompt: r.system_prompt || null
             };
         }
     } catch (e) { /* table chưa migrate hoặc lỗi → fallback default */ }
 
     // Check AI available (cả env lẫn user key)
-    const hasAnyKey = aiModule.isAvailable() || userSettings.deepseekKey || userSettings.geminiKey;
+    const hasAnyKey = aiModule.isAvailable() || userSettings.deepseekKey || userSettings.geminiKey || userSettings.tokenrouterKey;
     if (!hasAnyKey) {
         return res.status(503).json({
             success: false,
@@ -3728,6 +3729,7 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         const { text, provider } = await aiModule.generateMarketReport(context, dateStr, {
             deepseekKey: userSettings.deepseekKey,
             geminiKey: userSettings.geminiKey,
+            tokenrouterKey: userSettings.tokenrouterKey,
             systemPrompt: userSettings.systemPrompt,
             provider: userSettings.provider
         });
