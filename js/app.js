@@ -4173,8 +4173,7 @@ async function saveAIPrompt() {
         const data = await res.json();
         if (data?.success) {
             if (statusEl) { statusEl.textContent = '✅ Đã lưu prompt'; statusEl.style.color = 'var(--accent-green)'; }
-            // Clear cache báo cáo cũ (prompt đổi → báo cáo sẽ khác)
-            try { await fetch(`${window.StockAPI.SERVER_BASE}/api/ai/market-report?refresh=true`, { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+            // KHÔNG auto-regenerate báo cáo — lưu prompt là lưu, tạo báo cáo là action riêng
         } else {
             if (statusEl) { statusEl.textContent = '❌ ' + (data?.error || 'Lỗi'); statusEl.style.color = 'var(--accent-red)'; }
         }
@@ -4228,8 +4227,7 @@ async function saveAISettings() {
         const data = await res.json();
         if (data?.success) {
             if (statusEl) { statusEl.textContent = '✅ Đã lưu'; statusEl.style.color = 'var(--accent-green)'; }
-            // Clear cache báo cáo cũ (vì settings đổi → báo cáo sẽ khác)
-            setTimeout(() => loadAIReport(true), 500);
+            // KHÔNG auto-regenerate — lưu cấu hình là lưu, tạo báo cáo là action riêng
         } else {
             if (statusEl) { statusEl.textContent = '❌ ' + (data?.error || 'Lỗi'); statusEl.style.color = 'var(--accent-red)'; }
         }
