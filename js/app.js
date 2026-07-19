@@ -4141,8 +4141,46 @@ function setupAIReportEvents() {
     }
     const saveBtn = document.getElementById('ai-save-settings');
     if (saveBtn) saveBtn.addEventListener('click', saveAISettings);
+    const savePromptBtn = document.getElementById('ai-save-prompt');
+    if (savePromptBtn) savePromptBtn.addEventListener('click', saveAIPrompt);
     const resetBtn = document.getElementById('ai-reset-prompt');
     if (resetBtn) resetBtn.addEventListener('click', resetAIPrompt);
+}
+
+/**
+ * Lưu CHỈ prompt lên hệ thống (giữ nguyên provider + keys hiện tại).
+ * Dùng khi user sửa prompt xong muốn lưu ngay mà không đụng fields khác.
+ */
+async function saveAIPrompt() {
+    const statusEl = document.getElementById('ai-settings-status');
+    const promptEl = document.getElementById('ai-system-prompt');
+    if (!promptEl) return;
+    // Giữ provider + keys hiện tại (đọc từ form), chỉ update prompt
+    const body = {
+        provider: document.getElementById('ai-provider')?.value || 'auto',
+        deepseekKey: document.getElementById('ai-key-deepseek')?.value || '',
+        geminiKey: document.getElementById('ai-key-gemini')?.value || '',
+        systemPrompt: promptEl.value || ''
+    };
+    if (statusEl) { statusEl.textContent = 'Đang lưu prompt...'; statusEl.style.color = 'var(--text-muted)'; }
+    try {
+        const res = await fetch(`${window.StockAPI.SERVER_BASE}/api/user/ai-settings`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data?.success) {
+            if (statusEl) { statusEl.textContent = '✅ Đã lưu prompt'; statusEl.style.color = 'var(--accent-green)'; }
+            // Clear cache báo cáo cũ (prompt đổi → báo cáo sẽ khác)
+            try { await fetch(`${window.StockAPI.SERVER_BASE}/api/ai/market-report?refresh=true`, { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+        } else {
+            if (statusEl) { statusEl.textContent = '❌ ' + (data?.error || 'Lỗi'); statusEl.style.color = 'var(--accent-red)'; }
+        }
+    } catch (e) {
+        if (statusEl) { statusEl.textContent = '❌ ' + e.message; statusEl.style.color = 'var(--accent-red)'; }
+    }
 }
 
 /**

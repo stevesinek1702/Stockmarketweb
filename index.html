@@ -1377,7 +1377,10 @@
                         <label class="ai-field ai-field-prompt">
                             <span class="ai-field-label">
                                 System Prompt
-                                <button type="button" class="ai-preset-btn" id="ai-reset-prompt" title="Khôi phục prompt mặc định">↺ Mặc định</button>
+                                <span style="display:flex;gap:6px;">
+                                    <button type="button" class="ai-preset-btn" id="ai-save-prompt" title="Lưu prompt lên hệ thống">💾 Lưu Prompt</button>
+                                    <button type="button" class="ai-preset-btn" id="ai-reset-prompt" title="Khôi phục prompt mặc định">↺ Mặc định</button>
+                                </span>
                             </span>
                             <textarea id="ai-system-prompt" rows="8" placeholder="Để trống = dùng prompt mặc định. Hoặc paste prompt tùy chỉnh của bạn..."></textarea>
                         </label>
