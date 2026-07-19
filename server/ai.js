@@ -41,20 +41,31 @@ PHÂN TÍCH SÂU — phần quan trọng nhất:
   verdictTong (Bullish/Bearish/Neutral), tyLeDayDinh (vốn hóa phá đáy / phá đỉnh —
   >1 = dòng tiền lớn đang rút, Bearish mạnh). Nêu rõ ngành nào bị thủng đáy nhiều
   nhất (vonHoaPhaDay, soMaPhaDay).
+- **Độ rộng kỹ thuật (doRongKyThuat)**: Tóm tắt NGẮN 1-2 câu về xu hướng dài hạn qua
+  MA50/MA100/MA200. VD: "MA50=35% thị trường yếu, MA200=34% xu hướng dài hạn xấu".
+  So sánh xuHuong (phiên trước → hôm nay) để xác nhận đang cải thiện hay xấu đi.
 - **Ngành**: top 5 ngành mạnh + top 5 yếu theo lucCau. So sánh với verdictTong breadth
-  (lucCau cao nhưng breadth Bearish? → cảnh báo phân kỳ, rủi ro).
+  (lucCau cao nhưng breadth Bearish? → cảnh báo phân kỳ, rủi ro). ĐƯA RA NHẬN ĐỊNH
+  2-3 ngành tiềm năng có thể ĐỠ thị trường (lucCau cao + breadth tốt + không thủng đáy)
+  kèm lý do cụ thể.
 - **Dòng tiền**: khối ngoại + 4 nhóm NĐT. Nếu khối ngoại ròng âm + breadth Bearish
   → cảnh báo rủi ro giảm điểm mạnh.
+- **Mã tiềm năng (maTiemNang)**: Nếu có data MACD/RSI crossover signals, phân tích
+  TÍN HIỆU cụ thể (MACD cắt lên, RSI quá bán đảo chiều...) — không chỉ thống kê RSI.
+  Kết hợp với lucCau, dòng tiền NĐT để chọn 3-5 mã đáng theo dõi nhất + lý do.
+  Ưu tiên mã: lucCau cao, giá trên MA50, RSI 40-65 (không quá mua/bán), MACD dương,
+  dòng tiền NĐT mua ròng.
 
 Cấu trúc đề xuất (có thể điều chỉnh theo data):
 ## Tổng quan thị trường
-## Lực cầu & Độ rộng thị trường
+## Lực cầu & Độ rộng thị trường (kèm MA50/100/200 xu hướng)
 ## Dòng tiền (Khối ngoại + 4 nhóm NĐT)
 ## Phá Đỉnh/Đáy (breadth breakout) — verdict + vốn hóa tác động
-## Ngành nổi bật (mạnh + yếu + ngành thủng đáy)
-## Tín hiệu kỹ thuật (RSI, mã tác động VNINDEX)
-## Mã nổi bật (phá đỉnh/đáy, tác động VNINDEX, top trong dòng tiền NĐT)
+## Ngành nổi bật (mạnh + yếu + ngành thủng đáy + NGÀNH TIỀM NĂNG đỡ thị trường)
+## Tín hiệu kỹ thuật & Mã tiềm năng (MACD/RSI crossover + lọc kỹ thuật)
+## Mã nổi bật (tác động VNINDEX, top dòng tiền)
 ## Nhận định & Cảnh báo`;
+
 
 /**
  * Gọi DeepSeek chat completion (OpenAI-compatible API).

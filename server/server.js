@@ -3424,7 +3424,7 @@ async function fetchInternal(req, path) {
  * Gom data từ 8 endpoint thành 1 object gọn để feed vào AI.
  * Chỉ trích fields quan trọng — bỏ noise để prompt gọn (~2-3K tokens).
  */
-function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential) {
+function buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential) {
     const ctx = { date: new Date().toLocaleDateString('vi-VN') };
 
     // 1. VNINDEX + VN30
@@ -3550,6 +3550,42 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
     // Lưu ý: đã bỏ top-net-stocks (Google Sheet đã xóa khỏi dashboard).
     // Top mua/bán ròng 1 ngày đã có trong dongTienNhomNDT.topMua/topBan (từ investor-detail).
 
+    // 8. Độ rộng kỹ thuật (MA10/20/50/100/200) — xu hướng dài hạn
+    if (maBreadth?.success && Array.isArray(maBreadth.series) && maBreadth.series.length > 0) {
+        const last = maBreadth.series[maBreadth.series.length - 1];
+        const prev = maBreadth.series[maBreadth.series.length - 2] || last;
+        const total = last.total || 1;
+        const pct = (n) => Math.round((n / total) * 1000) / 10;
+        ctx.doRongKyThuat = {
+            homNay: {
+                trenMA10: `${pct(last.ma10)}% (${last.ma10}/${total})`,
+                trenMA20: `${pct(last.ma20)}% (${last.ma20}/${total})`,
+                trenMA50: `${pct(last.ma50)}% (${last.ma50}/${total})`,
+                trenMA100: `${pct(last.ma100)}% (${last.ma100}/${total})`,
+                trenMA200: `${pct(last.ma200)}% (${last.ma200}/${total})`
+            },
+            // Biến động phiên trước → hôm nay (xu hướng ngắn hạn)
+            xuHuong: {
+                MA10: `${pct(prev.ma10)}% → ${pct(last.ma10)}%`,
+                MA50: `${pct(prev.ma50)}% → ${pct(last.ma50)}%`
+            }
+        };
+    }
+
+    // 9. Mã tiềm năng (MACD/RSI crossover signals hôm nay từ potential-scanner)
+    if (potential?.success && Array.isArray(potential.signals)) {
+        ctx.maTiemNang = potential.signals.slice(0, 10).map(s => ({
+            ma: s.symbol || s.ticker,
+            gia: s.price || s.lastPrice,
+            rsi: s.rsi,
+            macdHist: s.macdHist,
+            tinHieu: s.signal || s.macdRsiSignal,  // VD: 'MACD cắt lên', 'RSI quá bán'
+            phanTram: s.percentChange,
+            giaTri: s.value  // GTGD nếu có
+        }));
+        ctx.tongTinHieu = potential.total || potential.signals.length;
+    }
+
     return ctx;
 }
 
@@ -3606,20 +3642,22 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
     try {
         console.log(`🤖 [ai] Generating market report (user ${userId}, provider ${userSettings.provider})...`);
 
-        // 2. Gom data song song (7 endpoint — đã bỏ top-net-stocks do Google Sheet xóa)
-        const [dashboard, breadth, industry, investor, foreign, breakout, influential] = await Promise.all([
+        // 2. Gom data song song (9 endpoint)
+        const [dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential] = await Promise.all([
             fetchInternal(req, '/api/market-dashboard'),
             fetchInternal(req, '/api/market-breadth'),
             fetchInternal(req, '/api/industry-stats'),
             fetchInternal(req, '/api/investor-detail?range=today'),
             fetchInternal(req, '/api/foreign-flow'),
             fetchInternal(req, '/api/breadth-breakout'),
-            fetchInternal(req, '/api/influential-stocks')
+            fetchInternal(req, '/api/influential-stocks'),
+            fetchInternal(req, '/api/ma-breadth?scope=market&days=5'),
+            fetchInternal(req, '/api/potential-stocks')
         ]);
 
         // 3. Build context gọn
         const dateStr = require('./cache').vnToday();
-        const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential);
+        const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential);
 
         // 4. Generate AI report với user settings
         const { text, provider } = await aiModule.generateMarketReport(context, dateStr, {

@@ -4090,6 +4090,12 @@ async function loadAIReport(force) {
         const html = window.marked ? marked.parse(data.report) : `<pre>${data.report}</pre>`;
         body.innerHTML = `<div class="ai-report-content">${html}</div>`;
 
+        // Lưu text gốc để nút Copy dùng
+        window._aiReportText = data.report;
+        // Hiện nút Copy
+        const copyBtn = document.getElementById('ai-report-copy');
+        if (copyBtn) copyBtn.style.display = '';
+
         // Meta: provider + generated time
         const providerName = data.provider === 'gemini' ? 'Google Gemini' : (data.provider === 'deepseek' ? 'DeepSeek' : data.provider);
         const genTime = new Date(data.generatedAt).toLocaleString('vi-VN');
@@ -4111,6 +4117,27 @@ function setupAIReportEvents() {
     const genBtn = document.getElementById('ai-report-generate');
     if (genBtn) {
         genBtn.addEventListener('click', () => loadAIReport(true));  // force=true → regenerate
+    }
+    const copyBtn = document.getElementById('ai-report-copy');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const report = window._aiReportText || '';
+            if (!report) return;
+            try {
+                await navigator.clipboard.writeText(report);
+                copyBtn.textContent = '✅ Đã copy';
+                setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+            } catch (e) {
+                // Fallback: tạo textarea tạm + select + copy
+                const ta = document.createElement('textarea');
+                ta.value = report;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); copyBtn.textContent = '✅ Đã copy'; setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000); }
+                catch (e2) { alert('Không copy được. Hãy copy thủ công.'); }
+                document.body.removeChild(ta);
+            }
+        });
     }
     const saveBtn = document.getElementById('ai-save-settings');
     if (saveBtn) saveBtn.addEventListener('click', saveAISettings);
