@@ -24,7 +24,7 @@ const GEMINI_MODEL = 'gemini-2.0-flash';
 const TOKENROUTER_URL = 'https://api.tokenrouter.com/v1/chat/completions';
 const TOKENROUTER_MODEL = 'z-ai/glm-5.2-free';  // GLM-5.2 (free tier trên TokenRouter)
 
-const AI_TIMEOUT = 180000; // 180s — GLM-5.2 free tier chậm (có reasoning), cần timeout dài
+const AI_TIMEOUT = 120000; // 120s — GLM-5.2 nhanh khi tắt reasoning (5-30s)
 
 // ── System prompt: persona + format ─────────────────────────────────────────
 const SYSTEM_PROMPT = `Bạn là chuyên gia phân tích chứng khoán Việt Nam với hơn 10 năm kinh nghiệm.
@@ -159,8 +159,9 @@ async function tokenrouterChat(messages, apiKey) {
             model: TOKENROUTER_MODEL,
             messages,
             temperature: 0.3,
-            max_tokens: 3000,        // GLM-5.2 tốn nhiều tokens cho reasoning
-            stream: false
+            max_tokens: 3000,
+            stream: false,
+            thinking: { type: 'disabled' }   // TẮT reasoning → GLM-5.2 trả content nhanh (5-30s thay vì 3 phút)
         },
         {
             headers: {
@@ -170,14 +171,9 @@ async function tokenrouterChat(messages, apiKey) {
             timeout: AI_TIMEOUT
         }
     );
-    // GLM-5.2 có thể trả content rỗng + reasoning_content (nếu max_tokens thấp)
-    // Ưu tiên content, fallback reasoning_content nếu content rỗng
     const msg = res.data?.choices?.[0]?.message;
-    let text = msg?.content || '';
-    if (!text && msg?.reasoning_content) {
-        text = msg.reasoning_content;  // fallback: dùng reasoning nếu content rỗng
-    }
-    if (!text) throw new Error('TokenRouter/GLM trả response rỗng');
+    const text = msg?.content || '';
+    if (!text) throw new Error('TokenRouter/GLM trả content rỗng (thử tăng max_tokens hoặc bật thinking)');
     return text;
 }
 
