@@ -38,7 +38,7 @@ Quy tắc:
 
 PHÂN TÍCH SÂU — phần quan trọng nhất:
 - **Phá đỉnh/đáy (breadth breakout)**: Đây là chỉ báo RẤT QUAN TRỌNG. Luôn phân tích
-  verdictTong (Bullish/Bearish/Neutral), tyLeDayDinh (vốn hóa phá đáy / phá đỉnh —
+  trangThaiThiTruong (Bullish/Bearish/Neutral), tyLeDayDinh (vốn hóa phá đáy / phá đỉnh —
   >1 = dòng tiền lớn đang rút, Bearish mạnh). Nêu rõ ngành nào bị thủng đáy nhiều
   nhất (vonHoaPhaDay, soMaPhaDay).
 - **Độ rộng kỹ thuật (doRongKyThuat)**: Đây là BREADTH = SỐ MÃ CỔ PHIẾU trên MA
@@ -48,8 +48,8 @@ PHÂN TÍCH SÂU — phần quan trọng nhất:
 - **MA VNINDEX (vnindexMA)**: Đây là GIÁ TRỊ ĐIỂM VNINDEX + MA50/100/200 (~1771 điểm).
   KHÁC HOÀN TOÀN với breadth. VD: "VNINDEX 1787 đang TRÊN MA200 1771 (+0.9%) → xu hướng
   dài hạn tích cực". Luôn phân tích vị trí giá so với MA200 (trên/dưới, cách bao nhiêu %).
-- **Ngành**: top 5 ngành mạnh + top 5 yếu theo lucCau. So sánh với verdictTong breadth
-  (lucCau cao nhưng breadth Bearish? → cảnh báo phân kỳ, rủi ro). ĐƯA RA NHẬN ĐỊNH
+- **Ngành**: top 5 ngành mạnh + top 5 yếu theo lucCau. So sánh với trangThaiThiTruong
+  (lucCau cao nhưng trạng thái Bearish? → cảnh báo phân kỳ, rủi ro). ĐƯA RA NHẬN ĐỊNH
   2-3 ngành tiềm năng có thể ĐỠ thị trường (lucCau cao + breadth tốt + không thủng đáy)
   kèm lý do cụ thể.
 - **Dòng tiền**: khối ngoại + 4 nhóm NĐT. Nếu khối ngoại ròng âm + breadth Bearish

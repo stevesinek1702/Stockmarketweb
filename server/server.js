@@ -3546,15 +3546,15 @@ function buildMarketContext(dashboard, breadth, industry, investor, foreign, bre
     // 6. Breadth breakout (phá đỉnh/đáy) — full insight cho AI phân tích
     if (breakout?.success) {
         const summary = breakout.summary || [];
-        // Verdict tổng (theo 1N — timeframe dài nhất, đáng tin nhất)
-        const verdictTong = summary.length > 0 ? summary[summary.length - 1].verdict : null;
+        // Trạng thái thị trường (theo 1N — timeframe dài nhất, đáng tin nhất)
+        const trangThaiThiTruong = summary.length > 0 ? summary[summary.length - 1].verdict : null;
         ctx.phaDinhDay = {
-            // summary: số mã phá đỉnh vs đáy + ratio + verdict từng tf (3T/6T/1N)
+            // summary: số mã phá đỉnh vs đáy + ratio + trạng thái từng tf (3T/6T/1N)
             summary: summary.map(s => ({
-                tf: s.tf, phaDinh: s.high, phaDay: s.low, ratio: s.ratio, verdict: s.verdict
+                tf: s.tf, phaDinh: s.high, phaDay: s.low, ratio: s.ratio, trangThai: s.verdict
             })),
-            // verdict tổng: Bullish/Bearish/Neutral (theo 1N)
-            verdictTong: verdictTong,
+            // Trạng thái thị trường tổng: Bullish (tích cực) / Bearish (tiêu cực) / Neutral (trung lập)
+            trangThaiThiTruong: trangThaiThiTruong,
             // capSummary: vốn hóa phá đỉnh vs đáy + tỷ lệ lowOverHigh
             // (VD lowOverHigh=4.19 nghĩa là vốn hóa phá đáy gấp 4.19 lần phá đỉnh → rất Bearish)
             vonHoaPhaDinhDay: (breakout.capSummary || []).map(c => ({
