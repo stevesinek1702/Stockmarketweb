@@ -90,9 +90,14 @@ async function initApp() {
 
     // Set up auto-refresh (every 60 seconds - reduced from 30s to lower API load)
     setInterval(() => {
-        // Chỉ refresh khi đang xem dashboard để tránh gọi API nặng khi ở tab khác
-        if (!AppState.isLoading && AppState.currentTab === 'dashboard') {
-            loadAllData();
+        // FIX Bug #1: Trước đây chỉ refresh khi currentTab === 'dashboard' → khi user
+        // đang ở tab price-board / filter / potential / industry, data hiển thị cũ
+        // vô thời hạn. Giờ loadAllData() chạy cho mọi tab (AppState.data nền tảng),
+        // còn các loader phụ chỉ kích theo tab hiện tại để tránh gọi API thừa.
+        if (AppState.isLoading) return;
+        const tab = AppState.currentTab;
+        loadAllData();
+        if (tab === 'dashboard') {
             // Refresh cả VNINDEX/VN30 stats và Mã Tác Động (trước đây bị bỏ sót)
             loadMarketDashboard();
             loadInfluentialStocks();
@@ -103,7 +108,12 @@ async function initApp() {
             // trước đây chỉ tải 1 lần lúc mở trang nên buổi chiều không cập nhật.
             // Đưa vào vòng auto-refresh để dữ liệu intraday chạy đủ cả phiên.
             loadDashboardCharts();
+        } else if (tab === 'price-board') {
+            // Bảng giá 3 sàn phải re-fetch trong phiên, không chỉ lazy-load 1 lần đầu
+            loadAllStocksFor3Exchanges();
         }
+        // Tab 'filter': runStockFilter() sẽ tự re-run qua hook trong loadAllData()
+        // (xem FIX Bug #2 ở cuối loadAllData).
     }, 60000);
 
     // Initialize Drag-and-Drop for dashboard cards
@@ -180,31 +190,12 @@ function setupEventListeners() {
 
 /**
  * Switch between tabs
+ *
+ * FIX: Trước đây có 2 declaration trùng tên (dòng ~194 rút gọn + dòng ~4274 đầy đủ
+ * với lazy-load price-board/news/AI/breadth). Trong strict mode JS throw SyntaxError
+ * "Identifier 'switchTab' has already been declared". Đã gộp — giữ bản đầy đủ duy nhất
+ * (định nghĩa sau trong file).
  */
-function switchTab(tabId) {
-    AppState.currentTab = tabId;
-
-    // Update active tab button
-    elements.tabs.forEach(tab => {
-        if (tab.getAttribute('data-tab') === tabId) {
-            tab.classList.add('active');
-        } else {
-            tab.classList.remove('active');
-        }
-    });
-
-    // Update visible content
-    elements.tabContents.forEach(content => {
-        if (content.id === tabId) {
-            content.classList.add('active');
-        } else {
-            content.classList.remove('active');
-        }
-    });
-
-    // Trigger chart resize
-    window.dispatchEvent(new Event('resize'));
-}
 
 /**
  * Load all market data
@@ -265,6 +256,17 @@ async function loadAllData() {
         updateBreakoutTable(breakoutSignals);
         updateIndustryTable(industryFlow);
         updatePotentialStocksUI(potentialStocks);
+
+        // FIX Bug #2: Sau khi data nền (all-stocks) được refresh, nếu user đang ở
+        // Stock Filter Tab và đã từng chạy filter → tự re-run để kết quả không bị
+        // stale (trước đây FilterTabState.results cũ hiển thị đến khi user bấm lại).
+        // hasRun phân biệt "chưa chạy" vs "đã chạy ra 0 kết quả" → cả 2 case đều re-run.
+        if (AppState.currentTab === 'filter' &&
+            typeof FilterTabState.hasRun !== 'undefined' && FilterTabState.hasRun &&
+            _filterHasConditions()) {
+            // Chờ 1 tick để loadAllStocksFor3Exchanges() kịp populate allStocks
+            setTimeout(() => { runStockFilter(); }, 0);
+        }
 
         // Refresh charts
         refreshCharts();
@@ -4502,6 +4504,7 @@ const FilterTabState = {
     conditions: [], // Array of { id, column, operator, value }
     presets: {}, // Will be loaded from server
     results: [],
+    hasRun: false, // FIX Bug #2: flag phân biệt "chưa chạy" vs "đã chạy ra 0 kết quả"
     sortColumn: 'symbol',
     sortDirection: 'asc'
 };
@@ -4736,7 +4739,25 @@ async function runStockFilter() {
     });
 
     console.log(`✅ Filter Results: ${results.length} stocks found.`);
+    FilterTabState.hasRun = true; // FIX Bug #2: đánh dấu đã chạy để auto re-run khi data update
     renderFilterResults(results);
+}
+
+/**
+ * FIX Bug #2: Helper kiểm tra filter tab có conditions hợp lệ không (để auto re-run).
+ */
+function _filterHasConditions() {
+    const list = document.getElementById('filter-conditions-list');
+    if (!list) return false;
+    const rows = list.querySelectorAll('.filter-condition-row');
+    if (!rows || rows.length === 0) return false;
+    // Phải có ít nhất 1 row có column + value nhập
+    for (const row of rows) {
+        const col = row.querySelector('.cond-column')?.value;
+        const val = row.querySelector('.cond-value')?.value;
+        if (col && val !== undefined && String(val).trim() !== '') return true;
+    }
+    return false;
 }
 
 function setupFilterResultsSort() {

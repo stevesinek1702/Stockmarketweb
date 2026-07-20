@@ -172,8 +172,21 @@ function aggregateLucCauByValue(quotes) {
 // Cookie cache for FireAnt API
 let fireAntCookieCache = { cookie: '', fetchedAt: 0 };
 
-// In-process cache MA50/100/200 map (rebuild 1h) cho /api/all-stocks
+// In-process cache MA50/100/200 map (rebuild adaptive theo giờ giao dịch) cho /api/all-stocks
 let maMapCache = { time: 0, map: {} };
+
+/**
+ * FIX Bug #4: Kiểm tra có đang trong giờ giao dịch VN không.
+ * Phiên sáng 9:00-11:30, chiều 13:00-14:45 (ATC 14:45-15:00). Đơn giản hoá 9-15h.
+ * VPS chạy UTC; giờ VN = UTC+7.
+ */
+function _isInTradingHours() {
+    const vnHour = (new Date().getUTCHours() + 7) % 24;
+    const vnMin = (new Date().getUTCMinutes());
+    const vnTime = vnHour + vnMin / 60; // decimal hours
+    // 9:00 <= time < 15:00 (gồm cả ATC 14:45-15:00)
+    return vnTime >= 9 && vnTime < 15;
+}
 
 /**
  * Fetch FireAnt cookie from Google Sheets (reuse logic from /api/all-stocks)
@@ -898,16 +911,20 @@ app.get('/api/all-stocks', async (req, res) => {
             return parseFloat((price / 1000).toFixed(2));
         };
 
-        // ── Build MA50/100/200 map 1 lần (cache in-process 1h) ──
+        // ── Build MA50/100/200 map 1 lần (cache in-process) ──
         // Đọc file close cache 1 lần cho toàn bộ symbol (hiệu năng cao).
+        // FIX Bug #4: TTL adaptive — trong giờ giao dịch VN (9-15h) giá hiện tại thay đổi
+        // liên tục nên MA phải rebuild mỗi 5 phút; ngoài giờ (đã đóng cửa) giữ 1h vì
+        // dữ liệu close không đổi nữa → tránh rebuild thỡ.
+        const _maTtlMs = _isInTradingHours() ? 5 * 60 * 1000 : 60 * 60 * 1000;
         let maMap = {};
-        if (!maMapCache.time || Date.now() - maMapCache.time > 3600000) {
+        if (!maMapCache.time || Date.now() - maMapCache.time > _maTtlMs) {
             try {
                 const { buildMAMap } = require('./breadth-history');
                 const allSyms = (Array.isArray(allStocks) ? allStocks : []).map(s => s.Symbol).filter(Boolean);
                 const tmp = buildMAMap(allSyms, [50, 100, 200]);
                 maMapCache = { time: Date.now(), map: tmp };
-                console.log(`📈 MA50/100/200 loaded for ${Object.keys(tmp).length} symbols`);
+                console.log(`📈 MA50/100/200 loaded for ${Object.keys(tmp).length} symbols (TTL ${_maTtlMs / 60000}min)`);
             } catch (e) {
                 console.warn('⚠️ MA map build fail:', e.message);
             }
@@ -3822,6 +3839,21 @@ async function bootstrap() {
                 console.error('Failed to trigger initial potential scan:', err.message);
             }
         }, 5000);
+
+        // ── FIX Bug #5: Scheduler quét MACD/RSI định kỳ trong giờ giao dịch ─────
+        // Trước đây scanPotential chỉ chạy lúc start + khi user bấm "Quét tín hiệu"
+        // → MACD/RSI trên bảng giá / filter có thể cũ nhiều giờ. Giờ chạy lại mỗi
+        // 10 phút trong phiên (9-15h VN) để tín hiệu cập nhật tự động.
+        const POTENTIAL_SCAN_INTERVAL_MS = 10 * 60 * 1000;
+        setInterval(async () => {
+            if (!_isInTradingHours()) return;
+            try {
+                const cookie = await getFireAntCookie();
+                scanPotential(cookie).catch(err => console.error('[POTENTIAL] Scheduled scan error:', err.message));
+            } catch (err) {
+                console.error('[POTENTIAL] Scheduled scan trigger error:', err.message);
+            }
+        }, POTENTIAL_SCAN_INTERVAL_MS);
 
         // ── Pre-warm data khi server start (user vào là data sẵn) ────────────
         // all-stocks: build MA map + cache server (~3s lần đầu, sau đó <50ms)
