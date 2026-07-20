@@ -189,6 +189,32 @@ function _isInTradingHours() {
 }
 
 /**
+ * FIX Bug #5 (cluster-safe): Acquire Redis distributed lock bằng SET NX EX.
+ *
+ * PM2 cluster mode spawn N worker → mỗi worker đều có setInterval. Nếu để
+ * từng worker tự do gọi scanPotential/scheduler thì FireAnt bị gọi N lần cùng lúc.
+ * Lock này đảm bảo chỉ 1 worker trong cluster thực sự chạy job; các worker khác
+ * thấy lock tồn tại → skip (giảm tải FireAnt, tránh duplicate scan).
+ *
+ * @param {string} key    Redis key (vd: 'lock:potential-scan')
+ * @param {number} ttlSec TTL giây — bằng/hơi ít hơn interval để tự nhả nếu worker crash
+ * @returns {Promise<boolean>} true nếu worker này giữ lock (được chạy), false nếu bị skip
+ */
+async function acquireLock(key, ttlSec) {
+    try {
+        const { redis } = require('./redis-client');
+        // SET key value NX EX ttl — atomic, chỉ thành công nếu key chưa tồn tại
+        const token = `${process.pid}:${Date.now()}`;
+        const res = await redis.set(key, token, 'EX', ttlSec, 'NX');
+        return res === 'OK'; // 'OK' = acquired, null = already held by another worker
+    } catch (e) {
+        // Redis fail → fallback cho chạy (đảm bảo job không bị skip vĩnh viễn nếu Redis sự cố)
+        console.warn(`⚠️  [lock] acquire ${key} fail:`, e.message);
+        return true;
+    }
+}
+
+/**
  * Fetch FireAnt cookie from Google Sheets (reuse logic from /api/all-stocks)
  */
 async function getFireAntCookie() {
@@ -3844,10 +3870,19 @@ async function bootstrap() {
         // Trước đây scanPotential chỉ chạy lúc start + khi user bấm "Quét tín hiệu"
         // → MACD/RSI trên bảng giá / filter có thể cũ nhiều giờ. Giờ chạy lại mỗi
         // 10 phút trong phiên (9-15h VN) để tín hiệu cập nhật tự động.
+        //
+        // CLUSTER-SAFE: PM2 chạy N worker, mỗi worker đều có timer này. Dùng Redis
+        // SETNX lock (acquireLock) để chỉ 1 worker thực sự scan; worker khác skip
+        // tránh gọi FireAnt N lần. TTL 9 phút (1 phút < interval) → worker crash thì
+        // worker khác tự tiếp quản sau 9 phút.
         const POTENTIAL_SCAN_INTERVAL_MS = 10 * 60 * 1000;
+        const POTENTIAL_LOCK_KEY = 'lock:potential-scan';
+        const POTENTIAL_LOCK_TTL_SEC = 9 * 60; // 9 phút (1 phút < interval 10p)
         setInterval(async () => {
             if (!_isInTradingHours()) return;
             try {
+                const got = await acquireLock(POTENTIAL_LOCK_KEY, POTENTIAL_LOCK_TTL_SEC);
+                if (!got) return; // worker khác đang giữ lock → skip
                 const cookie = await getFireAntCookie();
                 scanPotential(cookie).catch(err => console.error('[POTENTIAL] Scheduled scan error:', err.message));
             } catch (err) {
