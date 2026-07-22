@@ -150,3 +150,64 @@ Internet → Nginx (port 80/443) → Express (PM2 cluster, port 3000)
 **FireAnt timeout:** Cookie FireAnt cần Playwright Chromium trong container. Verify: `docker compose exec express npx playwright --version`. Nếu lỗi, rebuild: `docker compose build --no-cache express`.
 
 **Redis connection refused:** Đảm bảo `REDIS_URL=redis://redis:6379` (hostname = tên service trong docker-compose, KHÔNG phải localhost).
+
+## Daily Refresh Health (fix 2026-07-22)
+
+Hệ thống tự động refresh data mỗi ngày giao dịch (T2-T6). Nếu thấy dashboard
+"stuck" ở data hôm trước (vd hôm nay T4 mà vẫn hiện data T2), kiểm tra theo thứ tự:
+
+### 1. Kiểm tra trạng thái tổng qua endpoint
+
+```bash
+# Login admin trước để lấy cookie (or dùng browser đã login)
+curl -s -b cookies.txt http://localhost/api/admin/system-status | jq .
+```
+
+Endpoint trả:
+- `time`: ngày VN hiện tại, `isTradingDay`, `isInEODWindow`, `lastTradingDay`
+- `scheduler.running`, `scheduler.lastTickAt` — scheduler có chạy không
+- `cookie.lastRefresh` — cookie-sync lần refresh gần nhất (at/status)
+- `cache.<key>.hasLastTradingDay` — data phiên gần nhất đã có chưa
+- `breadth.ma.hasToday`, `breadth.breakout.hasToday`
+- `apiCalls` — counter FireAnt/Fiintrade hôm nay
+
+**Tình huốngHealthy:** `scheduler.running=true`, `lastTickAt` < 30 phút trước,
+`cookie.lastRefresh.status=ok`, mọi `hasLastTradingDay=true`.
+
+### 2. Hành vi theo lịch (trading-day aware)
+
+- **Ngày giao dịch (T2-T6), 9-15h VN**: refresh intraday (FireAnt realtime) mỗi 25-55s
+- **Ngày giao dịch, 15-23h VN**: refresh EOD (Fiintrade) mỗi 30 phút + build breadth
+- **Ngày giao dịch, ngoài 2 window trên**: **MORNING CATCH-UP** mỗi 30 phút — nếu
+  EOD/breadth của `lastTradingDay` còn thiếu thì fetch (fix bug "stuck hôm trước"
+  khi container restart đêm hoặc lỡ window 15-23h)
+- **Cuối tuần (T7/CN)**: SKIP hoàn toàn — giữ data phiên Thứ 6 gần nhất
+
+### 3. Cookie FireAnt tự heal
+
+Cookie FireAnt lấy từ Google Sheet (refresh bởi cookie-sync mỗi 5h qua Playwright).
+Khi FireAnt trả 401/403 (cookie hết hạn), endpoint tự trigger `cookie-sync.refreshNow()`
+(login lại Playwright → push Sheet) rồi retry. Throttle 5 phút tránh hammer.
+
+**Điều kiện bắt buộc** (nếu thiếu → cookie sẽ tự heal nhưng không có gì để heal):
+- `.env` có `FIREANT_EMAIL`, `FIREANT_PASSWORD`, `APPS_SCRIPT_URL`
+- Playwright Chromium đã cài trong container (verify: `docker compose exec express npx playwright --version`)
+
+### 4. Debug thủ công
+
+```bash
+# Xem log scheduler (tìm 🔄/🌅/✅/⚠️ scheduler)
+docker compose logs express | grep -E "scheduler|cookie-heal|MA Breadth|breadth-snapshot"
+
+# Force rebuild + redeploy sau khi pull code mới
+git pull
+docker compose up -d --build express
+```
+
+### 5. Lưu ý holiday
+
+Hệ thống CHƯA hỗ trợ lịch nghỉ lễ VN (Tết, Quốc khánh...). Vào ngày lễ, scheduler
+vẫn coi là "trading day" → gọi FireAnt/Fiintrade, nhưng nguồn sẽ trả data phiên
+trước → cache `toDate` validation tự xử lý (serve data phiên gần nhất, không crash).
+TODO: thêm holiday list trong `trading-time.js` khi cần chính xác hơn.
+
