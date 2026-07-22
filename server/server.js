@@ -3499,10 +3499,37 @@ app.get('/api/signals', async (req, res) => {
 /**
  * GET /api/broker/status — broker mode + connection status.
  */
-app.get('/api/broker/status', (req, res) => {
+app.get('/api/broker/status', async (req, res) => {
     try {
-        const { currentMode } = require('./broker');
-        res.json({ success: true, mode: currentMode() });
+        const { currentMode, getBroker } = require('./broker');
+        const mode = currentMode();
+        let nav = null;
+        if (mode === 'paper') {
+            const pf = await getBroker().getPortfolio({});
+            nav = { cash: pf.cash, totalValue: pf.totalValue, positionsValue: pf.positionsValue };
+        }
+        res.json({ success: true, mode, nav });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * POST /api/broker/reset-nav — set vốn ban đầu (paper mode only).
+ * Body: { capital: 1000000000 }
+ */
+app.post('/api/broker/reset-nav', async (req, res) => {
+    try {
+        const { getBroker, currentMode } = require('./broker');
+        if (currentMode() !== 'paper') {
+            return res.status(400).json({ success: false, error: 'Reset NAV chỉ dùng paper mode' });
+        }
+        const broker = getBroker();
+        if (!broker.resetNav) {
+            return res.status(400).json({ success: false, error: 'Broker này không hỗ trợ reset NAV' });
+        }
+        const result = await broker.resetNav(req.body && req.body.capital);
+        res.json(result);
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }

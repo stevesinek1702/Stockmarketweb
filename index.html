@@ -1453,15 +1453,21 @@
 
                 <!-- Status bar -->
                 <div style="display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; padding: 12px; background: var(--bg-primary); border-radius: var(--radius-md);">
+                    <div><strong>NAV:</strong> <span id="pt-nav" style="font-size:1.05rem;font-weight:700;color:#4caf50;">--</span></div>
+                    <div><strong>Tiền mặt:</strong> <span id="pt-cash-status">--</span></div>
                     <div><strong>Auto-exec:</strong> <span id="pt-autoexec-status">--</span></div>
                     <div><strong>Broker:</strong> <span id="pt-broker-mode">--</span></div>
                     <div><strong>Last run:</strong> <span id="pt-last-run">--</span></div>
-                    <div style="margin-left: auto; display: flex; gap: 8px;">
+                    <div style="margin-left: auto; display: flex; gap: 8px; align-items: center;">
+                        <label style="font-size:0.8rem;color:var(--text-muted);">Vốn:</label>
+                        <input type="number" id="pt-capital-input" value="1000000000" step="100000000" style="width:140px;padding:4px 8px;background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;font-size:0.85rem;">
+                        <button class="run-filter-btn" id="pt-btn-reset-nav" style="padding: 4px 10px; margin: 0; font-size: 12px;">Set vốn</button>
                         <button class="run-filter-btn" id="pt-btn-run-once" style="padding: 4px 12px; margin: 0; font-size: 12px;">▶ Run Once</button>
                         <button class="run-filter-btn" id="pt-btn-enable" style="padding: 4px 12px; margin: 0; font-size: 12px;">🟢 Bật Auto</button>
                         <button class="run-filter-btn" id="pt-btn-disable" style="padding: 4px 12px; margin: 0; font-size: 12px; background: #c62828; color: white;">🔴 Kill-Switch</button>
                     </div>
                 </div>
+                <div id="pt-notice" style="display:none;margin:0 0 12px;padding:8px 12px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;color:#856404;font-size:0.85rem;"></div>
 
                 <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px;">
                     <!-- Place order form -->

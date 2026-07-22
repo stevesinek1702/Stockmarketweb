@@ -6409,6 +6409,11 @@ async function loadPTStatus() {
             }
         }
         const bm = document.getElementById('pt-broker-mode'); if (bm) bm.textContent = data.mode;
+        // NAV từ broker status (paper)
+        if (data.nav) {
+            const navEl = document.getElementById('pt-nav'); if (navEl) navEl.textContent = StockAPI.formatCurrency(data.nav.totalValue);
+            const csEl = document.getElementById('pt-cash-status'); if (csEl) csEl.textContent = StockAPI.formatCurrency(data.nav.cash);
+        }
         const resp2 = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.AUTOEXEC_STATUS, { credentials: 'same-origin' });
         const ae = await resp2.json();
         const aes = document.getElementById('pt-autoexec-status');
@@ -6503,11 +6508,55 @@ async function autoexecAction(action) {
         });
         const data = await resp.json();
         loadPTStatus();
+        loadPTPortfolio();
+        const notice = document.getElementById('pt-notice');
         if (action === 'run-once' && data.result) {
-            const r = document.getElementById('pt-order-result');
-            if (r) r.textContent = 'Run once: ' + (data.result.placed || 0) + ' orders placed';
+            const r = data.result;
+            const msg = r.placed != null
+                ? 'Run once: ' + r.placed + ' lệnh đặt (' + (r.brokerMode || 'paper') + ')'
+                : 'Skip: ' + (r.skipped || 'không có lệnh');
+            const rr = document.getElementById('pt-order-result');
+            if (rr) { rr.textContent = msg; rr.style.color = r.placed > 0 ? '#2e7d32' : '#f57f17'; }
+            if (notice) {
+                if (r.skipped && r.skipped.indexOf('phiên') >= 0) {
+                    notice.style.display = 'block';
+                    notice.innerHTML = '⚠️ Ngoài phiên giao dịch (9-15h VN, T2-T6). Auto-exec chỉ đặt lệnh trong phiên. Lệnh sẽ chạy tự động khi vào phiên.';
+                } else if (r.placed > 0) {
+                    notice.style.display = 'block';
+                    notice.innerHTML = '✅ Đã đặt ' + r.placed + ' lệnh. Xem portfolio bên phải.';
+                } else { notice.style.display = 'none'; }
+            }
+        }
+        if (action === 'enable') {
+            if (notice) {
+                notice.style.display = 'block';
+                notice.innerHTML = data.enabled
+                    ? '🟢 Auto-exec ĐÃ BẬT. Hệ thống sẽ tự quét signals và đặt lệnh (paper) mỗi 5 phút TRONG PHIÊN (9-15h VN). Ngoài phiên sẽ skip.'
+                    : 'Auto-exec chưa bật được. Kiểm tra lại.';
+            }
+        }
+        if (action === 'disable' && notice) {
+            notice.style.display = 'block';
+            notice.innerHTML = '🔴 Kill-switch ON. Auto-exec đã dừng.';
         }
     } catch (e) { console.error('autoexecAction:', e); }
+}
+
+async function resetPaperNav() {
+    const capital = parseFloat(document.getElementById('pt-capital-input').value) || 1000000000;
+    if (!confirm('Reset NAV về ' + StockAPI.formatCurrency(capital) + '? (Xóa toàn bộ positions/orders paper hiện tại)')) return;
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + '/api/broker/reset-nav', {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ capital })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            loadPTStatus(); loadPTPortfolio();
+            const r = document.getElementById('pt-order-result');
+            if (r) { r.textContent = 'NAV reset: ' + StockAPI.formatCurrency(data.cash); r.style.color = '#2e7d32'; }
+        }
+    } catch (e) { console.error('resetPaperNav:', e); }
 }
 
 function setupPTEvents() {
@@ -6516,6 +6565,7 @@ function setupPTEvents() {
     const po = document.getElementById('pt-btn-place-order'); if (po) po.addEventListener('click', placePaperOrder);
     const fs = document.getElementById('pt-btn-from-signal'); if (fs) fs.addEventListener('click', fillFromSignal);
     const rp = document.getElementById('pt-btn-refresh-pf'); if (rp) rp.addEventListener('click', loadPTPortfolio);
+    const rn = document.getElementById('pt-btn-reset-nav'); if (rn) rn.addEventListener('click', resetPaperNav);
     const ro = document.getElementById('pt-btn-run-once'); if (ro) ro.addEventListener('click', function(){autoexecAction('run-once');});
     const en = document.getElementById('pt-btn-enable'); if (en) en.addEventListener('click', function(){autoexecAction('enable');});
     const di = document.getElementById('pt-btn-disable');

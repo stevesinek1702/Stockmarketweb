@@ -97,6 +97,19 @@ class PaperBroker {
 
   async getBalance() { return { cash: this.cash, buyingPower: this.cash, mode: this.mode }; }
 
+  /**
+   * Reset portfolio về vốn ban đầu (mặc định 1 tỷ). Dùng khi user set NAV.
+   * @param {number} capital  VND
+   */
+  async resetNav(capital) {
+    const c = parseFloat(capital) || 1_000_000_000;
+    this.cash = c;
+    this.positions = {};
+    this.orders = [];
+    this.log.push({ ts: new Date().toISOString(), action: 'RESET_NAV', note: 'NAV=' + c });
+    return { success: true, cash: this.cash, mode: this.mode };
+  }
+
   _log(action, order, note) {
     this.log.push({ ts: new Date().toISOString(), action, orderId: order.id,
                     symbol: order.symbol, side: order.side, qty: order.qty,
