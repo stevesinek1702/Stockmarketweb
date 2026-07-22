@@ -3400,6 +3400,98 @@ app.post('/api/admin/optimize-weights', async (req, res) => {
     }
 });
 
+// ==========================================
+// SIGNAL + RISK ENDPOINTS (Subsystem #4)
+// ==========================================
+
+/**
+ * GET /api/signal/:symbol — trade plan chi tiết 1 mã (entry/stop/target/size).
+ * Query: ?account=100000000 (vốn, mặc định 100M VND)
+ */
+app.get('/api/signal/:symbol', (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const account = parseFloat(req.query.account) || 100_000_000;
+        const { getHistory } = require('./ta/price-history');
+        const { computeTA } = require('./ta');
+        const { computeSEPA } = require('./scoring');
+        const { rsRating } = require('./scoring/rs');
+        const { generateSignal, positionSize } = require('./signals');
+        const h = getHistory(symbol);
+        if (!h || !h.ohlc || h.ohlc.length < 60) {
+            return res.status(404).json({ success: false, error: 'Chưa đủ data' });
+        }
+        const ta = computeTA(h);
+        const closes = h.ohlc.map(x => x.c);
+        const price = closes[closes.length - 1];
+        const vnindex = getHistory('VNINDEX');
+        const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+        const rs = rsRating(closes, bench);
+        const scoreResult = computeSEPA(ta, { rsRating: rs });
+        const signal = generateSignal(scoreResult, ta, price);
+        const size = (signal.action === 'BUY' && signal.entry && signal.stop)
+            ? positionSize(account, signal.entry, signal.stop) : null;
+        res.json({ success: true, symbol, price, score: scoreResult.score, grade: scoreResult.grade,
+                   signal, positionSize: size, accountValue: account });
+    } catch (e) {
+        console.error('signal error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/signals — danh sách BUY/WATCH signals hiện tại (tất cả symbol có score cao).
+ * Query: ?account=100000000&minScore=55&limit=30
+ * Heavy (~1500 mã). Cache 5 phút.
+ */
+app.get('/api/signals', async (req, res) => {
+    const cacheKey = 'signals';
+    const cached = await getCachedResponse(cacheKey, 5 * 60 * 1000);
+    if (cached) return res.json(cached);
+    try {
+        const account = parseFloat(req.query.account) || 100_000_000;
+        const minScore = parseInt(req.query.minScore) || 55;
+        const limit = parseInt(req.query.limit) || 30;
+        const { computeTA } = require('./ta');
+        const { computeSEPA } = require('./scoring');
+        const { rsRating } = require('./scoring/rs');
+        const { generateSignal, positionSize } = require('./signals');
+        const ph = require('./ta/price-history');
+        const vnindex = ph.getHistory('VNINDEX');
+        const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+        const results = [];
+        for (const symbol of ph.listSymbols()) {
+            if (symbol === 'VNINDEX') continue;
+            const h = ph.getHistory(symbol);
+            if (!h || !h.ohlc || h.ohlc.length < 60) continue;
+            try {
+                const ta = computeTA(h);
+                if (!ta) continue;
+                const closes = h.ohlc.map(x => x.c);
+                const price = closes[closes.length - 1];
+                const rs = rsRating(closes, bench);
+                const sr = computeSEPA(ta, { rsRating: rs });
+                if (sr.score < minScore) continue;
+                const sig = generateSignal(sr, ta, price);
+                if (sig.action === 'NONE') continue;
+                const size = (sig.action === 'BUY' && sig.entry && sig.stop)
+                    ? positionSize(account, sig.entry, sig.stop) : null;
+                results.push({ symbol, price, score: sr.score, grade: sr.grade,
+                               action: sig.action, signal: sig, positionSize: size });
+            } catch (e) { /* skip */ }
+        }
+        results.sort((a, b) => b.score - a.score);
+        const out = { success: true, timestamp: new Date().toISOString(), accountValue: account,
+                      count: results.length, results: results.slice(0, limit) };
+        await setCachedResponse(cacheKey, out);
+        res.json(out);
+    } catch (e) {
+        console.error('signals error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+
 
 /**
  * POST /api/ma-breadth/refresh — incremental build ngày mới nhất (~3-5s).
