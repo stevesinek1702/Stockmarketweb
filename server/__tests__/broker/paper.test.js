@@ -16,12 +16,13 @@ describe('PaperBroker', () => {
   });
 
   it('BUY giảm cash, SELL tăng cash', async () => {
-    const cash0 = b.cash;
+    const cash0 = (await b.getBalance()).cash;
     await b.placeOrder({ symbol: 'FPT', side: 'BUY', type: 'LO', qty: 500, price: 100000 }, {});
-    expect(b.cash).toBeLessThan(cash0);
-    const cash1 = b.cash;
+    const cash1 = (await b.getBalance()).cash;
+    expect(cash1).toBeLessThan(cash0);
     await b.placeOrder({ symbol: 'FPT', side: 'SELL', type: 'LO', qty: 500, price: 102000 }, {});
-    expect(b.cash).toBeGreaterThan(cash1);
+    const cash2 = (await b.getBalance()).cash;
+    expect(cash2).toBeGreaterThan(cash1);
   });
 
   it('reject qty không lô 100', async () => {
