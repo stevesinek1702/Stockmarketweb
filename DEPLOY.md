@@ -197,7 +197,7 @@ Khi FireAnt trả 401/403 (cookie hết hạn), endpoint tự trigger `cookie-sy
 
 ```bash
 # Xem log scheduler (tìm 🔄/🌅/✅/⚠️ scheduler)
-docker compose logs express | grep -E "scheduler|cookie-heal|MA Breadth|breadth-snapshot"
+docker compose logs express | grep -E "scheduler|cookie-heal|MA Breadth|breadth-snapshot|price-build"
 
 # Force rebuild + redeploy sau khi pull code mới
 git pull
@@ -210,4 +210,33 @@ Hệ thống CHƯA hỗ trợ lịch nghỉ lễ VN (Tết, Quốc khánh...). V
 vẫn coi là "trading day" → gọi FireAnt/Fiintrade, nhưng nguồn sẽ trả data phiên
 trước → cache `toDate` validation tự xử lý (serve data phiên gần nhất, không crash).
 TODO: thêm holiday list trong `trading-time.js` khi cần chính xác hơn.
+
+## Technical Analysis Engine (Subsystem #1)
+
+Module `server/ta/` tính 9 indicators (MA/EMA/RSI/MACD/ADX/ATR/Bollinger +
+Trend Template Minervini + VCP + Pocket Pivot) từ data OHLC+volume.
+
+### Backfill data 1 lần (bắt buộc trước khi dùng `/api/ta`)
+
+```bash
+# Chạy trong container express (~10-15 phút, fetch ~1599 mã)
+docker compose exec express node scripts/backfill-price-history.js
+```
+
+Sau backfill, file `data/price-history.json` có OHLC+volume (~1 năm history)
+cho ~1500 mã HOSE. Daily build tự append nến mới mỗi ngày giao dịch (EOD).
+
+### Kiểm tra
+
+```bash
+# Meta (số symbol, depth)
+curl -s -b cookies.txt http://localhost/api/ta-meta | jq .
+
+# TA đầy đủ cho 1 mã (sau khi login admin)
+curl -s -b cookies.txt http://localhost/api/ta/HPG | jq '.ta.sepa.trendTemplate'
+```
+
+Endpoint `/api/ta/:symbol` trả: `mas` (MA10/20/50/150/200), `momentum` (RSI/MACD),
+`trend` (ADX/DI), `volatility` (ATR), `bollinger`, `sepa` (Trend Template 8 rules +
+VCP + Pocket Pivot). Đây là nền cho subsystem #2-#4 (scoring/backtest/signal).
 
