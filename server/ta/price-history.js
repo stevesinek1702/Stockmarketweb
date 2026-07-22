@@ -66,4 +66,9 @@ function getMeta() {
   };
 }
 
-module.exports = { getHistory, setHistory, getMeta, HISTORY_FILE };
+/** Liệt kê tất cả symbol có trong price-history. */
+function listSymbols() {
+  return Object.keys(_load().symbols);
+}
+
+module.exports = { getHistory, setHistory, getMeta, listSymbols, HISTORY_FILE };

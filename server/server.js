@@ -3299,6 +3299,62 @@ app.get('/api/ta-meta', (req, res) => {
     }
 });
 
+// ==========================================
+// SEPA SCORING ENDPOINTS (Subsystem #2)
+// ==========================================
+
+/**
+ * GET /api/sepa-score/:symbol — composite score 0-100 + breakdown chi tiết.
+ */
+app.get('/api/sepa-score/:symbol', (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const { getHistory } = require('./ta/price-history');
+        const { computeTA } = require('./ta');
+        const { computeSEPA } = require('./scoring');
+        const { rsRating } = require('./scoring/rs');
+        const h = getHistory(symbol);
+        if (!h || !h.ohlc || h.ohlc.length < 60) {
+            return res.status(404).json({ success: false, error: 'Chưa đủ data cho mã này' });
+        }
+        const ta = computeTA(h);
+        const closes = h.ohlc.map(x => x.c);
+        const vnindex = getHistory('VNINDEX');
+        const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+        const rs = rsRating(closes, bench);
+        const r = computeSEPA(ta, { rsRating: rs });
+        res.json({ success: true, symbol, ...r, ta });
+    } catch (e) {
+        console.error('sepa-score error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/sepa-scan?minScore=55&limit=50&grade=A — ranked screener.
+ * Heavy (~1500 mã). Cache 5 phút qua response cache.
+ */
+app.get('/api/sepa-scan', async (req, res) => {
+    const cacheKey = 'sepa-scan';
+    const cached = await getCachedResponse(cacheKey, 5 * 60 * 1000);
+    if (cached) {
+        console.log('📊 Returning cached sepa-scan');
+        return res.json(cached);
+    }
+    try {
+        const minScore = parseInt(req.query.minScore) || 55;
+        const limit = parseInt(req.query.limit) || 50;
+        const grade = req.query.grade;
+        const { screenAll } = require('./scoring/screener');
+        const r = screenAll({ minScore, limit, grade });
+        await setCachedResponse(cacheKey, r);
+        res.json(r);
+    } catch (e) {
+        console.error('sepa-scan error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 
 /**
  * POST /api/ma-breadth/refresh — incremental build ngày mới nhất (~3-5s).
