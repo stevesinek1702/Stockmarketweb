@@ -3355,6 +3355,51 @@ app.get('/api/sepa-scan', async (req, res) => {
     }
 });
 
+// ==========================================
+// BACKTEST ENDPOINTS (Subsystem #3) — admin only
+// ==========================================
+
+/**
+ * POST /api/admin/backtest — chạy backtest trên lịch sử.
+ * Body: { fromDate?, toDate?, minScore?, holdDays?, threshold? }
+ * Heavy (~vài giây-phút tuỳ range). req.setTimeout 5 phút.
+ */
+app.post('/api/admin/backtest', async (req, res) => {
+    req.setTimeout(300000);
+    try {
+        const { backtest } = require('./backtest');
+        const opts = {
+            fromDate: req.body.fromDate,
+            toDate: req.body.toDate,
+            minScore: req.body.minScore || 55,
+            holdDays: req.body.holdDays || 10,
+            threshold: req.body.threshold || 5
+        };
+        console.log('🔬 [backtest] starting', opts);
+        const result = backtest(opts);
+        res.json(result);
+    } catch (e) {
+        console.error('backtest error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * POST /api/admin/optimize-weights — grid search trọng số SEPA.
+ * Trả best tổ hợp + so sánh.
+ */
+app.post('/api/admin/optimize-weights', async (req, res) => {
+    req.setTimeout(300000);
+    try {
+        const { optimizeWeights } = require('./backtest');
+        const result = optimizeWeights(req.body || {});
+        res.json({ success: true, ...result });
+    } catch (e) {
+        console.error('optimize-weights error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 
 /**
  * POST /api/ma-breadth/refresh — incremental build ngày mới nhất (~3-5s).
