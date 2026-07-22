@@ -176,16 +176,19 @@ let fireAntCookieCache = { cookie: '', fetchedAt: 0 };
 let maMapCache = { time: 0, map: {} };
 
 /**
+ * Shared trading-time helpers (DRY — fix 2026-07-22).
+ * Trước đây logic giờ VN bị duplicate inline ở 4 chỗ; giờ delegate hết về
+ * trading-time.js (có weekend/trading-day awareness + unit test).
+ */
+const tt = require('./trading-time');
+
+/**
  * FIX Bug #4: Kiểm tra có đang trong giờ giao dịch VN không.
  * Phiên sáng 9:00-11:30, chiều 13:00-14:45 (ATC 14:45-15:00). Đơn giản hoá 9-15h.
- * VPS chạy UTC; giờ VN = UTC+7.
+ * VPS chạy UTC; giờ VN = UTC+7. Cuối tuần luôn false (delegate trading-time).
  */
 function _isInTradingHours() {
-    const vnHour = (new Date().getUTCHours() + 7) % 24;
-    const vnMin = (new Date().getUTCMinutes());
-    const vnTime = vnHour + vnMin / 60; // decimal hours
-    // 9:00 <= time < 15:00 (gồm cả ATC 14:45-15:00)
-    return vnTime >= 9 && vnTime < 15;
+    return tt.isInTradingHours();
 }
 
 /**
@@ -3292,10 +3295,9 @@ app.post('/api/ma-breadth/build-history', async (req, res) => {
 //   morning catch-up. Cuối tuần skip.
 // Idempotent: buildToday ghi đè snapshot hôm nay (UPSERT), chạy nhiều lần OK.
 const BREADTH_CHECK_INTERVAL = 30 * 60 * 1000;
-const _ttForBreadth = require('./trading-time');
 setInterval(async () => {
-    if (!_ttForBreadth.isTradingDay()) return; // cuối tuần skip
-    const inEod = _ttForBreadth.isInEODWindow();
+    if (!tt.isTradingDay()) return; // cuối tuần skip
+    const inEod = tt.isInEODWindow();
     try {
         const hasToday = breadthHistory.hasToday();
         // EOD window + thiếu hôm nay → build (data hôm nay sau đóng cửa)
@@ -3317,8 +3319,8 @@ setInterval(async () => {
 // Idempotent: UPSERT tự xử lý trùng.
 let _breadthSnapshotMod = null;
 setInterval(async () => {
-    if (!_ttForBreadth.isTradingDay()) return; // cuối tuần skip
-    const inEod = _ttForBreadth.isInEODWindow();
+    if (!tt.isTradingDay()) return; // cuối tuần skip
+    const inEod = tt.isInEODWindow();
     try {
         if (!_breadthSnapshotMod) _breadthSnapshotMod = require('./breadth-snapshot');
         const has = await _breadthSnapshotMod.hasToday();

@@ -114,6 +114,11 @@ async function invalidate(key) {
 // Cache đến hết ngày giao dịch hiện tại. Khi data "hôm nay" đã có,
 // mọi request trong ngày đều trả cache → 0 call Fiintrade.
 
+// Delegate VN-time cho trading-time.js (single source of truth — fix 2026-07-22).
+// Trước đây vnToday() tự hand-roll `new Date(Date.now()+7h)` — giờ delegate để
+// tránh lệch logic giữa cache.js và các module khác.
+const tt = require('./trading-time');
+
 /**
  * Ngày hiện tại theo giờ VN (GMT+7) — định dạng 'YYYY-MM-DD'.
  * QUAN TRỌNG: không dùng new Date().toISOString() vì nó trả về UTC.
@@ -122,8 +127,7 @@ async function invalidate(key) {
  * → cache key sai → serve stale data tới 7h sáng.
  */
 function vnToday() {
-    // Cộng 7h rồi mới lấy date part → ra ngày VN đúng.
-    return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
+    return tt.vnToday();
 }
 
 /**
