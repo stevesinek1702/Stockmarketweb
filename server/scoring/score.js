@@ -47,9 +47,15 @@ function computeSEPA(ta, opts) {
     pocketPivot: Math.round(fPP), distMA20: Math.round(fDist), squeeze: Math.round(fSq)
   };
 
+  // Weights: đọc từ config (scoring-weights.json) — optimize backtest ghi vào đó.
+  // Fallback default nếu chưa optimize. Lazy require tránh circular dep.
+  let w;
+  try { w = require('../backtest/optimize').loadWeights(); }
+  catch (e) { w = { trendTemplate:0.25, adx:0.15, vcp:0.15, rs:0.15, maAlignment:0.10, macd:0.08, pocketPivot:0.05, distMA20:0.04, squeeze:0.03 }; }
+
   const score = Math.round(
-    fTT * 0.25 + fADX * 0.15 + fVCP * 0.15 + fRS * 0.15 + fMA * 0.10 +
-    fMACD * 0.08 + fPP * 0.05 + fDist * 0.04 + fSq * 0.03
+    fTT * w.trendTemplate + fADX * w.adx + fVCP * w.vcp + fRS * w.rs + fMA * w.maAlignment +
+    fMACD * w.macd + fPP * w.pocketPivot + fDist * w.distMA20 + fSq * w.squeeze
   );
 
   return { score: Math.max(0, Math.min(100, score)), grade: gradeFor(score), breakdown };

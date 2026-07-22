@@ -30,21 +30,26 @@ function loadWeights() {
       return JSON.parse(fs.readFileSync(WEIGHTS_FILE, 'utf8'));
     }
   } catch (e) { /* ignore */ }
-  return DEFAULT_WEIGHTS;
+  return { ..._activeWeights };
 }
+
+// Active weights (in-memory, override DEFAULT). computeSEPA đọc qua loadWeights().
+let _activeWeights = { ...DEFAULT_WEIGHTS };
 
 /**
  * Tối ưu trọng số bằng grid search: chạy backtest cho mỗi tổ hợp → chọn riskAdjusted cao nhất.
+ * Lưu best weights vào config file + _activeWeights → computeSEPA dùng ngay.
+ *
  * @param {object} opts backtest opts (fromDate, toDate, minScore, holdDays)
  * @returns {{best: object, comparisons: Array, saved: boolean}}
  */
 function optimizeWeights(opts) {
+  opts = opts || {};
   const comparisons = [];
   for (const variant of GRID) {
-    // Ghi trọng số tạm để computeSEPA đọc — nhưng computeSEPA hiện hardcode.
-    // NOTE: để optimize có hiệu lực thật, computeSEPA phải đọc loadWeights().
-    // (Phase 2: wire computeSEPA đọc weights từ config)
-    const result = backtest({ ...opts, minScore: opts.minScore || 55 });
+    // Set variant weights active để backtest (computeSEPA trong backtest đọc loadWeights)
+    _activeWeights = { ...variant.w };
+    const result = backtest({ ...opts, minScore: opts.minScore || 55, holdDays: opts.holdDays || 10 });
     comparisons.push({
       label: variant.label,
       weights: variant.w,
@@ -56,7 +61,20 @@ function optimizeWeights(opts) {
   }
   comparisons.sort((a, b) => b.riskAdjusted - a.riskAdjusted);
   const best = comparisons[0];
-  return { best, comparisons, saved: false }; // saved=false: chưa wire computeSEPA đọc config
+
+  // Lưu best weights xuống file + set active
+  let saved = false;
+  try {
+    const configDir = path.dirname(WEIGHTS_FILE);
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(WEIGHTS_FILE, JSON.stringify(best.weights, null, 2), 'utf8');
+    _activeWeights = { ...best.weights };
+    saved = true;
+    console.log(`🧠 [optimize] saved best weights (${best.label}, riskAdj=${best.riskAdjusted})`);
+  } catch (e) {
+    console.warn('[optimize] save fail:', e.message);
+  }
+  return { best, comparisons, saved };
 }
 
 module.exports = { optimizeWeights, loadWeights, DEFAULT_WEIGHTS, GRID };

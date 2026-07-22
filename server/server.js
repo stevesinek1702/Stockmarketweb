@@ -3781,6 +3781,30 @@ setInterval(async () => {
     }
 }, PRICE_BUILD_INTERVAL);
 
+// ── Weekly auto-learning: backtest + optimize weights mỗi Chủ nhật 16:00 VN ──
+// Chạy optimize grid search trên 90 ngày gần nhất → lưu best weights → computeSEPA
+// dùng weights mới (tự học). Skip nếu ngoài cửa sổ hoặc cuối tuần check sai ngày.
+const WEEKLY_OPTIMIZE_INTERVAL = 60 * 60 * 1000; // check mỗi giờ
+setInterval(async () => {
+    try {
+        const now = new Date(Date.now() + 7 * 3600 * 1000); // VN time
+        const isSunday = now.getUTCDay() === 0;
+        const vnHour = now.getUTCHours();
+        if (!isSunday || vnHour !== 16) return; // chỉ Chủ nhật 16:00 VN
+        // Acquire Redis lock để chỉ 1 worker chạy
+        const got = await acquireLock('lock:optimize-weights', 1800); // 30 min TTL
+        if (!got) return;
+        console.log('🧠 [auto-learn] Starting weekly backtest + optimize...');
+        const { optimizeWeights } = require('./backtest');
+        const endDate = tt.vnToday();
+        const startDate = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+        const result = optimizeWeights({ fromDate: startDate, toDate: endDate, minScore: 55, holdDays: 10 });
+        console.log(`🧠 [auto-learn] Done. Best: ${result.best.label} (riskAdj=${result.best.riskAdjusted}, winRate=${result.best.winRate}%), saved=${result.saved}`);
+    } catch (e) {
+        console.error('[auto-learn] error:', e.message);
+    }
+}, WEEKLY_OPTIMIZE_INTERVAL);
+
 
 app.get('/api/health', (req, res) => {
     res.json({
