@@ -6411,8 +6411,8 @@ async function loadPTStatus() {
         const bm = document.getElementById('pt-broker-mode'); if (bm) bm.textContent = data.mode;
         // NAV từ broker status (paper)
         if (data.nav) {
-            const navEl = document.getElementById('pt-nav'); if (navEl) navEl.textContent = StockAPI.formatCurrency(data.nav.totalValue);
-            const csEl = document.getElementById('pt-cash-status'); if (csEl) csEl.textContent = StockAPI.formatCurrency(data.nav.cash);
+            const navEl = document.getElementById('pt-nav'); if (navEl) navEl.textContent = StockAPI.formatVND(data.nav.totalValue);
+            const csEl = document.getElementById('pt-cash-status'); if (csEl) csEl.textContent = StockAPI.formatVND(data.nav.cash);
         }
         const resp2 = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.AUTOEXEC_STATUS, { credentials: 'same-origin' });
         const ae = await resp2.json();
@@ -6427,8 +6427,8 @@ async function loadPTPortfolio() {
     try {
         const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.BROKER_PORTFOLIO + '?_t=' + Date.now(), { credentials: 'same-origin' });
         const pf = await resp.json();
-        const cashEl = document.getElementById('pt-cash'); if (cashEl) cashEl.textContent = StockAPI.formatCurrency(pf.cash);
-        const totEl = document.getElementById('pt-total'); if (totEl) totEl.textContent = StockAPI.formatCurrency(pf.totalValue);
+        const cashEl = document.getElementById('pt-cash'); if (cashEl) cashEl.textContent = StockAPI.formatVND(pf.cash);
+        const totEl = document.getElementById('pt-total'); if (totEl) totEl.textContent = StockAPI.formatVND(pf.totalValue);
         const pcEl = document.getElementById('pt-positions-count'); if (pcEl) pcEl.textContent = (pf.positions || []).length;
         const tbody = document.getElementById('pt-portfolio-tbody');
         if (!tbody) return;
@@ -6443,7 +6443,7 @@ async function loadPTPortfolio() {
                 '<td>' + p.qty + '</td>' +
                 '<td>' + StockAPI.formatNumber(p.avgCost) + '</td>' +
                 '<td class="' + pnlClass + '">' + pnlPfx + StockAPI.formatCurrency(p.pnl) + '</td>' +
-                '<td>' + StockAPI.formatCurrency(p.value) + '</td></tr>';
+                '<td>' + StockAPI.formatVND(p.value) + '</td></tr>';
         }).join('');
     } catch (e) { console.error('loadPTPortfolio:', e); }
 }
@@ -6554,7 +6554,7 @@ async function resetPaperNav() {
         if (data.success) {
             loadPTStatus(); loadPTPortfolio();
             const r = document.getElementById('pt-order-result');
-            if (r) { r.textContent = 'NAV reset: ' + StockAPI.formatCurrency(data.cash); r.style.color = '#2e7d32'; }
+            if (r) { r.textContent = 'NAV reset: ' + StockAPI.formatVND(data.cash); r.style.color = '#2e7d32'; }
         }
     } catch (e) { console.error('resetPaperNav:', e); }
 }

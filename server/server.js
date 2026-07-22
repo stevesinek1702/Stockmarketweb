@@ -408,7 +408,7 @@ async function getStaleResponse(key) {
 // ==========================================
 
 // ── Phase 3: Auth routes (public: register/login/logout; me requires login) ─
-const { requireAuth } = require('./auth');
+const { requireAuth, requireAdmin } = require('./auth');
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 // ── Phase 4: User data (watchlist + portfolio + presets per-user, requireAuth) ─
@@ -3495,6 +3495,8 @@ app.get('/api/signals', async (req, res) => {
 // BROKER ENDPOINTS (Subsystem #5)
 // ==========================================
 // Mặc định paper mode (an toàn). Live cần BROKER_MODE=ssi|dnse + credentials.
+// ADMIN ONLY: broker + autoexec chỉ admin được xem/dùng (tiền + lệnh nhạy cảm).
+app.use('/api/broker', (req, res, next) => requireAdmin(req, res, next));
 
 /**
  * GET /api/broker/status — broker mode + connection status.

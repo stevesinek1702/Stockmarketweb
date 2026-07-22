@@ -130,6 +130,15 @@ function formatCurrency(value) {
 }
 
 /**
+ * Format VND với dấu phân cách hàng nghìn đầy đủ (vd 1.000.000.000 ₫).
+ * Dùng cho NAV/cash/portfolio — dễ đọc hơn formatCurrency (rút gọn).
+ */
+function formatVND(value) {
+    if (value === null || value === undefined || isNaN(value)) return '--';
+    return Math.round(value).toLocaleString('vi-VN') + ' ₫';
+}
+
+/**
  * Utility function to format number with Vietnamese locale
  */
 function formatNumber(value, decimals = 0) {
@@ -788,6 +797,7 @@ window.StockAPI = {
     dataFetcher,
     MockData,
     formatCurrency,
+    formatVND,
     formatNumber,
     formatPercent,
     formatVolume,
