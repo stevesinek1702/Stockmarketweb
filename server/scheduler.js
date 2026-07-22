@@ -1,4 +1,5 @@
 const axios = require('axios');
+const tt = require('./trading-time');
 
 // Internal secret để bypass auth cho scheduler self-call.
 // Middleware authenticate bỏ qua nếu header này khớp (chỉ scheduler nội bộ biết).
@@ -14,8 +15,17 @@ const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-intern
  * Cứ đặt interval < TTL thì cache luôn còn hạn khi user thật request
  * → user luôn cache hit → giảm API call tới FireAnt/Fiintrade bất kể số user.
  *
- * Chống multi-instance: dùng file lock đơn giản (env SCHEDULER_DISABLED=1 để tắt).
- * Khi scale lớn (PM2 cluster), chuyển sang Redis SETNX lock — Phase sau.
+ * Chống multi-instance: dùng Redis SETEX ngầm ở tầng cache + Redis lock riêng
+ * cho các job nặng (xem server.js acquireLock).
+ *
+ * TRADING-DAY AWARE (fix 2026-07-22):
+ *   - Cuối tuần (T7/CN): SKIP toàn bộ — FireAnt/Fiintrade không có data mới,
+ *     gọi chỉ tốn API call. Data giữ nguyên phiên Thứ 6.
+ *   - Ngày giao dịch: intraday refresh trong phiên (9-15h), EOD refresh sau
+ *     đóng cửa (15-23h).
+ *   - MORNING CATCH-UP: mỗi 30 phút, nếu EOD data của phiên gần nhất
+ *     (lastTradingDay) còn thiếu → fetch. Fix bug "data stuck hôm trước" khi
+ *     container restart đêm hoặc lỡ mất window 15-23h.
  *
  * @param {number} port port mà Express đang listen
  */
@@ -33,15 +43,15 @@ const REFRESH_TARGETS = [
     { key: 'marketcap-stats',    url: '/api/marketcap-stats',         intervalMs: 55000 },
     // TTL 120s: refresh 110s
     { key: 'news:all:20',        url: '/api/news?limit=20',           intervalMs: 110000 }
-    // EOD endpoints (Fiintrade) tách riêng bên dưới — refresh 19-22h, không 55s
+    // EOD endpoints (Fiintrade) tách riêng bên dưới — refresh 15-23h + catch-up
     // Dynamic key (market-stats:HOSTC, industry-flow:*, stock-investor-flow:*) — user-driven,
     // được cache lazy khi user request, không cần pre-warm.
 ];
 
 // EOD endpoints: data chỉ đổi 1 lần/ngày (cuối phiên). Cache 24h.
-// Scheduler refresh mỗi 30 phút trong khoảng 15:00-22:00 VN, skip nếu data hôm nay đã có.
+// Scheduler refresh trong 15-23h VN khi data hôm nay chưa có.
 // (Fiintrade update data sau 15:00 đóng cửa; trước đó vẫn là data hôm qua.)
-// validateToDate: endpoint có toDate trong response → kiểm tra toDate thực = hôm nay.
+// validateToDate: endpoint có toDate trong response → kiểm tra toDate thực = ngày mong muốn.
 const EOD_TARGETS = [
     { key: 'investor-flow',   url: '/api/investor-flow',   validateToDate: true },
     { key: 'foreign-flow',    url: '/api/foreign-flow',    validateToDate: true },
@@ -51,8 +61,11 @@ const EOD_TARGETS = [
     // industry-flow: dynamic key (timeRange:level) — user-driven, scheduler không pre-warm
 ];
 const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
+const CATCHUP_INTERVAL_MS = 30 * 60 * 1000;   // 30 phút — morning catch-up
 
+// State cho /api/admin/system-status giám sát scheduler health.
 let running = false;
+let lastTickAt = null;     // ISO timestamp lần tick gần nhất (bất kỳ tick nào)
 const timers = [];
 
 async function refreshOne(target, port) {
@@ -71,29 +84,26 @@ async function refreshOne(target, port) {
 
 /**
  * EOD refresh: gọi endpoint → nếu server cache miss sẽ fetch Fiintrade + set EOD cache.
- * Skip nếu data hôm nay đã có (tránh gọi thỡ khi 600 user cùng xem).
- * validateToDate: nếu true, hasEODToday kiểm tra toDate thực = hôm nay (không chỉ key tồn tại).
+ * Skip nếu data ngày mong muốn đã có (tránh gọi thỡ khi 600 user cùng xem).
+ * validateToDate: nếu true, hasEODToday kiểm tra toDate thực = ngày mong muốn.
+ *
+ * @param {object} target  { key, url, validateToDate }
+ * @param {number} port
+ * @param {string} expectedDate  'YYYY-MM-DD' phiên cần check (mặc định hôm nay).
+ *                                Catch-up truyền lastTradingDay().
  */
-async function refreshEOD(target, port) {
+async function refreshEOD(target, port, expectedDate) {
     const { hasEODToday } = require('./cache');
-    // Đã có data hôm nay (và toDate đúng) → skip
-    if (await hasEODToday(target.key, { validateToDate: target.validateToDate })) {
-        console.log(`✅ [scheduler-eod] ${target.key} đã có data hôm nay (toDate OK) — skip`);
+    // Đã có data ngày mong muốn (và toDate đúng) → skip
+    if (await hasEODToday(target.key, {
+        validateToDate: target.validateToDate,
+        expectedDate
+    })) {
+        console.log(`✅ [scheduler-eod] ${target.key} đã có data ${expectedDate || 'today'} (toDate OK) — skip`);
         return;
     }
     // Chưa có → gọi endpoint (cache miss → fetch + cache EOD)
     await refreshOne(target, port);
-}
-
-/**
- * Kiểm tra có trong khoảng giờ EOD refresh (15:00-22:00 giờ VN) không.
- * Fiintrade update data sau 15:00 đóng cửa → bắt đầu refresh từ 15:00.
- */
-function isInEODWindow() {
-    const now = new Date();
-    // VPS chạy UTC; giờ VN = UTC+7. 15:00 VN = 08:00 UTC, 22:00 VN = 15:00 UTC.
-    const vnHour = (now.getUTCHours() + 7) % 24;
-    return vnHour >= 15 && vnHour < 22;
 }
 
 function startScheduler(port) {
@@ -104,29 +114,64 @@ function startScheduler(port) {
     }
     if (running) return;
     running = true;
-    console.log(`⏰ [scheduler] starting ${REFRESH_TARGETS.length} intraday + ${EOD_TARGETS.length} EOD refresh jobs`);
+    console.log(`⏰ [scheduler] starting ${REFRESH_TARGETS.length} intraday + ${EOD_TARGETS.length} EOD + morning catch-up`);
 
-    // Intraday endpoints: refresh liên tục theo interval
+    // ── Intraday endpoints: refresh liên tục theo interval ──────────────
+    // CHỈ chạy trong phiên giao dịch (T2-T6, 9-15h VN). Cuối tuần skip hoàn toàn
+    // (trước đây chạy 7 ngày/tuần → tốn FireAnt call vô ích).
     for (const target of REFRESH_TARGETS) {
         const delay = 15000 + Math.random() * 5000;
         setTimeout(() => {
-            refreshOne(target, port);
-            const t = setInterval(() => refreshOne(target, port), target.intervalMs);
+            const tick = async () => {
+                lastTickAt = new Date().toISOString();
+                if (!tt.isInTradingHours()) return; // ngoài phiên / cuối tuần → skip
+                await refreshOne(target, port);
+            };
+            tick();
+            const t = setInterval(tick, target.intervalMs);
             timers.push(t);
         }, delay);
     }
 
-    // EOD endpoints: check mỗi 30 phút, chỉ refresh trong 19-22h VN khi data hôm nay chưa có
+    // ── EOD endpoints: sau đóng cửa (15-23h VN, T2-T6) ──────────────────
     setTimeout(() => {
         const eodTick = async () => {
-            if (!isInEODWindow()) return;
+            lastTickAt = new Date().toISOString();
+            if (!tt.isInEODWindow()) return;
+            const today = tt.vnToday();
             for (const target of EOD_TARGETS) {
-                await refreshEOD(target, port);
+                await refreshEOD(target, port, today);
             }
         };
         eodTick(); // chạy thử ngay khi start (phòng khi start trong giờ EOD)
         timers.push(setInterval(eodTick, EOD_RETRY_INTERVAL_MS));
     }, 20000);
+
+    // ── MORNING CATCH-UP: mỗi 30 phút, kiểm tra data phiên gần nhất ─────
+    // Fix bug "data stuck hôm trước": nếu container restart đêm hoặc lỡ window
+    // 15-23h, data EOD của phiên gần nhất (lastTradingDay) sẽ thiếu → user vào
+    // buổi sáng hôm sau thấy data cũ. Catch-up này fetch lại bất kể giờ (miễn
+    // là ngày giao dịch) khi data phiên gần nhất còn thiếu.
+    setTimeout(() => {
+        const catchupTick = async () => {
+            lastTickAt = new Date().toISOString();
+            if (!tt.isTradingDay()) return; // cuối tuần skip
+            const ltd = tt.lastTradingDay();
+            for (const target of EOD_TARGETS) {
+                const { hasEODToday } = require('./cache');
+                const has = await hasEODToday(target.key, {
+                    validateToDate: target.validateToDate,
+                    expectedDate: ltd
+                });
+                if (!has) {
+                    console.log(`🌅 [scheduler-catchup] ${target.key} thiếu data ${ltd} → refresh`);
+                    await refreshOne(target, port);
+                }
+            }
+        };
+        catchupTick(); // chạy ngay khi start (sau 25s) — prewarm sau restart
+        timers.push(setInterval(catchupTick, CATCHUP_INTERVAL_MS));
+    }, 25000);
 }
 
 function stopScheduler() {
@@ -135,4 +180,20 @@ function stopScheduler() {
     running = false;
 }
 
-module.exports = { startScheduler, stopScheduler, REFRESH_TARGETS };
+/**
+ * Trạng thái scheduler cho /api/admin/system-status.
+ */
+function status() {
+    return {
+        running,
+        schedulerDisabled: process.env.SCHEDULER_DISABLED === '1',
+        lastTickAt,
+        isTradingDay: tt.isTradingDay(),
+        isInTradingHours: tt.isInTradingHours(),
+        isInEODWindow: tt.isInEODWindow(),
+        lastTradingDay: tt.lastTradingDay(),
+        vnToday: tt.vnToday()
+    };
+}
+
+module.exports = { startScheduler, stopScheduler, status, REFRESH_TARGETS };

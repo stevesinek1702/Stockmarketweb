@@ -138,21 +138,28 @@ function eodKey(key) {
  * Đọc EOD cache. TTL = 24h (đủ an toàn, key đổi theo ngày nên qua ngày mới miss).
  *
  * Tùy chọn validateToDate: nếu truyền, kiểm tra toDate/toDate trong data cache.
- * Khi toDate trong cache < hôm nay (VN) → coi như miss (trả null) → endpoint fetch lại.
- * Tránh serve data hôm qua cho ngày hôm nay khi Fiintrade đã update data mới.
+ * Khi toDate trong cache < ngày mong muốn (VN) → coi như miss (trả null) →
+ * endpoint fetch lại. Tránh serve data hôm qua cho ngày hôm nay khi Fiintrade
+ * đã update data mới.
  *
  * @param {string} key cache key
- * @param {object} [opts] { validateToDate?: boolean } — mặc định false
+ * @param {object} [opts] {
+ *   validateToDate?: boolean,  // mặc định false
+ *   expectedDate?: string      // 'YYYY-MM-DD' mong muốn (mặc định = vnToday()).
+ *                              // Scheduler catch-up truyền lastTradingDay() để
+ *                              // chấp nhận data Thứ 6 khi chưa có data hôm nay.
+ * }
  */
 async function getCachedEOD(key, opts) {
     const data = await getCached(eodKey(key), 24 * 3600 * 1000);
     if (!data) return null;
     if (opts && opts.validateToDate) {
+        const expected = (opts.expectedDate || vnToday()).slice(0, 10);
         // Lấy toDate từ data (endpoint investor-flow/foreign-flow lưu ở top-level)
         const toDate = data.toDate || (data.today && data.today.date) || null;
-        if (toDate && String(toDate).slice(0, 10) !== vnToday()) {
-            // Cache chứa data ngày cũ → miss để endpoint fetch data mới
-            console.log(`♻️  [cache-eod] ${key}: toDate ${toDate} ≠ today ${vnToday()} → cache miss (refresh)`);
+        if (toDate && String(toDate).slice(0, 10) !== expected) {
+            // Cache chứa data ngày khác mong muốn → miss để endpoint fetch data mới
+            console.log(`♻️  [cache-eod] ${key}: toDate ${toDate} ≠ expected ${expected} → cache miss (refresh)`);
             return null;
         }
     }
@@ -170,12 +177,19 @@ async function setCachedEOD(key, data, ttlMs) {
 }
 
 /**
- * Kiểm tra EOD data của hôm nay đã có chưa (để scheduler biết có cần retry).
- * Có validate toDate: data "hôm nay" phải thực sự có toDate = hôm nay.
- * Nếu data chỉ là của ngày hôm qua (toDate < today) → trả false để scheduler retry.
+ * Kiểm tra EOD data của ngày mong muốn đã có chưa (để scheduler biết có cần retry).
+ * Có validate toDate: data phải thực sự có toDate = ngày mong muốn.
+ * Nếu data chỉ là của ngày khác (toDate < expected) → trả false để scheduler retry.
+ *
+ * @param {string} key cache key
+ * @param {object} [opts] { validateToDate?: boolean, expectedDate?: string }
+ *        expectedDate mặc định = vnToday(). Catch-up truyền lastTradingDay().
  */
 async function hasEODToday(key, opts) {
-    const v = await getCachedEOD(key, { validateToDate: opts && opts.validateToDate });
+    const v = await getCachedEOD(key, {
+        validateToDate: opts && opts.validateToDate,
+        expectedDate: opts && opts.expectedDate
+    });
     return v !== null;
 }
 
