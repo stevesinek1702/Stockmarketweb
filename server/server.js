@@ -3551,6 +3551,74 @@ app.get('/api/broker/portfolio', async (req, res) => {
     }
 });
 
+// ==========================================
+// AUTO-EXEC ENDPOINTS (Subsystem #6) — admin only
+// ==========================================
+// Loop tự place orders theo signals. Mặc định DISABLED (kill-switch off).
+// Safety: chỉ chạy trong phiên, max daily loss, max positions, paper default.
+
+const autoexec = require('./autoexec');
+
+app.get('/api/admin/autoexec/status', (req, res) => {
+    res.json({ success: true, ...autoexec.status() });
+});
+
+app.post('/api/admin/autoexec/enable', (req, res) => {
+    // Double-confirm cho live mode (không phải paper)
+    const { currentMode } = require('./broker');
+    if (currentMode() !== 'paper' && req.body?.confirm !== 'I_UNDERSTAND_LIVE_TRADE') {
+        return res.status(400).json({ success: false, error: 'Live mode cần body {confirm:"I_UNDERSTAND_LIVE_TRADE"}' });
+    }
+    autoexec.enable();
+    res.json({ success: true, ...autoexec.status() });
+});
+
+app.post('/api/admin/autoexec/disable', (req, res) => {
+    autoexec.disable();
+    res.json({ success: true, ...autoexec.status(), message: 'Kill-switch ON — auto-exec dừng tức thì' });
+});
+
+/**
+ * POST /api/admin/autoexec/run-once — trigger 1 vòng manual (không cần loop).
+ */
+app.post('/api/admin/autoexec/run-once', async (req, res) => {
+    try {
+        // Signal fetcher: gọi logic /api/signals nội bộ
+        const signalFetcher = async (account) => {
+            const { computeTA } = require('./ta');
+            const { computeSEPA } = require('./scoring');
+            const { rsRating } = require('./scoring/rs');
+            const { generateSignal } = require('./signals');
+            const ph = require('./ta/price-history');
+            const vnindex = ph.getHistory('VNINDEX');
+            const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+            const results = [];
+            for (const symbol of ph.listSymbols()) {
+                if (symbol === 'VNINDEX') continue;
+                const h = ph.getHistory(symbol);
+                if (!h || !h.ohlc || h.ohlc.length < 60) continue;
+                try {
+                    const ta = computeTA(h); if (!ta) continue;
+                    const closes = h.ohlc.map(x => x.c);
+                    const price = closes[closes.length - 1];
+                    const rs = rsRating(closes, bench);
+                    const sr = computeSEPA(ta, { rsRating: rs });
+                    if (sr.score < 55) continue;
+                    const sig = generateSignal(sr, ta, price);
+                    if (sig.action !== 'BUY' && sig.action !== 'WATCH') continue;
+                    results.push({ symbol, price, score: sr.score, grade: sr.grade, action: sig.action, signal: sig });
+                } catch (e) { /* skip */ }
+            }
+            results.sort((a, b) => b.score - a.score);
+            return { results: results.slice(0, 30) };
+        };
+        const result = await autoexec.runOnce(signalFetcher);
+        res.json({ success: true, result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 
 
 /**
@@ -4279,6 +4347,41 @@ async function bootstrap() {
             startScheduler(PORT);
         } catch (e) {
             console.warn('⚠️  Scheduler không khởi động được:', e.message);
+        }
+
+        // ── Auto-exec loop (#6) — chỉ chạy nếu AUTOEXEC_ENABLED=1 ──────────
+        try {
+            const autoexec = require('./autoexec');
+            const signalFetcher = async (account) => {
+                const { computeTA } = require('./ta');
+                const { computeSEPA } = require('./scoring');
+                const { rsRating } = require('./scoring/rs');
+                const { generateSignal } = require('./signals');
+                const ph = require('./ta/price-history');
+                const vnindex = ph.getHistory('VNINDEX');
+                const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+                const results = [];
+                for (const symbol of ph.listSymbols()) {
+                    if (symbol === 'VNINDEX') continue;
+                    const h = ph.getHistory(symbol);
+                    if (!h || !h.ohlc || h.ohlc.length < 60) continue;
+                    try {
+                        const ta = computeTA(h); if (!ta) continue;
+                        const closes = h.ohlc.map(x => x.c);
+                        const price = closes[closes.length - 1];
+                        const rs = rsRating(closes, bench);
+                        const sr = computeSEPA(ta, { rsRating: rs });
+                        if (sr.score < 55) continue;
+                        const sig = generateSignal(sr, ta, price);
+                        if (sig.action === 'BUY') results.push({ symbol, price, score: sr.score, grade: sr.grade, action: sig.action, signal: sig });
+                    } catch (e) { /* skip */ }
+                }
+                results.sort((a, b) => b.score - a.score);
+                return { results: results.slice(0, 30) };
+            };
+            autoexec.startLoop(signalFetcher);
+        } catch (e) {
+            console.warn('⚠️  Auto-exec loop không khởi động được:', e.message);
         }
 
         // ── Khởi động quét cổ phiếu tiềm năng ban đầu (sau 5 giây để server ổn định) ────────────────
