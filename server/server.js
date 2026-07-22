@@ -3491,6 +3491,66 @@ app.get('/api/signals', async (req, res) => {
     }
 });
 
+// ==========================================
+// BROKER ENDPOINTS (Subsystem #5)
+// ==========================================
+// Mặc định paper mode (an toàn). Live cần BROKER_MODE=ssi|dnse + credentials.
+
+/**
+ * GET /api/broker/status — broker mode + connection status.
+ */
+app.get('/api/broker/status', (req, res) => {
+    try {
+        const { currentMode } = require('./broker');
+        res.json({ success: true, mode: currentMode() });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * POST /api/broker/place-order — place order (paper/live theo BROKER_MODE).
+ * Body: { symbol, side, type, qty, price? }
+ * Paper: an toàn. Live: đặt lệnh thật (cần BROKER_MODE + credentials).
+ */
+app.post('/api/broker/place-order', async (req, res) => {
+    try {
+        const { getBroker } = require('./broker');
+        const broker = getBroker();
+        const order = await broker.placeOrder(req.body, { currentPrice: req.body.currentPrice });
+        res.json({ success: true, mode: broker.mode, order });
+    } catch (e) {
+        console.error('place-order error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * POST /api/broker/cancel-order/:id
+ */
+app.post('/api/broker/cancel-order/:id', async (req, res) => {
+    try {
+        const { getBroker } = require('./broker');
+        const result = await getBroker().cancelOrder(req.params.id);
+        res.json({ success: true, result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/broker/portfolio — paper portfolio state (positions, cash, P&L).
+ */
+app.get('/api/broker/portfolio', async (req, res) => {
+    try {
+        const { getBroker } = require('./broker');
+        const pf = await getBroker().getPortfolio({ prices: req.query.prices });
+        res.json({ success: true, ...pf });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 
 
 /**
