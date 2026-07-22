@@ -3284,41 +3284,50 @@ app.post('/api/ma-breadth/build-history', async (req, res) => {
     }
 });
 
-// Job nền auto-save snapshot mỗi ngày (15:15-22:00 giờ VN), kiểm tra mỗi 30 phút.
+// Job nền auto-save MA breadth snapshot mỗi ngày. Fix 2026-07-22:
+// - Trước đây chỉ build 15-22h VN → nếu container restart đêm / lỡ window,
+//   breadth hôm nay thiếu đến 15h hôm sau (user thấy data hôm trước).
+// - Giờ: build khi (isInEODWindow VÀ thiếu hôm nay) — chạy chính thường,
+//   HOẶC (isTradingDay nhưng chưa tới EOD VÀ breadth phiên gần nhất thiếu) —
+//   morning catch-up. Cuối tuần skip.
+// Idempotent: buildToday ghi đè snapshot hôm nay (UPSERT), chạy nhiều lần OK.
 const BREADTH_CHECK_INTERVAL = 30 * 60 * 1000;
+const _ttForBreadth = require('./trading-time');
 setInterval(async () => {
-    const vnNow = new Date(Date.now() + 7 * 3600 * 1000);
-    const vnHour = vnNow.getUTCHours();
-    if (vnHour >= 15 && vnHour < 22) {
-        try {
-            if (!breadthHistory.hasToday()) {
-                console.log('[MA Breadth] Auto-building today snapshot...');
-                await breadthHistory.buildToday({
-                    fetchFn: fetchAPI,
-                    getCookie: getFireAntCookie
-                });
-            }
-        } catch (e) {
-            console.error('[MA Breadth] auto-build error:', e.message);
+    if (!_ttForBreadth.isTradingDay()) return; // cuối tuần skip
+    const inEod = _ttForBreadth.isInEODWindow();
+    try {
+        const hasToday = breadthHistory.hasToday();
+        // EOD window + thiếu hôm nay → build (data hôm nay sau đóng cửa)
+        // Morning catch-up: ngoài EOD + thiếu → build (lấy data phiên gần nhất)
+        if ((inEod || !hasToday) && !hasToday) {
+            console.log(`[MA Breadth] Auto-building snapshot (inEOD=${inEod}, hasToday=${hasToday})...`);
+            await breadthHistory.buildToday({
+                fetchFn: fetchAPI,
+                getCookie: getFireAntCookieWithHeal
+            });
         }
+    } catch (e) {
+        console.error('[MA Breadth] auto-build error:', e.message);
     }
 }, BREADTH_CHECK_INTERVAL);
 
-// Job nền auto-save breadth daily snapshot (Phá Đỉnh/Phá Đáy) mỗi ngày EOD.
-// Cùng window 15:00-22:00 VN (sau giờ đóng cửa). Idempotent: UPSERT tự xử lý trùng.
+// Job nền auto-save breadth daily snapshot (Phá Đỉnh/Phá Đáy).
+// Fix 2026-07-22: tương tự MA breadth — mở rộng window ra cả buổi sáng (catch-up).
+// Idempotent: UPSERT tự xử lý trùng.
 let _breadthSnapshotMod = null;
 setInterval(async () => {
-    const vnHour = (new Date(Date.now() + 7 * 3600 * 1000)).getUTCHours();
-    if (vnHour >= 15 && vnHour < 22) {
-        try {
-            if (!_breadthSnapshotMod) _breadthSnapshotMod = require('./breadth-snapshot');
-            if (!await _breadthSnapshotMod.hasToday()) {
-                console.log('📸 [breadth-snapshot] Auto-capturing today...');
-                await _breadthSnapshotMod.buildToday({ silent: false });
-            }
-        } catch (e) {
-            console.error('[breadth-snapshot] auto-capture error:', e.message);
+    if (!_ttForBreadth.isTradingDay()) return; // cuối tuần skip
+    const inEod = _ttForBreadth.isInEODWindow();
+    try {
+        if (!_breadthSnapshotMod) _breadthSnapshotMod = require('./breadth-snapshot');
+        const has = await _breadthSnapshotMod.hasToday();
+        if ((inEod || !has) && !has) {
+            console.log(`📸 [breadth-snapshot] Auto-capturing (inEOD=${inEod}, has=${has})...`);
+            await _breadthSnapshotMod.buildToday({ silent: false });
         }
+    } catch (e) {
+        console.error('[breadth-snapshot] auto-capture error:', e.message);
     }
 }, 30 * 60 * 1000);
 
