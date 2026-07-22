@@ -3586,23 +3586,22 @@ app.get('/api/broker/portfolio', async (req, res) => {
 
 const autoexec = require('./autoexec');
 
-app.get('/api/admin/autoexec/status', (req, res) => {
-    res.json({ success: true, ...autoexec.status() });
+app.get('/api/admin/autoexec/status', async (req, res) => {
+    res.json({ success: true, ...await autoexec.status() });
 });
 
-app.post('/api/admin/autoexec/enable', (req, res) => {
-    // Double-confirm cho live mode (không phải paper)
+app.post('/api/admin/autoexec/enable', async (req, res) => {
     const { currentMode } = require('./broker');
     if (currentMode() !== 'paper' && req.body?.confirm !== 'I_UNDERSTAND_LIVE_TRADE') {
         return res.status(400).json({ success: false, error: 'Live mode cần body {confirm:"I_UNDERSTAND_LIVE_TRADE"}' });
     }
-    autoexec.enable();
-    res.json({ success: true, ...autoexec.status() });
+    await autoexec.enable();
+    res.json({ success: true, ...await autoexec.status() });
 });
 
-app.post('/api/admin/autoexec/disable', (req, res) => {
-    autoexec.disable();
-    res.json({ success: true, ...autoexec.status(), message: 'Kill-switch ON — auto-exec dừng tức thì' });
+app.post('/api/admin/autoexec/disable', async (req, res) => {
+    await autoexec.disable();
+    res.json({ success: true, ...await autoexec.status(), message: 'Kill-switch ON — auto-exec dừng tức thì' });
 });
 
 /**

@@ -19,27 +19,54 @@ const { getBroker, currentMode } = require('../broker');
 const AUTOEXEC_INTERVAL_MS = parseInt(process.env.AUTOEXEC_INTERVAL_MS || '300000'); // 5 min
 const MAX_DAILY_LOSS_PCT = parseFloat(process.env.MAX_DAILY_LOSS_PCT || '5'); // dừng nếu -5% ngày
 
-let _enabled = process.env.AUTOEXEC_ENABLED === '1';
+// State lưu Redis (cluster-safe) — _enabled/_lastRunAt/_lastResult/_dayStartValue
+// share giữa mọi PM2 worker. _running/_timer ở in-memory (per-worker).
 let _running = false;
-let _lastRunAt = null;
-let _lastResult = null;
-let _dayStartValue = null;
 let _timer = null;
+const STATE_KEY = 'autoexec:state';
 
-function isEnabled() { return _enabled; }
-function enable() { _enabled = true; console.log('🟢 [autoexec] ENABLED'); }
-function disable() { _enabled = false; console.log('🔴 [autoexec] DISABLED (kill-switch)'); }
+function _getRedis() {
+  if (!process.env.REDIS_URL) return null;
+  try { return require('../redis-client').redis; } catch (e) { return null; }
+}
 
-function status() {
+async function _getState() {
+  const redis = _getRedis();
+  if (redis) {
+    try {
+      const raw = await redis.get(STATE_KEY);
+      if (raw) return JSON.parse(raw);
+      // Redis OK nhưng chưa có key → dùng _memState (fallback) + sync lên Redis
+      return _memState;
+    } catch (e) { return _memState; }
+  }
+  return _memState;
+}
+
+async function _setState(patch) {
+  Object.assign(_memState, patch);
+  const redis = _getRedis();
+  if (redis) {
+    try { await redis.set(STATE_KEY, JSON.stringify(_memState)); } catch (e) { /* keep in-memory */ }
+  }
+}
+let _memState = { enabled: process.env.AUTOEXEC_ENABLED === '1', lastRunAt: null, lastResult: null, dayStartValue: null };
+
+async function isEnabled() { return (await _getState()).enabled; }
+async function enable() { await _setState({ enabled: true }); console.log('🟢 [autoexec] ENABLED'); }
+async function disable() { await _setState({ enabled: false }); console.log('🔴 [autoexec] DISABLED (kill-switch)'); }
+
+async function status() {
+  const s = await _getState();
   return {
-    enabled: _enabled,
+    enabled: s.enabled,
     running: _running,
-    lastRunAt: _lastRunAt,
-    lastResult: _lastResult,
+    lastRunAt: s.lastRunAt,
+    lastResult: s.lastResult,
     brokerMode: currentMode(),
     intervalMs: AUTOEXEC_INTERVAL_MS,
     maxDailyLossPct: MAX_DAILY_LOSS_PCT,
-    dayStartValue: _dayStartValue
+    dayStartValue: s.dayStartValue
   };
 }
 
@@ -49,16 +76,19 @@ function status() {
  * @returns {{ok:boolean, reason?:string}}
  */
 async function checkSafety(broker) {
-  if (!_enabled) return { ok: false, reason: 'autoexec disabled (kill-switch)' };
+  const s = await _getState();
+  if (!s.enabled) return { ok: false, reason: 'autoexec disabled (kill-switch)' };
   try {
     const pf = await broker.getPortfolio({});
-    // Max daily loss
-    if (_dayStartValue == null) _dayStartValue = pf.totalValue;
-    const dayPnl = _dayStartValue > 0 ? (pf.totalValue - _dayStartValue) / _dayStartValue * 100 : 0;
+    let dayStart = s.dayStartValue;
+    if (dayStart == null) {
+      dayStart = pf.totalValue;
+      await _setState({ dayStartValue: dayStart });
+    }
+    const dayPnl = dayStart > 0 ? (pf.totalValue - dayStart) / dayStart * 100 : 0;
     if (dayPnl <= -MAX_DAILY_LOSS_PCT) {
       return { ok: false, reason: `max daily loss hit (${dayPnl.toFixed(1)}% <= -${MAX_DAILY_LOSS_PCT}%)` };
     }
-    // Max open positions
     const cfg = require('../signals/config').loadConfig();
     if (pf.positions && pf.positions.length >= cfg.maxOpenPositions) {
       return { ok: false, reason: `max open positions (${pf.positions.length} >= ${cfg.maxOpenPositions})` };
@@ -69,28 +99,22 @@ async function checkSafety(broker) {
   }
 }
 
-/**
- * Reset day-start value (gọi đầu mỗi phiên).
- */
-function resetDay() {
-  _dayStartValue = null;
+async function resetDay() {
+  await _setState({ dayStartValue: null });
   console.log('🔄 [autoexec] day-start value reset');
 }
 
-/**
- * Chạy 1 vòng auto-exec. Export cho test + scheduler.
- * @param {object} signalFetcher  async fn → { results: [signals] }
- */
 async function runOnce(signalFetcher) {
   if (_running) return { skipped: 'already running' };
   _running = true;
-  _lastRunAt = new Date().toISOString();
+  const ts = new Date().toISOString();
   try {
     const broker = getBroker();
     const safety = await checkSafety(broker);
     if (!safety.ok) {
-      _lastResult = { skipped: safety.reason };
-      return _lastResult;
+      const result = { skipped: safety.reason };
+      await _setState({ lastRunAt: ts, lastResult: result });
+      return result;
     }
     const account = (safety.totalValue || 100_000_000);
     const signalsData = await signalFetcher(account);
@@ -110,13 +134,15 @@ async function runOnce(signalFetcher) {
         orders.push({ symbol: sig.symbol, error: e.message });
       }
     }
-    _lastResult = { placed: orders.length, orders, brokerMode: broker.mode };
+    const result = { placed: orders.length, orders, brokerMode: broker.mode };
+    await _setState({ lastRunAt: ts, lastResult: result });
     console.log(`🤖 [autoexec] placed ${orders.length} orders (${broker.mode})`);
-    return _lastResult;
+    return result;
   } catch (e) {
-    _lastResult = { error: e.message };
+    const result = { error: e.message };
+    await _setState({ lastRunAt: ts, lastResult: result });
     console.error('[autoexec] runOnce error:', e.message);
-    return _lastResult;
+    return result;
   } finally {
     _running = false;
   }
@@ -132,10 +158,11 @@ function startLoop(signalFetcher) {
     return;
   }
   console.log(`🤖 [autoexec] starting loop (interval ${AUTOEXEC_INTERVAL_MS}ms, broker=${currentMode()})`);
-  // Reset day-start mỗi ngày mới (check mỗi tick)
   _timer = setInterval(async () => {
+    const s = await _getState();
+    if (!s.enabled) return; // kill-switch off
     if (tt.isInTradingHours()) {
-      if (_dayStartValue == null) resetDay(); // lazy init đầu phiên
+      if (s.dayStartValue == null) await resetDay();
       await runOnce(signalFetcher);
     }
   }, AUTOEXEC_INTERVAL_MS);
