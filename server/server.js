@@ -3251,6 +3251,55 @@ app.get('/api/ma-breadth/meta', (req, res) => {
     res.json(breadthHistory.getMeta());
 });
 
+// ==========================================
+// TA ENGINE ENDPOINTS (Subsystem #1 — server/ta/)
+// ==========================================
+// ComputeTA cho 1 symbol từ price-history.json (OHLC+volume). Cần backfill trước.
+
+/**
+ * GET /api/ta/:symbol — full TA result (mas/momentum/trend/volatility/bollinger/sepa).
+ * Auth required (middleware /api đã mount). Trả 404 nếu chưa có data (cần backfill).
+ */
+app.get('/api/ta/:symbol', (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const { getHistory } = require('./ta/price-history');
+        const { computeTA } = require('./ta');
+        const h = getHistory(symbol);
+        if (!h || !h.ohlc || h.ohlc.length < 50) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chưa có đủ data cho mã này. Chạy backfill: node scripts/backfill-price-history.js'
+            });
+        }
+        const ta = computeTA(h);
+        if (!ta) return res.status(500).json({ success: false, error: 'computeTA trả null' });
+        res.json({
+            success: true,
+            symbol,
+            historyDays: h.dates.length,
+            lastDate: h.dates[h.dates.length - 1],
+            ta
+        });
+    } catch (e) {
+        console.error('TA endpoint error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/ta-meta — metadata của price-history.json (số symbol, depth).
+ */
+app.get('/api/ta-meta', (req, res) => {
+    try {
+        const { getMeta } = require('./ta/price-history');
+        res.json({ success: true, ...getMeta() });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+
 /**
  * POST /api/ma-breadth/refresh — incremental build ngày mới nhất (~3-5s).
  */
@@ -3332,6 +3381,56 @@ setInterval(async () => {
         console.error('[breadth-snapshot] auto-capture error:', e.message);
     }
 }, 30 * 60 * 1000);
+
+// ── Job nền daily build price-history (Subsystem #1) ─────────────────────
+// Append OHLC+volume hôm nay cho mọi symbol trong price-history.json.
+// Gate: trading day, EOD window hoặc morning catch-up (giống breadth jobs).
+// Reuse breadth-symbols list + FireAnt HistoricalQuotes + cookie-heal.
+const _priceBuildSymbols = (() => {
+    try { return require('./breadth-symbols').flatMap(s => String(s).split(',').map(x => x.trim()).filter(Boolean)); }
+    catch (e) { return []; }
+})();
+const PRICE_BUILD_INTERVAL = 30 * 60 * 1000;
+setInterval(async () => {
+    if (!tt.isTradingDay()) return;
+    try {
+        const { setHistory, getHistory, getMeta } = require('./ta/price-history');
+        const todayVN = tt.vnToday();
+        const cookie = await getFireAntCookieWithHeal();
+        const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const end = new Date();
+        const start = new Date(); start.setDate(start.getDate() - 5);
+        let updated = 0;
+        for (let i = 0; i < _priceBuildSymbols.length; i++) {
+            const sym = _priceBuildSymbols[i];
+            const existing = getHistory(sym);
+            if (existing && existing.dates && existing.dates[existing.dates.length - 1] === todayVN) continue;
+            const url = `https://www.fireant.vn/api/Data/Markets/HistoricalQuotes?symbol=${sym}&startDate=${fmt(start)}&endDate=${fmt(end)}`;
+            const headers = { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
+            if (cookie) headers['Cookie'] = cookie;
+            const res = await axios.get(url, { headers, timeout: 10000 }).catch(() => null);
+            if (!res || !Array.isArray(res.data)) continue;
+            const rows = res.data.filter(d => d.Close > 0);
+            if (rows.length === 0) continue;
+            const hist = existing || { dates: [], ohlc: [], volumes: [] };
+            const existingDates = new Set(hist.dates);
+            for (const d of rows) {
+                const date = String(d.Date).split('T')[0];
+                if (!existingDates.has(date)) {
+                    hist.dates.push(date);
+                    hist.ohlc.push({ o: d.Open||0, h: d.High||0, l: d.Low||0, c: d.Close||0 });
+                    hist.volumes.push(d.Volume||0);
+                }
+            }
+            setHistory(sym, hist);
+            updated++;
+            if (i % 200 === 0) console.log(`[price-build] ${i}/${_priceBuildSymbols.length}`);
+        }
+        if (updated > 0) console.log(`✅ [price-build] updated ${updated} symbols — meta:`, getMeta());
+    } catch (e) {
+        console.error('[price-build] error:', e.message);
+    }
+}, PRICE_BUILD_INTERVAL);
 
 
 app.get('/api/health', (req, res) => {

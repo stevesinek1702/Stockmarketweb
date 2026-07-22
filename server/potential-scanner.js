@@ -120,106 +120,35 @@ async function fetchRS(symbol, cookie = '') {
 // TECHNICAL INDICATOR CALCULATORS
 // ═══════════════════════════════════════════════════
 
+// ── TA calculations delegate sang server/ta/ module (single source of truth) ──
+// Migrated từ inline implementations (đã test trong __tests__/ta/).
+const { macd: _macd } = require('./ta/macd');
+const { rsi: _rsiRaw } = require('./ta/rsi');
+
+// Adapter: scanner dùng calculateMACD() trả { macd, signal, histogram } — delegate.
+function calculateMACD(closes) { return _macd(closes); }
+
+// Adapter: scanner cũ trả [{dateIndex, rsi}]; ta/rsi trả number[]. Giữ format cũ
+// để getMACDRSISignal (line ~323) không phải đổi. dateIndex = period + i.
+function calculateRSI(closes, period = 14) {
+    return _rsiRaw(closes, period).map((rsi, i) => ({ dateIndex: period + i, rsi }));
+}
+
+// EMA giữ inline (chỉ dùng cho calculateMACD cũ — giờ delegate hết, nhưng giữ
+// lại phòng call site nào khác cần). Đã được ta/ma.js test.
 function calculateEMA(prices, period) {
     if (prices.length < period) return [];
-
     const multiplier = 2 / (period + 1);
     const emaValues = [];
-
-    // SMA cho period đầu tiên
     let sma = 0;
     for (let i = 0; i < period; i++) sma += prices[i];
     sma /= period;
     emaValues.push(sma);
-
-    // EMA từ period trở đi
     for (let i = period; i < prices.length; i++) {
         const ema = (prices[i] - emaValues[emaValues.length - 1]) * multiplier + emaValues[emaValues.length - 1];
         emaValues.push(ema);
     }
-
     return emaValues;
-}
-
-function calculateMACD(closes) {
-    const ema12 = calculateEMA(closes, 12);
-    const ema26 = calculateEMA(closes, 26);
-
-    if (ema12.length === 0 || ema26.length === 0) {
-        return { macd: [], signal: [], histogram: [] };
-    }
-
-    // MACD line = EMA12 - EMA26
-    const macdLine = [];
-    const ema12Offset = 12;
-    const ema26Offset = 26;
-
-    for (let i = 0; i < ema26.length; i++) {
-        const closesIdx = ema26Offset + i;
-        const ema12Idx = closesIdx - ema12Offset;
-        if (ema12Idx >= 0 && ema12Idx < ema12.length) {
-            macdLine.push(ema12[ema12Idx] - ema26[i]);
-        }
-    }
-
-    // Signal line = EMA9 của MACD line
-    const signalLine = calculateEMA(macdLine, 9);
-
-    if (signalLine.length === 0) {
-        return { macd: macdLine, signal: [], histogram: [] };
-    }
-
-    // Histogram = MACD - Signal
-    const histogramArr = [];
-    const signalOffset = 9;
-    for (let i = 0; i < signalLine.length; i++) {
-        const macdIdx = signalOffset + i;
-        if (macdIdx < macdLine.length) {
-            histogramArr.push(macdLine[macdIdx] - signalLine[i]);
-        }
-    }
-
-    return { macd: macdLine, signal: signalLine, histogram: histogramArr };
-}
-
-function calculateRSI(closes, period = 14) {
-    if (closes.length <= period) return [];
-
-    const rsiValues = [];
-    let gains = 0;
-    let losses = 0;
-
-    // Thay đổi ban đầu
-    for (let i = 1; i <= period; i++) {
-        const diff = closes[i] - closes[i - 1];
-        if (diff > 0) gains += diff;
-        else losses -= diff;
-    }
-
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-
-    let rs = avgLoss > 0 ? avgGain / avgLoss : 100;
-    let rsi = 100 - (100 / (1 + rs));
-    rsiValues.push({ dateIndex: period, rsi });
-
-    // Wilders smoothing
-    for (let i = period + 1; i < closes.length; i++) {
-        const diff = closes[i] - closes[i - 1];
-        let gain = 0;
-        let loss = 0;
-        if (diff > 0) gain = diff;
-        else loss = -diff;
-
-        avgGain = (avgGain * (period - 1) + gain) / period;
-        avgLoss = (avgLoss * (period - 1) + loss) / period;
-
-        rs = avgLoss > 0 ? avgGain / avgLoss : 100;
-        rsi = 100 - (100 / (1 + rs));
-        rsiValues.push({ dateIndex: i, rsi });
-    }
-
-    return rsiValues;
 }
 
 // ═══════════════════════════════════════════════════
