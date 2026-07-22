@@ -93,7 +93,7 @@ async function checkSafety(broker) {
     if (pf.positions && pf.positions.length >= cfg.maxOpenPositions) {
       return { ok: false, reason: `max open positions (${pf.positions.length} >= ${cfg.maxOpenPositions})` };
     }
-    return { ok: true, totalValue: pf.totalValue, positions: pf.positions.length };
+    return { ok: true, totalValue: pf.totalValue, cash: pf.cash, positions: pf.positions.length };
   } catch (e) {
     return { ok: false, reason: 'portfolio check fail: ' + e.message };
   }
@@ -121,22 +121,29 @@ async function runOnce(signalFetcher) {
     const buySignals = (signalsData.results || []).filter(s => s.action === 'BUY');
     const { positionSize } = require('../signals');
     const orders = [];
+    let skippedNoCash = 0;
+    // Track cash còn đủ: lấy từ portfolio, giảm sau mỗi lệnh fill.
+    let availableCash = safety.cash != null ? safety.cash : account;
     for (const sig of buySignals) {
-      const size = positionSize(account, sig.signal.entry, sig.signal.stop);
-      if (size.shares <= 0) continue;
+      const size = positionSize(account, sig.signal.entry, sig.signal.stop, availableCash);
+      if (size.shares <= 0) { skippedNoCash++; continue; }
       try {
         const order = await broker.placeOrder({
           symbol: sig.symbol, side: 'BUY', type: 'LO',
           qty: size.shares, price: sig.signal.entry
         }, { currentPrice: sig.price });
+        // Trừ cash còn đủ (chỉ nếu fill thành công)
+        if (order && order.status === 'filled') {
+          availableCash -= (order.filledQty || size.shares) * (order.fillPrice || sig.signal.entry);
+        }
         orders.push({ symbol: sig.symbol, order });
       } catch (e) {
         orders.push({ symbol: sig.symbol, error: e.message });
       }
     }
-    const result = { placed: orders.length, orders, brokerMode: broker.mode };
+    const result = { placed: orders.length, orders, skippedNoCash, brokerMode: broker.mode };
     await _setState({ lastRunAt: ts, lastResult: result });
-    console.log(`🤖 [autoexec] placed ${orders.length} orders (${broker.mode})`);
+    console.log(`🤖 [autoexec] placed ${orders.length} orders (${broker.mode}), skipped ${skippedNoCash} (no cash)`);
     return result;
   } catch (e) {
     const result = { error: e.message };
