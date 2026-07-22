@@ -168,6 +168,95 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 // ==========================================
+// SYSTEM STATUS — giám sát refresh health (fix 2026-07-22)
+// ==========================================
+// Cho admin chẩn đoán tại sao data không auto-refresh: scheduler có chạy không,
+// cookie còn hạn không, EOD data phiên gần nhất đã có chưa.
+
+/**
+ * GET /api/admin/system-status — snapshot toàn bộ trạng thái refresh.
+ */
+router.get('/system-status', async (req, res) => {
+    try {
+        const tt = require('../trading-time');
+        const { apiCounter, hasEODToday } = require('../cache');
+
+        // EOD cache check (cho từng key, theo lastTradingDay)
+        const eodKeys = [
+            { key: 'investor-flow',   validateToDate: true },
+            { key: 'foreign-flow',    validateToDate: true },
+            { key: 'investor-detail', validateToDate: true },
+            { key: 'industry-stats',  validateToDate: false },
+            { key: 'top-net-stocks',  validateToDate: false }
+        ];
+        const ltd = tt.lastTradingDay();
+        const eodStatus = {};
+        for (const { key, validateToDate } of eodKeys) {
+            try {
+                eodStatus[key] = {
+                    hasToday: await hasEODToday(key, { validateToDate }),
+                    hasLastTradingDay: await hasEODToday(key, { validateToDate, expectedDate: ltd })
+                };
+            } catch (e) {
+                eodStatus[key] = { error: e.message };
+            }
+        }
+
+        // Breadth status (MA + breakout snapshot)
+        const breadth = {};
+        try {
+            const breadthHistory = require('../breadth-history');
+            breadth.ma = { hasToday: breadthHistory.hasToday() };
+        } catch (e) { breadth.ma = { error: e.message }; }
+        try {
+            const breadthSnapshot = require('../breadth-snapshot');
+            breadth.breakout = { hasToday: await breadthSnapshot.hasToday() };
+        } catch (e) { breadth.breakout = { error: e.message }; }
+
+        // Cookie status (cookie-sync refresh info)
+        let cookie = {};
+        try {
+            const cookieSync = require('../cookie-sync');
+            cookie = { lastRefresh: cookieSync.lastRefreshInfo() };
+        } catch (e) { cookie = { error: e.message }; }
+
+        // Scheduler status
+        let scheduler = {};
+        try {
+            const { status } = require('../scheduler');
+            scheduler = status();
+        } catch (e) { scheduler = { error: e.message }; }
+
+        // API call counter hôm nay
+        let apiCalls = {};
+        try {
+            apiCalls = await apiCounter.today();
+        } catch (e) { apiCalls = { error: e.message }; }
+
+        res.json({
+            success: true,
+            now: new Date().toISOString(),
+            time: {
+                vnToday: tt.vnToday(),
+                isTradingDay: tt.isTradingDay(),
+                isWeekend: tt.isWeekend(),
+                isInTradingHours: tt.isInTradingHours(),
+                isInEODWindow: tt.isInEODWindow(),
+                lastTradingDay: ltd
+            },
+            scheduler,
+            cookie,
+            cache: eodStatus,
+            breadth,
+            apiCalls
+        });
+    } catch (err) {
+        console.error('admin system-status error:', err.message);
+        res.status(500).json({ success: false, error: 'Lỗi server', detail: err.message });
+    }
+});
+
+// ==========================================
 // AI SETTINGS ADMIN — quản lý AI keys của tất cả user
 // ==========================================
 
