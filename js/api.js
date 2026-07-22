@@ -25,7 +25,21 @@ const API = {
         FOREIGN_DAILY: '/api/foreign-daily',
         POTENTIAL_STOCKS: '/api/potential-stocks',
         POTENTIAL_SCAN: '/api/potential-stocks/scan',
-        BREAKOUT_TRENDLINE: '/api/breakout-trendline'
+        BREAKOUT_TRENDLINE: '/api/breakout-trendline',
+        // SEPA scoring + TA engine (Subsystem #1/#2)
+        SEPA_SCAN: '/api/sepa-scan',
+        SEPA_SCORE: '/api/sepa-score',
+        TA_DETAIL: '/api/ta',
+        TA_META: '/api/ta-meta',
+        // Broker + autoexec (Subsystem #5/#6)
+        BROKER_STATUS: '/api/broker/status',
+        BROKER_PORTFOLIO: '/api/broker/portfolio',
+        BROKER_PLACE_ORDER: '/api/broker/place-order',
+        BROKER_CANCEL_ORDER: '/api/broker/cancel-order',
+        AUTOEXEC_STATUS: '/api/admin/autoexec/status',
+        AUTOEXEC_ENABLE: '/api/admin/autoexec/enable',
+        AUTOEXEC_DISABLE: '/api/admin/autoexec/disable',
+        AUTOEXEC_RUN_ONCE: '/api/admin/autoexec/run-once'
     },
 
     // Original FireAnt API endpoints (for reference)

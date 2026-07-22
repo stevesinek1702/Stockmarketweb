@@ -4307,6 +4307,16 @@ function switchTab(tabId) {
             loadBreadthSnapshot();
         } catch (e) { console.error('Breadth load error:', e); }
     }
+
+    // Load SEPA ranking khi switch sang tab potential-stocks (lazy-load, không phá eager-load cũ)
+    if (tabId === 'potential-stocks') {
+        try { if (!window._sepaLoaded) loadSEPA(); } catch (e) { console.error('SEPA load error:', e); }
+    }
+
+    // Load Paper Trade khi switch sang tab paper-trade (lazy-load)
+    if (tabId === 'paper-trade') {
+        try { loadPaperTrade(); } catch (e) { console.error('Paper trade load error:', e); }
+    }
 }
 
 // Initialize app when DOM is ready
@@ -6264,4 +6274,251 @@ function setupBreadthSnapshotEvents() {
             loadBreadthSnapshot();
         });
     });
+}
+
+// =====================================================================
+// SEPA SCORING UI (Subsystem #2) + PAPER TRADE UI (Subsystem #5/#6)
+// Appended functions — loaded after main app.js
+// =====================================================================
+
+const SEPA_STATE = { loaded: false, loading: false, lastData: null };
+
+async function loadSEPA() {
+    if (SEPA_STATE.loading) return;
+    SEPA_STATE.loading = true;
+    const minScore = parseInt(document.getElementById('sepa-min-score') && document.getElementById('sepa-min-score').value || '55');
+    const tbody = document.getElementById('sepa-ranking-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">Dang tai SEPA ranking...</td></tr>';
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.SEPA_SCAN + '?minScore=' + minScore + '&limit=50&_t=' + Date.now(), { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            SEPA_STATE.lastData = data;
+            window._sepaLoaded = true;
+            renderSEPARanking(data.results || []);
+            const meta = document.getElementById('sepa-scan-meta');
+            if (meta) meta.textContent = '(' + data.scanned + ' maquet, ' + data.filtered + ' dat)';
+        } else {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">' + (data.error || 'Loi tai') + '</td></tr>';
+        }
+    } catch (e) {
+        console.error('loadSEPA error:', e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">Loi: ' + e.message + '</td></tr>';
+    } finally {
+        SEPA_STATE.loading = false;
+    }
+}
+
+function gradeColor(grade) {
+    return { 'A+': '#2e7d32', 'A': '#388e3c', 'B': '#f57f17', 'C': '#ef6c00', 'D': '#c62828' }[grade] || '#666';
+}
+
+function renderSEPARanking(results) {
+    const tbody = document.getElementById('sepa-ranking-tbody');
+    if (!tbody) return;
+    if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted);padding:20px;">Khong co ma dat min score</td></tr>';
+        return;
+    }
+    tbody.innerHTML = results.map(function(s, i) {
+        const gc = gradeColor(s.grade);
+        const changeClass = s.change >= 0 ? 'positive' : 'negative';
+        const changePfx = s.change >= 0 ? '+' : '';
+        const tt = (s.ta && s.ta.trendTemplatePass) ? 'PASS' : '--';
+        const vcp = (s.ta && s.ta.vcp) ? 'VCP' : '--';
+        const pp = (s.ta && s.ta.pocketPivot) ? 'PP' : '--';
+        const bd = s.breakdown || {};
+        const topF = Object.entries(bd).sort(function(a,b){return b[1]-a[1];}).slice(0,3).map(function(e){return e[0]+':'+e[1];}).join(' ');
+        return '<tr style="cursor:pointer;" onclick="showSEPADetail(\'' + s.symbol + '\')">' +
+            '<td>' + (i+1) + '</td>' +
+            '<td class="stock-code"><strong>' + s.symbol + '</strong></td>' +
+            '<td><strong style="color:' + gc + ';">' + s.score + '</strong></td>' +
+            '<td><span style="background:' + gc + ';color:white;padding:1px 6px;border-radius:3px;font-size:0.75rem;font-weight:600;">' + s.grade + '</span></td>' +
+            '<td>' + StockAPI.formatNumber(s.price) + '</td>' +
+            '<td class="' + changeClass + '">' + changePfx + s.change + '%</td>' +
+            '<td>' + ((s.ta && s.ta.adx) || '--') + '</td>' +
+            '<td>' + tt + '</td><td>' + vcp + '</td><td>' + pp + '</td>' +
+            '<td style="font-size:0.75rem;color:var(--text-muted);">' + topF + '</td>' +
+            '</tr>';
+    }).join('');
+}
+
+async function showSEPADetail(symbol) {
+    const panel = document.getElementById('sepa-detail-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="color:var(--text-muted);">Dang tai chi tiet ' + symbol + '...</div>';
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.SEPA_SCORE + '/' + symbol + '?_t=' + Date.now(), { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (!data.success) { panel.innerHTML = 'Loi: ' + data.error; return; }
+        const bd = data.breakdown || {};
+        const sig = data.signal || {};
+        const bdRows = Object.entries(bd).map(function(entry) {
+            const k = entry[0], v = entry[1];
+            const pct = Math.min(100, v);
+            const color = v >= 70 ? '#2e7d32' : v >= 40 ? '#f57f17' : '#c62828';
+            return '<div style="display:flex;align-items:center;gap:8px;margin:2px 0;">' +
+                '<span style="width:120px;font-size:0.8rem;">' + k + '</span>' +
+                '<div style="flex:1;height:10px;background:var(--bg-primary);border-radius:5px;overflow:hidden;">' +
+                '<div style="width:' + pct + '%;height:100%;background:' + color + ';"></div></div>' +
+                '<span style="width:30px;text-align:right;font-size:0.8rem;">' + v + '</span></div>';
+        }).join('');
+        const sigHtml = sig.action ? '<div style="margin-top:8px;padding:8px;background:var(--bg-card);border-radius:4px;">' +
+            '<strong>Tin hieu: ' + sig.action + '</strong>' +
+            (sig.entry ? ' | Entry: ' + StockAPI.formatNumber(sig.entry) : '') +
+            (sig.stop ? ' | Stop: ' + StockAPI.formatNumber(sig.stop) : '') +
+            (sig.target1 ? ' | Target: ' + StockAPI.formatNumber(sig.target1) : '') +
+            '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">' + (sig.reason || '') + '</div></div>' : '';
+        panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<h4 style="margin:0;">' + symbol + ' - Score ' + data.score + ' (' + data.grade + ')</h4>' +
+            '<button onclick="document.getElementById(\'sepa-detail-panel\').style.display=\'none\'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">x</button>' +
+            '</div><div style="margin-top:8px;">' + bdRows + '</div>' + sigHtml;
+    } catch (e) {
+        panel.innerHTML = 'Loi: ' + e.message;
+    }
+}
+
+// =====================================================================
+// PAPER TRADE UI (Subsystem #5/#6)
+// =====================================================================
+
+const PT_STATE = { pfInterval: null };
+
+async function loadPaperTrade() {
+    await Promise.all([loadPTStatus(), loadPTPortfolio()]);
+    setupPTEvents();
+    if (PT_STATE.pfInterval) clearInterval(PT_STATE.pfInterval);
+    PT_STATE.pfInterval = setInterval(function() {
+        if (AppState.currentTab === 'paper-trade') loadPTPortfolio();
+    }, 30000);
+}
+
+async function loadPTStatus() {
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.BROKER_STATUS, { credentials: 'same-origin' });
+        const data = await resp.json();
+        const badge = document.getElementById('pt-mode-badge');
+        if (badge) {
+            if (data.mode === 'live') {
+                badge.textContent = 'LIVE MODE';
+                badge.style.background = '#c62828'; badge.style.color = '#ffcdd2';
+            } else {
+                badge.textContent = 'PAPER MODE';
+                badge.style.background = '#1b5e20'; badge.style.color = '#a5d6a7';
+            }
+        }
+        const bm = document.getElementById('pt-broker-mode'); if (bm) bm.textContent = data.mode;
+        const resp2 = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.AUTOEXEC_STATUS, { credentials: 'same-origin' });
+        const ae = await resp2.json();
+        const aes = document.getElementById('pt-autoexec-status');
+        if (aes) aes.textContent = ae.enabled ? 'ON' : 'OFF';
+        const lr = document.getElementById('pt-last-run');
+        if (lr) lr.textContent = ae.lastRunAt ? new Date(ae.lastRunAt).toLocaleString('vi-VN') : '--';
+    } catch (e) { console.error('loadPTStatus:', e); }
+}
+
+async function loadPTPortfolio() {
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.BROKER_PORTFOLIO + '?_t=' + Date.now(), { credentials: 'same-origin' });
+        const pf = await resp.json();
+        const cashEl = document.getElementById('pt-cash'); if (cashEl) cashEl.textContent = StockAPI.formatCurrency(pf.cash);
+        const totEl = document.getElementById('pt-total'); if (totEl) totEl.textContent = StockAPI.formatCurrency(pf.totalValue);
+        const pcEl = document.getElementById('pt-positions-count'); if (pcEl) pcEl.textContent = (pf.positions || []).length;
+        const tbody = document.getElementById('pt-portfolio-tbody');
+        if (!tbody) return;
+        if (!pf.positions || !pf.positions.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:16px;">Chua co position</td></tr>';
+            return;
+        }
+        tbody.innerHTML = pf.positions.map(function(p) {
+            const pnlClass = p.pnl >= 0 ? 'positive' : 'negative';
+            const pnlPfx = p.pnl >= 0 ? '+' : '';
+            return '<tr><td class="stock-code"><strong>' + p.symbol + '</strong></td>' +
+                '<td>' + p.qty + '</td>' +
+                '<td>' + StockAPI.formatNumber(p.avgCost) + '</td>' +
+                '<td class="' + pnlClass + '">' + pnlPfx + StockAPI.formatCurrency(p.pnl) + '</td>' +
+                '<td>' + StockAPI.formatCurrency(p.value) + '</td></tr>';
+        }).join('');
+    } catch (e) { console.error('loadPTPortfolio:', e); }
+}
+
+async function placePaperOrder() {
+    const order = {
+        symbol: (document.getElementById('pt-symbol').value || '').toUpperCase().trim(),
+        side: document.getElementById('pt-side').value,
+        type: document.getElementById('pt-type').value,
+        qty: parseInt(document.getElementById('pt-qty').value),
+        price: parseFloat(document.getElementById('pt-price').value) || null
+    };
+    const resultEl = document.getElementById('pt-order-result');
+    if (!order.symbol || !order.qty) { if (resultEl) { resultEl.textContent = 'Can ma + so luong'; resultEl.style.color = '#f57f17'; } return; }
+    if (resultEl) { resultEl.textContent = 'Dang dat lenh...'; resultEl.style.color = 'var(--text-muted)'; }
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + window.StockAPI.SERVER.BROKER_PLACE_ORDER, {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(order)
+        });
+        const data = await resp.json();
+        if (data.success && data.order) {
+            if (resultEl) { resultEl.innerHTML = 'OK ' + data.order.status + ' - ' + data.order.symbol + ' ' + data.order.side + ' ' + data.order.filledQty + '@' + StockAPI.formatNumber(data.order.fillPrice); resultEl.style.color = '#2e7d32'; }
+            loadPTPortfolio();
+        } else {
+            if (resultEl) { resultEl.textContent = 'Loi ' + (data.error || (data.order && data.order.error) || ''); resultEl.style.color = '#c62828'; }
+        }
+    } catch (e) {
+        if (resultEl) { resultEl.textContent = 'Loi ' + e.message; resultEl.style.color = '#c62828'; }
+    }
+}
+
+async function fillFromSignal() {
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + '/api/signals?limit=5&_t=' + Date.now(), { credentials: 'same-origin' });
+        const data = await resp.json();
+        const buy = (data.results || []).find(function(r){return r.action === 'BUY';});
+        if (!buy) { const r = document.getElementById('pt-order-result'); if (r) r.textContent = 'Khong co BUY signal'; return; }
+        document.getElementById('pt-symbol').value = buy.symbol;
+        document.getElementById('pt-side').value = 'BUY';
+        document.getElementById('pt-type').value = 'LO';
+        document.getElementById('pt-price').value = (buy.signal && buy.signal.entry) || buy.price;
+        const stop = buy.signal && buy.signal.stop;
+        if (stop) {
+            const riskPerShare = buy.signal.entry - stop;
+            const shares = Math.floor((1000000 * 0.01 / riskPerShare) / 100) * 100;
+            document.getElementById('pt-qty').value = Math.max(100, shares);
+        }
+        const r = document.getElementById('pt-order-result'); if (r) r.textContent = 'Da fill tu ' + buy.symbol + ' (score ' + buy.score + ')';
+    } catch (e) { const r = document.getElementById('pt-order-result'); if (r) r.textContent = 'Loi: ' + e.message; }
+}
+
+async function autoexecAction(action) {
+    const url = action === 'enable' ? window.StockAPI.SERVER.AUTOEXEC_ENABLE
+              : action === 'disable' ? window.StockAPI.SERVER.AUTOEXEC_DISABLE
+              : window.StockAPI.SERVER.AUTOEXEC_RUN_ONCE;
+    const body = (action === 'enable') ? { confirm: 'I_UNDERSTAND_LIVE_TRADE' } : {};
+    try {
+        const resp = await fetch(window.StockAPI.SERVER_BASE + url, {
+            method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        loadPTStatus();
+        if (action === 'run-once' && data.result) {
+            const r = document.getElementById('pt-order-result');
+            if (r) r.textContent = 'Run once: ' + (data.result.placed || 0) + ' orders placed';
+        }
+    } catch (e) { console.error('autoexecAction:', e); }
+}
+
+function setupPTEvents() {
+    if (window._ptEventsWired) return;
+    window._ptEventsWired = true;
+    const po = document.getElementById('pt-btn-place-order'); if (po) po.addEventListener('click', placePaperOrder);
+    const fs = document.getElementById('pt-btn-from-signal'); if (fs) fs.addEventListener('click', fillFromSignal);
+    const rp = document.getElementById('pt-btn-refresh-pf'); if (rp) rp.addEventListener('click', loadPTPortfolio);
+    const ro = document.getElementById('pt-btn-run-once'); if (ro) ro.addEventListener('click', function(){autoexecAction('run-once');});
+    const en = document.getElementById('pt-btn-enable'); if (en) en.addEventListener('click', function(){autoexecAction('enable');});
+    const di = document.getElementById('pt-btn-disable');
+    if (di) di.addEventListener('click', function(){ if (confirm('Kill-switch: dung auto-exec tuc thi?')) autoexecAction('disable'); });
+    const sl = document.getElementById('btn-load-sepa'); if (sl) sl.addEventListener('click', function(){ window._sepaLoaded = false; loadSEPA(); });
 }
