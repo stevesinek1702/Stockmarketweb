@@ -30,6 +30,50 @@ const SYNC_INTERVAL_MS = SYNC_INTERVAL_H * 60 * 60 * 1000;
 // ── State ────────────────────────────────────────────────────────────────────
 let syncTimer = null;
 
+// De-dup concurrent refresh (vd nhiều endpoint cùng 401 → chỉ login 1 lần).
+// Pattern giống cookie-manager.js loginPromise.
+let _refreshingPromise = null;
+let _lastRefreshAt = 0;          // timestamp lần refresh gần nhất (ms)
+let _lastRefreshStatus = null;   // 'ok' | 'fail' | null
+
+/**
+ * Kích thích refresh cookie NGAY (login FireAnt → push Google Sheet).
+ * De-dup concurrent calls: nếu đang refresh rồi → return cùng promise.
+ * Server.js gọi khi phát hiện FireAnt 401/403 (cookie hết hạn).
+ *
+ * @returns {Promise<boolean>} true nếu refresh thành công
+ */
+async function refreshNow() {
+    if (_refreshingPromise) {
+        // Đang refresh → chờ kết quả (không login lại)
+        return _refreshingPromise;
+    }
+    _refreshingPromise = runSync()
+        .then(ok => {
+            _lastRefreshAt = Date.now();
+            _lastRefreshStatus = ok ? 'ok' : 'fail';
+            return ok;
+        })
+        .catch(() => {
+            _lastRefreshAt = Date.now();
+            _lastRefreshStatus = 'fail';
+            return false;
+        })
+        .finally(() => { _refreshingPromise = null; });
+    return _refreshingPromise;
+}
+
+/**
+ * Timestamp + status lần refresh gần nhất (cho /api/admin/system-status).
+ */
+function lastRefreshInfo() {
+    return {
+        at: _lastRefreshAt ? new Date(_lastRefreshAt).toISOString() : null,
+        status: _lastRefreshStatus,
+        refreshing: !!_refreshingPromise
+    };
+}
+
 // ── Core: Login + lấy cookie ─────────────────────────────────────────────────
 
 async function loginAndGetCookie() {
@@ -168,7 +212,7 @@ function stopAutoSync() {
     }
 }
 
-module.exports = { runSync, startAutoSync, stopAutoSync, loginAndGetCookie };
+module.exports = { runSync, startAutoSync, stopAutoSync, loginAndGetCookie, refreshNow, lastRefreshInfo };
 
 // ── Standalone: node cookie-sync.js ──────────────────────────────────────────
 if (require.main === module) {

@@ -248,6 +248,69 @@ async function getFireAntCookie() {
     return '';
 }
 
+// ── Cookie self-heal (fix 2026-07-22) ────────────────────────────────────
+// Khi FireAnt trả 401/403 (cookie hết hạn), endpoint trước đây rơi vào
+// getStale() → serve data cũ → "data stuck hôm trước". Giờ khi phát hiện 401,
+// trigger cookie-sync.refreshNow() (Playwright re-login → push Google Sheet)
+// rồi invalidate cache để lần fetch tới đọc cookie mới.
+//
+// Throttle 5 phút: tránh hammer Playwright khi nhiều request cùng 401.
+const COOKIE_HEAL_MIN_INTERVAL_MS = 5 * 60 * 1000;
+let _lastCookieHealAt = 0;
+
+/**
+ * Lấy cookie + tự heal khi phát hiện lỗi auth.
+ * Endpoint gọi hàm này thay getFireAntCookie() khi muốn có self-heal.
+ * Flow:
+ *   1. getFireAntCookie() (cache 10 phút)
+ *   2. Nếu cookie rỗng → trigger heal ngay (cookie-sync login)
+ *   3. Heal xong → invalidate cache → getFireAntCookie() lại (đọc cookie mới)
+ *
+ * @param {object} [opts] { triggeredByAuth?: boolean }
+ *        triggeredByAuth: gọi khi nhận 401/403 từ FireAnt → force heal.
+ * @returns {Promise<string>} cookie string (có thể rỗng nếu heal thất bại)
+ */
+async function getFireAntCookieWithHeal(opts) {
+    let cookie = await getFireAntCookie();
+
+    // Cookie rỗng HOẶC endpoint báo 401 → heal
+    const needHeal = !cookie || (opts && opts.triggeredByAuth);
+    if (!needHeal) return cookie;
+
+    const now = Date.now();
+    if (now - _lastCookieHealAt < COOKIE_HEAL_MIN_INTERVAL_MS) {
+        // Đã heal gần đây (< 5 phút) → không heal lại, trả cookie hiện có
+        return cookie;
+    }
+    _lastCookieHealAt = now;
+
+    console.log(`🔧 [cookie-heal] ${opts && opts.triggeredByAuth ? 'FireAnt 401' : 'cookie rỗng'} → trigger cookie-sync`);
+    try {
+        const cookieSync = require('./cookie-sync');
+        const ok = await cookieSync.refreshNow();
+        if (ok) {
+            // Heal thành công → invalidate cache để đọc cookie mới từ Sheet
+            fireAntCookieCache = { cookie: '', fetchedAt: 0 };
+            cookie = await getFireAntCookie();
+            console.log('✅ [cookie-heal] cookie mới đã được cache');
+        } else {
+            console.warn('⚠️ [cookie-heal] refresh thất bại — vẫn dùng cookie cũ');
+        }
+    } catch (e) {
+        console.error('❌ [cookie-heal] error:', e.message);
+    }
+    return cookie;
+}
+
+/**
+ * Kiểm tra response error có phải do auth (401/403) không.
+ * Dùng cho fetchAPI / axios error để quyết định có heal cookie không.
+ */
+function _isAuthError(err) {
+    const status = err && (err.response && err.response.status);
+    return status === 401 || status === 403;
+}
+
 // ==========================================
 // RESPONSE CACHE UTILITY
 // ==========================================
@@ -600,7 +663,7 @@ app.get('/api/influential-stocks', async (req, res) => {
     try {
         console.log('📊 Calculating influential stocks from FireAnt...');
 
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -881,7 +944,7 @@ app.get('/api/all-stocks', async (req, res) => {
         let tradingStatsMap = {};
         try {
             // Sử dụng cookie đã cache
-            const cookieValue = await getFireAntCookie();
+            const cookieValue = await getFireAntCookieWithHeal();
 
             const tradingUrl = `${API_CONFIG.fireant.base}/Markets/TradingStatistic`;
             // Sử dụng 4 headers giống Excel M code: Accept-Encoding, Accept-Language, Cookie, User-Agent
@@ -1083,7 +1146,7 @@ app.get('/api/potential-stocks', async (req, res) => {
                 signals: []
             });
             // Tự động quét trong background nếu chưa có cache
-            const cookie = await getFireAntCookie();
+            const cookie = await getFireAntCookieWithHeal();
             scanPotential(cookie).catch(err => console.error('[POTENTIAL] Auto-scan error:', err.message));
         }
     } catch (error) {
@@ -1099,7 +1162,7 @@ app.get('/api/potential-stocks', async (req, res) => {
 app.post('/api/potential-stocks/scan', async (req, res) => {
     try {
         console.log('⚡ [POTENTIAL] Manual scan triggered via API...');
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const scanData = await scanPotential(cookie);
         res.json(scanData);
     } catch (error) {
@@ -1666,7 +1729,7 @@ app.get('/api/foreign-flow', async (req, res) => {
         //  - FireAnt HOSTC: today buy/sell/net HOSE (KHỚP với số các trang CK hiển thị).
         //    Fiintrade (VNINDEX) lệch đáng kể (tính cả 3 sàn / cache chậm) → chỉ dùng cho trend 5/20.
         //  - Fiintrade: trend 5/20 phiên (FireAnt không có multi-day net).
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -2106,7 +2169,7 @@ app.get('/api/industry-stats', async (req, res) => {
         };
 
         // Get cookie for authenticated requests
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -2392,7 +2455,7 @@ app.get('/api/industry-top-stocks', async (req, res) => {
         }
 
         // Get cookie for authenticated requests
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -2575,7 +2638,7 @@ app.get('/api/industry-top-flow', async (req, res) => {
 
     try {
         // 1. Lấy danh sách mã trong ngành qua FireAnt Quotes
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -2665,7 +2728,7 @@ app.get('/api/marketcap-stats', async (req, res) => {
         const quotesUrl = `${API_CONFIG.fireant.base}/Markets/Quotes`;
 
         // Get cookie for authenticated requests
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -2779,7 +2842,7 @@ app.get('/api/marketcap-top-stocks', async (req, res) => {
         const tradingUrl = `${API_CONFIG.fireant.base}/Markets/TradingStatistic`;
         const quotesUrl = `${API_CONFIG.fireant.base}/Markets/Quotes`;
 
-        const cookie = await getFireAntCookie();
+        const cookie = await getFireAntCookieWithHeal();
         const authHeaders = {
             ...API_CONFIG.fireant.headers,
             'Cookie': cookie,
@@ -3859,7 +3922,7 @@ async function bootstrap() {
         setTimeout(async () => {
             try {
                 console.log('🚀 [POTENTIAL] Starting initial potential stocks scan...');
-                const cookie = await getFireAntCookie();
+                const cookie = await getFireAntCookieWithHeal();
                 scanPotential(cookie).catch(err => console.error('[POTENTIAL] Initial scan error:', err.message));
             } catch (err) {
                 console.error('Failed to trigger initial potential scan:', err.message);
@@ -3883,7 +3946,7 @@ async function bootstrap() {
             try {
                 const got = await acquireLock(POTENTIAL_LOCK_KEY, POTENTIAL_LOCK_TTL_SEC);
                 if (!got) return; // worker khác đang giữ lock → skip
-                const cookie = await getFireAntCookie();
+                const cookie = await getFireAntCookieWithHeal();
                 scanPotential(cookie).catch(err => console.error('[POTENTIAL] Scheduled scan error:', err.message));
             } catch (err) {
                 console.error('[POTENTIAL] Scheduled scan trigger error:', err.message);
