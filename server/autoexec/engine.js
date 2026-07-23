@@ -17,7 +17,7 @@ const tt = require('../trading-time'); // reuse từ #1 fix
 const { getBroker, currentMode } = require('../broker');
 
 const AUTOEXEC_INTERVAL_MS = parseInt(process.env.AUTOEXEC_INTERVAL_MS || '300000'); // 5 min
-const MAX_DAILY_LOSS_PCT = parseFloat(process.env.MAX_DAILY_LOSS_PCT || '5'); // dừng nếu -5% ngày
+const MAX_DAILY_LOSS_PCT = parseFloat(process.env.MAX_DAILY_LOSS_PCT || '7'); // dừng nếu -7% ngày
 
 // State lưu Redis (cluster-safe) — _enabled/_lastRunAt/_lastResult/_dayStartValue
 // share giữa mọi PM2 worker. _running/_timer ở in-memory (per-worker).

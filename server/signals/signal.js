@@ -26,6 +26,12 @@ function generateSignal(scoreResult, ta, price, position) {
     const risk = entry - stop;
     const target1 = entry + cfg.targetRR * risk;
     const target2 = entry + cfg.targetRR * 2 * risk;
+    // MA10 stop-loss (ưu tiên cao): close < MA10×0.97 → cắt lỗ sớm
+    const ma10 = ta.mas && ta.mas.ma10;
+    if (ma10 && price < ma10 * 0.97) {
+      return { action: 'SELL_SL_MA10', entry, stop, target1, target2, atr, atrPct, rr: cfg.targetRR,
+               reason: `Giá ${price} dưới MA10×0.97=${(ma10 * 0.97).toFixed(2)} → cắt lỗ MA10` };
+    }
     if (price <= stop) {
       return { action: 'SELL_SL', entry, stop, target1, target2, atr, atrPct, rr: cfg.targetRR,
                reason: `Giá ${price} chạm stop ${stop.toFixed(2)} (SL ATR×${cfg.atrMultiplier})` };

@@ -44,4 +44,16 @@ describe('generateSignal', () => {
     const s = generateSignal(scoreD, taGood, 49, { entry: 48 });
     expect(s.action).toBe('EXIT');
   });
+  it('SELL_SL_MA10 khi giá dưới MA10×0.97 (đang giữ)', () => {
+    // MA10 = 50, giá 48 < 50×0.97=48.5 → cắt lỗ MA10
+    const taWithMA10 = { ...taGood, mas: { ...taGood.mas, ma10: 50 } };
+    const s = generateSignal(scoreA, taWithMA10, 48, { entry: 49 });
+    expect(s.action).toBe('SELL_SL_MA10');
+  });
+  it('không SELL_SL_MA10 khi giá trên MA10×0.97', () => {
+    // MA10 = 50, giá 49 > 48.5 → không cắt
+    const taWithMA10 = { ...taGood, mas: { ...taGood.mas, ma10: 50 } };
+    const s = generateSignal(scoreA, taWithMA10, 49, { entry: 48 });
+    expect(s.action).toBe('HOLD');
+  });
 });

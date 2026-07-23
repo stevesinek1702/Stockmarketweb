@@ -3372,7 +3372,7 @@ app.post('/api/admin/backtest', async (req, res) => {
             fromDate: req.body.fromDate,
             toDate: req.body.toDate,
             minScore: req.body.minScore || 55,
-            holdDays: req.body.holdDays || 10,
+            holdDays: req.body.holdDays || 20,
             threshold: req.body.threshold || 5
         };
         console.log('🔬 [backtest] starting', opts);

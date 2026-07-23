@@ -53,7 +53,7 @@ function aggregateMetrics(picks, opts) {
 function backtest(opts) {
   opts = opts || {};
   const minScore = opts.minScore || 55;
-  const holdDays = opts.holdDays || 10;
+  const holdDays = opts.holdDays || 20;
   const threshold = opts.threshold || 5;
   const fromDate = opts.fromDate; // YYYY-MM-DD hoặc undefined
   const toDate = opts.toDate;
