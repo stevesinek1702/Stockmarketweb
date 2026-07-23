@@ -1997,6 +1997,8 @@ function renderMABreadthChart() {
     const datasets = [];
 
     // Datasets MA (trục Y trái: số CP)
+    // spanGaps:true → nối line qua các điểm null (đầu series khi chưa đủ data MA,
+    // và các ngày không giao dịch như T7/CN) → đường không bị cắt đứt đoạn.
     ['ma10', 'ma20', 'ma50', 'ma100', 'ma200'].forEach(k => {
         if (!MABreadthState.visibleMAs[k]) return;
         datasets.push({
@@ -2008,6 +2010,7 @@ function renderMABreadthChart() {
             pointRadius: 0,
             pointHoverRadius: 4,
             tension: 0.25,
+            spanGaps: true,
             fill: false,
             yAxisID: 'y'
         });
@@ -2025,6 +2028,7 @@ function renderMABreadthChart() {
             pointRadius: 0,
             pointHoverRadius: 4,
             tension: 0.2,
+            spanGaps: true,
             fill: false,
             yAxisID: 'y1'
         });
