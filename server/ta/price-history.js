@@ -5,18 +5,24 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const HISTORY_FILE = path.join(DATA_DIR, 'price-history.json');
 
 let _cache = null;   // in-process cache (load 1 lần)
+let _lastFileMtime = 0;  // track file change để detect nếu process khác ghi
 
 function _load() {
-  if (_cache) return _cache;
+  // Re-read file nếu: chưa load, hoặc file bị process khác update (mtime đổi)
   try {
-    if (!fs.existsSync(HISTORY_FILE)) {
-      _cache = { meta: { version: 2, lastUpdated: null, symbols: 0 }, symbols: {} };
+    const stat = fs.existsSync(HISTORY_FILE) ? fs.statSync(HISTORY_FILE) : null;
+    if (!stat) {
+      if (!_cache) _cache = { meta: { version: 2, lastUpdated: null, symbols: 0 }, symbols: {} };
       return _cache;
     }
-    _cache = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    const mtime = stat.mtimeMs;
+    if (!_cache || mtime !== _lastFileMtime) {
+      _cache = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+      _lastFileMtime = mtime;
+    }
   } catch (e) {
     console.error('[price-history] load fail:', e.message);
-    _cache = { meta: { version: 2, lastUpdated: null, symbols: 0 }, symbols: {} };
+    if (!_cache) _cache = { meta: { version: 2, lastUpdated: null, symbols: 0 }, symbols: {} };
   }
   return _cache;
 }
@@ -45,6 +51,7 @@ function _save(data) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(data), 'utf8');
     _cache = data;
+    _lastFileMtime = fs.statSync(HISTORY_FILE).mtimeMs;
   } catch (e) {
     console.error('[price-history] save fail:', e.message);
   }
