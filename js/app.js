@@ -2344,25 +2344,28 @@ async function loadInvestorTop(range) {
         const fmt = (v) => (typeof v === 'number' && isFinite(v)) ? v.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '--';
 
         // ── HEADER 2 hàng ──
+        // Border dày (ig-group-border) ở cột cuối mỗi nhóm → phân tách 4 nhóm rõ ràng.
+        // Border dashed (ig-split-border) giữa khối Mua & Bán trong cùng nhóm.
         let h1 = '<th rowspan="2" class="ig-rank">#</th>';
-        GROUPS.forEach(g => { h1 += `<th colspan="4" class="ig-group-header">${g.name}</th>`; });
+        GROUPS.forEach(g => { h1 += `<th colspan="4" class="ig-group-header ig-group-border">${g.name}</th>`; });
         let h2 = '';
         GROUPS.forEach(g => {
-            h2 += '<th class="ig-sub-header ig-sub-buy">Mã</th><th class="ig-sub-header ig-sub-buy">Giá</th>'
-                + '<th class="ig-sub-header ig-sub-sell">Mã</th><th class="ig-sub-header ig-sub-sell">Giá</th>';
+            h2 += '<th class="ig-sub-header ig-sub-buy">Mã</th><th class="ig-sub-header ig-sub-buy ig-split-border">Giá</th>'
+                + '<th class="ig-sub-header ig-sub-sell">Mã</th><th class="ig-sub-header ig-sub-sell ig-group-border">Giá</th>';
         });
         thead.innerHTML = `<tr class="ig-group-header">${h1}</tr><tr class="ig-sub-header">${h2}</tr>`;
 
         // ── BODY ──
         const MAX_ROWS = 10;
         let html = '';
-        const tickerCell = (s) => s
-            ? `<td><span class="ig-tk" onclick="openTradingViewModal('${s.ticker}')" title="${s.ticker}">${s.ticker}</span></td>`
-            : '<td><span style="color:var(--text-muted)">—</span></td>';
-        const valCell = (s, isBuy) => {
-            if (!s) return '<td class="ig-val-' + (isBuy?'pos':'neg') + '">—</td>';
+        // extraCls: class border thêm vào ô (ig-split-border giữa Mua/Bán, ig-group-border giữa các nhóm)
+        const tickerCell = (s, extraCls = '') => s
+            ? `<td class="${extraCls}"><span class="ig-tk" onclick="openTradingViewModal('${s.ticker}')" title="${s.ticker}">${s.ticker}</span></td>`
+            : `<td class="${extraCls}"><span style="color:var(--text-muted)">—</span></td>`;
+        const valCell = (s, isBuy, extraCls = '') => {
+            if (!s) return '<td class="ig-val-' + (isBuy?'pos':'neg') + ' ' + extraCls + '">—</td>';
             const sign = isBuy ? '+' : '';
-            return `<td class="ig-val-${isBuy?'pos':'neg'}">${sign}${fmt(s.net)}</td>`;
+            return `<td class="ig-val-${isBuy?'pos':'neg'} ${extraCls}">${sign}${fmt(s.net)}</td>`;
         };
 
         // ── Hàng tổng SUM (Ròng cho mỗi nhóm, theo range đang chọn) ──
@@ -2373,13 +2376,13 @@ async function loadInvestorTop(range) {
         GROUPS.forEach(g => {
             const t = byKey[g.key] && byKey[g.key][sumField];
             if (!t) {
-                html += '<td colspan="4" style="text-align:center;color:var(--text-muted);">—</td>';
+                html += '<td colspan="4" class="ig-group-border" style="text-align:center;color:var(--text-muted);">—</td>';
                 return;
             }
             const netCls = (typeof t.net === 'number' && isFinite(t.net)) ? (t.net >= 0 ? 'ig-val-pos' : 'ig-val-neg') : '';
             const netSign = (typeof t.net === 'number' && isFinite(t.net) && t.net >= 0) ? '+' : '';
             // Chỉ hiển thị Ròng (bỏ Mua/Bán theo yêu cầu user)
-            html += `<td colspan="4" style="text-align:center;font-weight:700;font-size:0.92rem;" class="${netCls}">${netSign}${fmt(t.net)}</td>`;
+            html += `<td colspan="4" class="ig-group-border ${netCls}" style="text-align:center;font-weight:700;font-size:0.92rem;font-variant-numeric:tabular-nums;">${netSign}${fmt(t.net)}</td>`;
         });
         html += '</tr>';
 
@@ -2388,8 +2391,9 @@ async function loadInvestorTop(range) {
             GROUPS.forEach(g => {
                 const buy = byKey[g.key] && Array.isArray(byKey[g.key].topBuy) ? byKey[g.key].topBuy : [];
                 const sell = byKey[g.key] && Array.isArray(byKey[g.key].topSell) ? byKey[g.key].topSell : [];
-                html += tickerCell(buy[i]) + valCell(buy[i], true);
-                html += tickerCell(sell[i]) + valCell(sell[i], false);
+                // MãMua | GiáMua(split) | MãBán | GiáBán(group-end)
+                html += tickerCell(buy[i]) + valCell(buy[i], true, 'ig-split-border');
+                html += tickerCell(sell[i]) + valCell(sell[i], false, 'ig-group-border');
             });
             html += '</tr>';
         }

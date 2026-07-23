@@ -4772,10 +4772,12 @@ button.scanning::after {
 .notif-item .ni-name { color: var(--text-primary); font-weight: 600; font-size: 0.82rem; }
 .notif-item .ni-meta { color: var(--text-muted); font-size: 0.68rem; margin-top: 2px; }
 
-/* Investor top 4-group table (như Google Sheet) — 16 cột: 4 nhóm × (MãMua|GiáMua|MãBán|GiáBán) */
+/* Investor top 4-group table — 16 cột: 4 nhóm × (MãMua|GiáMua|MãBán|GiáBán)
+   Chia cột rõ ràng: border dày giữa các nhóm, border dashed giữa Mua/Bán,
+   padding rộng + tabular-nums để số không dính vào mã chứng khoán. */
 .ig-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
 .ig-table th, .ig-table td {
-    padding: 3px 6px; text-align: left; border-bottom: 1px solid var(--border-color);
+    padding: 4px 10px; text-align: left; border-bottom: 1px solid var(--border-color);
     white-space: nowrap;
 }
 .ig-table thead th {
@@ -4786,26 +4788,46 @@ button.scanning::after {
 /* Hàng 1: tên nhóm NĐT span 4 cột */
 .ig-table .ig-group-header th {
     text-align: center; font-size: 0.8rem; color: var(--text-primary);
-    font-family: var(--font-display); padding: 6px; border-bottom: 2px solid var(--border-color);
+    font-family: var(--font-display); padding: 7px 6px; border-bottom: 2px solid var(--border-color);
 }
 /* Hàng 2: Mã Mua | Giá | Mã Bán | Giá lặp lại */
 .ig-table .ig-sub-header th {
-    text-align: center; font-size: 0.6rem; color: var(--text-muted); padding: 3px;
+    text-align: center; font-size: 0.6rem; color: var(--text-muted); padding: 4px;
 }
 .ig-table .ig-sub-buy { color: var(--accent-green) !important; }
 .ig-table .ig-sub-sell { color: var(--accent-red) !important; }
-.ig-table .ig-rank { color: var(--text-muted); width: 24px; text-align: right; font-size: 0.7rem; }
-.ig-table .ig-tk { font-weight: 600; color: var(--text-primary); cursor: pointer; }
-.ig-table .ig-tk:hover { color: var(--accent-blue); text-decoration: underline; }
-.ig-table .ig-val-pos { color: var(--accent-green); font-weight: 500; text-align: right; }
-.ig-table .ig-val-neg { color: var(--accent-red); font-weight: 500; text-align: right; }
-/* Border phân tách nhóm (cột cuối của mỗi nhóm) */
+.ig-table .ig-rank { color: var(--text-muted); width: 30px; text-align: right; font-size: 0.7rem; }
+/* Mã chứng khoán: render dạng chip để tách biệt rõ khỏi giá trị bên cạnh */
+.ig-table .ig-tk {
+    display: inline-block; font-weight: 700; color: var(--text-primary);
+    padding: 1px 7px; border-radius: 4px; font-size: 0.78rem; cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+.ig-table .ig-tk:hover { color: #fff; background: var(--accent-blue); }
+/* Ô giá trị: căn phải, tabular-nums (các số hàng đơn vị thẳng hàng),
+   padding-left lớn tạo khoảng cách với mã CK bên trái → không đọc nhầm */
+.ig-table .ig-val-pos,
+.ig-table .ig-val-neg {
+    text-align: right; font-weight: 600; min-width: 66px;
+    padding-left: 16px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+.ig-table .ig-val-pos { color: var(--accent-green); }
+.ig-table .ig-val-neg { color: var(--accent-red); }
+/* Border phân tách: dashed giữa khối Mua & Bán trong cùng nhóm */
+.ig-table .ig-split-border { border-right: 1px dashed var(--border-color); }
+/* Border phân tách: dày (2px) giữa các nhóm NĐT */
 .ig-table .ig-group-border { border-right: 2px solid var(--border-color); }
+/* Header cũng phải có border tương ứng để đường phân cách liền mạch */
+.ig-table .ig-sub-header.ig-split-border { border-right: 1px dashed var(--border-color); }
+.ig-table .ig-sub-header.ig-group-border { border-right: 2px solid var(--border-color); }
+.ig-table .ig-group-header.ig-group-border { border-right: 2px solid var(--border-color); }
 .ig-table tbody tr:hover td { background: var(--bg-card-hover); }
 /* Hàng tổng SUM */
 .ig-table .ig-sum-row td {
     background: var(--bg-secondary); border-bottom: 2px solid var(--border-color);
-    font-size: 0.78rem;
+    font-size: 0.82rem;
 }
 .ig-table .ig-sum-row:hover td { background: var(--bg-secondary); }
 
