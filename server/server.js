@@ -344,12 +344,13 @@ const CACHE_TTL_MS = {
 
 // EOD keys: data chỉ đổi 1 lần/ngày (cuối phiên) → cache 24h, không TTL cố định.
 // Prefix match. Scheduler sẽ refresh 15-22h VN (xem scheduler.js).
+// NOTE: 'industry-stats' KHÔNG thuộc EOD — là intraday (lực cầu ngành đổi theo phiên),
+//       cache 60s + scheduler warm 55s (xem scheduler.js REFRESH_TARGETS).
 const EOD_KEYS = [
     'industry-flow',
     'investor-flow',
     'foreign-flow',
     'investor-detail',
-    'industry-stats',
     'top-net-stocks'
 ];
 // Subset EOD keys có toDate/date trong response → validate toDate trước khi trả cache.
@@ -657,11 +658,15 @@ app.get('/api/market-dashboard', async (req, res) => {
  * Giá trị VNINDEX lấy từ IntradayMarketStatistic (field IndexCurrent).
  */
 app.get('/api/influential-stocks', async (req, res) => {
-    // Cache 60 seconds
-    const cached = await getCachedResponse('influential-stocks', 60000);
-    if (cached) {
-        console.log('📊 Returning cached influential-stocks data');
-        return res.json(cached);
+    // ?refresh=1 → bypass cache (user nhấn nút Cập Nhật trên card Mã Tác Động)
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!forceRefresh) {
+        // Cache 60 seconds
+        const cached = await getCachedResponse('influential-stocks', 60000);
+        if (cached) {
+            console.log('📊 Returning cached influential-stocks data');
+            return res.json(cached);
+        }
     }
     try {
         console.log('📊 Calculating influential stocks from FireAnt...');
@@ -2138,11 +2143,14 @@ app.get('/api/news', async (req, res) => {
  * Tính % CP > MA10 và Lực Cầu theo ngành ICB2 cho Bubble Chart
  */
 app.get('/api/industry-stats', async (req, res) => {
-    // Cache 60 seconds - very heavy endpoint (700+ quotes)
-    const cached = await getCachedResponse('industry-stats', 60000);
-    if (cached) {
-        console.log('📊 Returning cached industry-stats data');
-        return res.json(cached);
+    // ?refresh=1 → bypass cache (user nhấn nút Cập Nhật trên card Chuyển Động Ngành)
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse('industry-stats', 60000);
+        if (cached) {
+            console.log('📊 Returning cached industry-stats data');
+            return res.json(cached);
+        }
     }
     try {
         console.log('📊 Calculating industry stats for bubble chart...');
@@ -2718,11 +2726,14 @@ app.get('/api/industry-top-flow', async (req, res) => {
  * Tính % CP > MA10 và Lực Cầu theo nhóm vốn hóa cho Bubble Chart
  */
 app.get('/api/marketcap-stats', async (req, res) => {
-    // Cache 60 seconds - heavy endpoint
-    const cached = await getCachedResponse('marketcap-stats', 60000);
-    if (cached) {
-        console.log('📊 Returning cached marketcap-stats data');
-        return res.json(cached);
+    // ?refresh=1 → bypass cache (user nhấn nút Cập Nhật trên card Vốn Hóa)
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse('marketcap-stats', 60000);
+        if (cached) {
+            console.log('📊 Returning cached marketcap-stats data');
+            return res.json(cached);
+        }
     }
     try {
         console.log('📊 Calculating market cap stats for bubble chart...');
@@ -2739,15 +2750,33 @@ app.get('/api/marketcap-stats', async (req, res) => {
             'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8'
         };
 
-        const symbols = 'AAA,ACB,AGG,AGR,ANV,BCG,BCM,BID,BVH,CTG,DGC,DGW,DIG,DPM,DXG,EIB,FPT,GAS,GEX,GMD,GVR,HAG,HCM,HDB,HDG,HPG,HSG,HVN,KBC,KDH,KDC,LPB,MBB,MSB,MSN,MWG,NLG,NVL,OCB,PDR,PHR,PLX,PNJ,POW,PVD,PVS,REE,SAB,SBT,SHB,SSI,STB,TCB,TCH,TPB,VCB,VHC,VHM,VIB,VIC,VJC,VND,VNM,VPB,VRE';
+        // Dùng breadth-symbols (~1500 mã) thay vì 65 mã hardcoded trước đây.
+        // Fix bug "Mid vốn hóa đứng 50%": list cũ toàn blue-chip/large-cap → nhóm Mid
+        // (1T-20T) thiếu mã → lucCau=null → bubble vẽ tại 50%.
+        const batches = require('./breadth-symbols');
 
-        const [tradingData, quotesResponse] = await Promise.all([
-            fetchAPI(tradingUrl, authHeaders).catch(() => []),
-            fetchAPI(`${quotesUrl}?symbols=${symbols}`, authHeaders).catch(() => [])
-        ]);
-
+        const tradingData = await fetchAPI(tradingUrl, authHeaders).catch(() => []);
         if (!tradingData || !tradingData.length) {
             return res.json({ success: false, error: 'No trading data' });
+        }
+
+        // Fetch quotes theo batch (5 concurrent, copy pattern từ /api/industry-stats) để
+        // lấy TotalActiveBuyVolume/PriceAverage/TotalValue cho lucCau value-weighted.
+        const allQuotes = [];
+        for (let i = 0; i < batches.length; i += 5) {
+            const chunk = batches.slice(i, i + 5);
+            const promises = chunk.map(symbols =>
+                fetchAPI(`${quotesUrl}?symbols=${symbols}`, authHeaders).catch(() => [])
+            );
+            const results = await Promise.all(promises);
+            results.forEach(data => {
+                if (Array.isArray(data)) allQuotes.push(...data);
+            });
+        }
+        // Quote lookup Map (O(1)) thay vì .find() O(n²) — tránh drop mã khi match.
+        const quoteMap = new Map();
+        for (const q of allQuotes) {
+            if (q && q.Symbol) quoteMap.set(q.Symbol, q);
         }
 
         // Market cap groups (in VND)
@@ -2768,7 +2797,7 @@ app.get('/api/marketcap-stats', async (req, res) => {
         tradingData.forEach(stock => {
             if (!stock.Symbol || stock.Symbol.length !== 3) return;
 
-            const quoteData = quotesResponse?.find(q => q.Symbol === stock.Symbol);
+            const quoteData = quoteMap.get(stock.Symbol);
 
             const priceCurrent = quoteData?.PriceCurrent || stock.LastPriceClose || 0;
             const sharesOutStanding = stock.SharesOutStanding || 0;
@@ -3030,8 +3059,12 @@ function buildIntradayDemandSeries(rawData, bucketMin = 3) {
  * Lực Cầu = TotalActiveBuyVolume / (TotalActiveBuyVolume + TotalActiveSellVolume) * 100
  */
 app.get('/api/vnindex-demand', async (req, res) => {
-    const cached = await getCachedResponse('vnindex-demand', 30000);
-    if (cached) return res.json(cached);
+    // ?refresh=1 → bypass cache (user nhấn nút Cập Nhật trên chart VNINDEX & Lực Cầu)
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse('vnindex-demand', 30000);
+        if (cached) return res.json(cached);
+    }
     try {
         console.log('📈 Fetching VNINDEX intraday + Demand...');
 
@@ -3067,8 +3100,12 @@ app.get('/api/vnindex-demand', async (req, res) => {
  * Lực Cầu = TotalActiveBuyVolume / TotalVolume * 100
  */
 app.get('/api/vn30-demand', async (req, res) => {
-    const cached = await getCachedResponse('vn30-demand', 30000);
-    if (cached) return res.json(cached);
+    // ?refresh=1 → bypass cache (user nhấn nút Cập Nhật trên chart VN30 & Lực Cầu)
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse('vn30-demand', 30000);
+        if (cached) return res.json(cached);
+    }
     try {
         console.log('📈 Fetching VN30 intraday + Demand...');
 

@@ -4586,6 +4586,44 @@ button.scanning::after {
 }
 @keyframes ma-spin { to { transform: rotate(360deg); } }
 
+/* ===== Nút Cập Nhật thủ công trên card dashboard (realtime) ===== */
+/* Compact, đặt trong .chart-header / .index-header / .card-header bên phải */
+.btn-card-refresh {
+    padding: 2px 8px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.15));
+    border-radius: 6px;
+    color: var(--text-muted, #888);
+    cursor: pointer;
+    transition: all 0.12s ease;
+    margin-left: auto;       /* đẩy về bên phải trong flex header */
+}
+.btn-card-refresh:hover {
+    background: rgba(59,130,246,0.15);
+    border-color: var(--accent-blue, #3b82f6);
+    color: var(--accent-blue, #3b82f6);
+}
+.btn-card-refresh.is-loading {
+    position: relative;
+    color: transparent;
+    pointer-events: none;
+}
+.btn-card-refresh.is-loading::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    top: 50%;
+    left: 50%;
+    margin: -6px 0 0 -6px;
+    border: 2px solid var(--accent-blue, #3b82f6);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: ma-spin 0.7s linear infinite;
+}
+
 /* ===== Industry Top Flow Modal (top mã mua/bán ròng theo ngành) ===== */
 .industry-topflow-content {
     width: 95%;

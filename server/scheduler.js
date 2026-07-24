@@ -41,6 +41,9 @@ const REFRESH_TARGETS = [
     { key: 'influential-stocks', url: '/api/influential-stocks',      intervalMs: 55000 },
     { key: 'all-stocks',         url: '/api/all-stocks',              intervalMs: 55000 },
     { key: 'marketcap-stats',    url: '/api/marketcap-stats',         intervalMs: 55000 },
+    // industry-stats: intraday (lực cầu ngành đổi theo phiên) — KHÔNG còn là EOD (fix bug
+    // "Chuyển Động Ngành đứng im cả phiên"). Cache 60s, warm 55s như marketcap-stats.
+    { key: 'industry-stats',     url: '/api/industry-stats',          intervalMs: 55000 },
     // TTL 120s: refresh 110s
     { key: 'news:all:20',        url: '/api/news?limit=20',           intervalMs: 110000 }
     // EOD endpoints (Fiintrade) tách riêng bên dưới — refresh 15-23h + catch-up
@@ -56,7 +59,6 @@ const EOD_TARGETS = [
     { key: 'investor-flow',   url: '/api/investor-flow',   validateToDate: true },
     { key: 'foreign-flow',    url: '/api/foreign-flow',    validateToDate: true },
     { key: 'investor-detail', url: '/api/investor-detail', validateToDate: true },
-    { key: 'industry-stats',  url: '/api/industry-stats',  validateToDate: false },
     { key: 'top-net-stocks',  url: '/api/top-net-stocks',  validateToDate: false }
     // industry-flow: dynamic key (timeRange:level) — user-driven, scheduler không pre-warm
 ];

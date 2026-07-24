@@ -121,6 +121,16 @@ async function initApp() {
         window.DnD.refresh();
     }
 
+    // Bind nút "↻ Cập Nhật" thủ công trên các card dashboard (bypass cache server).
+    // Mỗi nút → loader(force=true) cho đúng card. Auto-refresh 60s vẫn chạy song song.
+    bindCardRefresh('refresh-vnindex-stat',   () => loadMarketDashboard(true));
+    bindCardRefresh('refresh-vn30-stat',      () => loadMarketDashboard(true));   // cùng endpoint, refresh cả 2
+    bindCardRefresh('refresh-industry',       () => loadDashboardCharts({ force: { industry: true } }));
+    bindCardRefresh('refresh-marketcap',      () => loadDashboardCharts({ force: { marketcap: true } }));
+    bindCardRefresh('refresh-vnindex-demand', () => loadDashboardCharts({ force: { vnindex: true } }));
+    bindCardRefresh('refresh-vn30-demand',    () => loadDashboardCharts({ force: { vn30: true } }));
+    bindCardRefresh('refresh-influential',    () => loadInfluentialStocks(true));
+
     console.log('✅ App initialized successfully!');
 }
 
@@ -335,10 +345,11 @@ async function fetchTopNetStocks() {
 /**
  * Load Market Dashboard - VNINDEX/VN30 stats with Lực cầu
  */
-async function loadMarketDashboard() {
+async function loadMarketDashboard(force) {
     try {
         console.log('📊 Loading market dashboard...');
-        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/market-dashboard`);
+        const qs = force ? '?refresh=1' : '';
+        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/market-dashboard${qs}`);
         const result = await response.json();
 
         if (!result.success || !result.data) {
@@ -483,7 +494,7 @@ async function loadMarketDashboard() {
 /**
  * Load Influential Stocks - Top stocks impacting VNINDEX
  */
-async function loadInfluentialStocks() {
+async function loadInfluentialStocks(force) {
     // Panel chứa 2 bảng Mã Tác Động (target container, không phải tbody)
     const panel = document.querySelector('#panel-influential .influential-stocks-grid');
 
@@ -494,7 +505,8 @@ async function loadInfluentialStocks() {
 
     try {
         console.log('📊 Loading influential stocks...');
-        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/influential-stocks`);
+        const qs = force ? '?refresh=1' : '';
+        const response = await fetch(`${window.StockAPI.SERVER_BASE}/api/influential-stocks${qs}`);
         const result = await response.json();
 
         if (!result.success || !result.data) {
@@ -2641,17 +2653,25 @@ function renderForeignTrend(trend) {
 /**
  * Load and render all dashboard charts
  */
-async function loadDashboardCharts() {
-    console.log('📊 Loading dashboard charts...');
+/**
+ * Tải dữ liệu cho 4 biểu đồ dashboard (industry/marketcap/vnindex/vn30).
+ * @param {object} [opts] { force?: { industry?, marketcap?, vnindex?, vn30? } }
+ *        force.<key>=true → fetch endpoint kèm ?refresh=1 để bypass cache server
+ *        (user nhấn nút Cập Nhật trên card tương ứng).
+ */
+async function loadDashboardCharts(opts) {
+    const force = (opts && opts.force) || {};
+    const qs = (k) => force[k] ? '?refresh=1' : '';
+    console.log('📊 Loading dashboard charts...', force);
 
     try {
-        // Fetch all chart data in parallel — industry-stats là EOD (cache daily),
-        // marketcap/vnindex/vn30 là intraday (fetch trực tiếp)
+        // industry-stats giờ là intraday (cache 60s) — KHÔNG dùng swrDaily nữa
+        // (trước đây swrDaily cache localStorage 1 ngày → kìm data cả phiên).
         const [industryRes, marketCapRes, vnindexRes, vn30Res] = await Promise.all([
-            StockCache.swrDaily('industry-stats', () => fetch(`${window.StockAPI.SERVER_BASE}/api/industry-stats`).then(r => r.json())).catch(() => null),
-            fetch(`${window.StockAPI.SERVER_BASE}/api/marketcap-stats`).then(r => r.json()).catch(() => null),
-            fetch(`${window.StockAPI.SERVER_BASE}/api/vnindex-demand`).then(r => r.json()).catch(() => null),
-            fetch(`${window.StockAPI.SERVER_BASE}/api/vn30-demand`).then(r => r.json()).catch(() => null)
+            fetch(`${window.StockAPI.SERVER_BASE}/api/industry-stats${qs('industry')}`).then(r => r.json()).catch(() => null),
+            fetch(`${window.StockAPI.SERVER_BASE}/api/marketcap-stats${qs('marketcap')}`).then(r => r.json()).catch(() => null),
+            fetch(`${window.StockAPI.SERVER_BASE}/api/vnindex-demand${qs('vnindex')}`).then(r => r.json()).catch(() => null),
+            fetch(`${window.StockAPI.SERVER_BASE}/api/vn30-demand${qs('vn30')}`).then(r => r.json()).catch(() => null)
         ]);
 
         // Render charts
@@ -2703,6 +2723,28 @@ async function loadDashboardCharts() {
     } catch (error) {
         console.error('Dashboard charts error:', error);
     }
+}
+
+/**
+ * Bind nút "↻ Cập Nhật" trên một card dashboard → gọi loader(force=true) bypass cache server.
+ * Toggle .is-loading (spinner) trong khi load. Guard AppState.isLoading tránh đụng auto-refresh.
+ * @param {string} btnId  id của nút <button class="btn-card-refresh">
+ * @param {function} loader  hàm loader nhận (force) — vd loadDashboardCharts, loadInfluentialStocks
+ */
+function bindCardRefresh(btnId, loader) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        if (AppState.isLoading || btn.classList.contains('is-loading')) return;
+        btn.classList.add('is-loading');
+        try {
+            await loader(true);
+        } catch (e) {
+            console.error(`[refresh ${btnId}] failed:`, e);
+        } finally {
+            btn.classList.remove('is-loading');
+        }
+    });
 }
 
 /**

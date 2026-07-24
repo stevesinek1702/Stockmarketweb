@@ -79,6 +79,7 @@
                     <div class="index-header">
                         <h3>VNINDEX</h3>
                         <span class="index-exchange">HOSE</span>
+                        <button class="btn-card-refresh" id="refresh-vnindex-stat" title="Cập nhật ngay">↻</button>
                     </div>
                     <div class="index-main-row">
                         <div class="index-info-left">
@@ -136,6 +137,7 @@
                     <div class="index-header">
                         <h3>VN30</h3>
                         <span class="index-exchange">HOSE</span>
+                        <button class="btn-card-refresh" id="refresh-vn30-stat" title="Cập nhật ngay">↻</button>
                     </div>
                     <div class="index-main-row">
                         <div class="index-info-left">
@@ -202,6 +204,7 @@
                     <div class="chart-card" id="card-industry-bubble">
                         <div class="chart-header">
                             <h3>🏢 Chuyển Động Ngành</h3>
+                            <button class="btn-card-refresh" id="refresh-industry" title="Cập nhật ngay">↻</button>
                             <label class="label-toggle">
                                 <input type="checkbox" id="industry-show-labels" onchange="toggleBubbleLabels('industry')">
                                 <span>Hiện nhãn</span>
@@ -237,6 +240,7 @@
                     <div class="chart-card" id="card-marketcap-bubble">
                         <div class="chart-header">
                             <h3>💰 Vốn Hóa</h3>
+                            <button class="btn-card-refresh" id="refresh-marketcap" title="Cập nhật ngay">↻</button>
                             <label class="label-toggle">
                                 <input type="checkbox" id="marketcap-show-labels" onchange="toggleBubbleLabels('marketcap')">
                                 <span>Hiện nhãn</span>
@@ -276,6 +280,7 @@
                     <div class="chart-card" id="card-vnindex-demand">
                         <div class="chart-header">
                             <h3>📈 VNINDEX & Lực Cầu</h3>
+                            <button class="btn-card-refresh" id="refresh-vnindex-demand" title="Cập nhật ngay">↻</button>
                             <div class="chart-legend-inline">
                                 <span class="legend-vnindex">— VNINDEX</span>
                                 <span class="legend-luccau">— Lực Cầu</span>
@@ -294,6 +299,7 @@
                     <div class="chart-card" id="card-vn30-demand">
                         <div class="chart-header">
                             <h3>📊 VN30 & Lực Cầu</h3>
+                            <button class="btn-card-refresh" id="refresh-vn30-demand" title="Cập nhật ngay">↻</button>
                             <div class="chart-legend-inline">
                                 <span class="legend-vn30">— VN30</span>
                                 <span class="legend-luccau">— Lực Cầu</span>
@@ -417,6 +423,7 @@
                 <div class="card-header">
                     <h3>📊 Mã Tác Động Thị Trường</h3>
                     <span class="card-badge">VNINDEX</span>
+                    <button class="btn-card-refresh" id="refresh-influential" title="Cập nhật ngay">↻</button>
                 </div>
                 <div class="influential-stocks-grid">
                     <div class="influential-column positive">
