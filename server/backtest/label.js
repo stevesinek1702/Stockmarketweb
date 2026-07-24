@@ -50,6 +50,14 @@ function forwardReturn(closes, entryIdx, holdDays) {
         break; // cut loss, thoát sớm
       }
     }
+
+    // Trailing stop (lock profit): close < peak×0.90 (-10% từ high nhất).
+    // Chỉ kích hoạt khi đã có profit (peak > entry) — tránh cut sớm khi chưa lên.
+    if (i >= earliestSell && peak > entry && p < peak * 0.90) {
+      actualExit = i;
+      exitReason = 'trailing_sl';
+      break; // lock profit, thoát sớm
+    }
   }
   const exitPrice = closes[actualExit];
   return {

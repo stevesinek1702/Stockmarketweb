@@ -52,4 +52,18 @@ describe('forwardReturn (T+2.5 + MA10 stop)', () => {
     const r = forwardReturn(c, 30, 10);
     expect(r.exitReason).toBe('hold');
   });
+
+  // Trailing stop: giá giảm -10% từ peak → exit sớm (lock profit)
+  it('trailing stop: giá -10% từ peak → exit sớm (exitReason=trailing_sl)', () => {
+    // 20 ngày tăng từ 100→200, rồi dump xuống 175 (< 200×0.90=180)
+    const up = Array.from({ length: 20 }, (_, i) => 100 + i * 5); // idx 0-19, peak ~195
+    const dump = [190, 175, 160]; // idx 20-22 dump
+    const flat = Array.from({ length: 25 }, () => 160);
+    const c = [...up, ...dump, ...flat]; // 48 phần tử
+    // entry idx 10 (close 150), holdDays 20 → maxExit = 10+3+20 = 33
+    // peak trong window = 195 (idx 19), 175 < 195×0.90=175.5 → trailing stop
+    const r = forwardReturn(c, 10, 20);
+    expect(['trailing_sl', 'ma10_sl']).toContain(r.exitReason);
+    expect(r.exitIdx).toBeLessThan(33);
+  });
 });

@@ -32,6 +32,14 @@ function generateSignal(scoreResult, ta, price, position) {
       return { action: 'SELL_SL_MA10', entry, stop, target1, target2, atr, atrPct, rr: cfg.targetRR,
                reason: `Giá ${price} dưới MA10×0.97=${(ma10 * 0.97).toFixed(2)} → cắt lỗ MA10` };
     }
+    // Trailing stop (lock profit): giá giảm -10% từ peak cao nhất.
+    // position.peak = giá high nhất từ entry (caller track + update).
+    // Chỉ kích hoạt khi đã có profit (peak > entry).
+    const peak = position.peak || Math.max(entry, price);
+    if (peak > entry && price < peak * 0.90) {
+      return { action: 'SELL_TRAILING', entry, stop, target1, target2, atr, atrPct, rr: cfg.targetRR,
+               peak, reason: `Giá ${price} giảm -10% từ peak ${peak.toFixed(2)} → lock profit` };
+    }
     if (price <= stop) {
       return { action: 'SELL_SL', entry, stop, target1, target2, atr, atrPct, rr: cfg.targetRR,
                reason: `Giá ${price} chạm stop ${stop.toFixed(2)} (SL ATR×${cfg.atrMultiplier})` };
