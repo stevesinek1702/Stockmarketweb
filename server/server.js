@@ -3293,6 +3293,162 @@ app.get('/api/ma-breadth/meta', (req, res) => {
 // ==========================================
 // ComputeTA cho 1 symbol từ price-history.json (OHLC+volume). Cần backfill trước.
 
+// ==========================================
+// ICHIMOKU BREADTH + SINGLE-SYMBOL ENDPOINTS
+// Đếm bao nhiêu CP trên/dưới từng đường Tenkan (toàn thị trường + per-ngành).
+// Tính Ichimoku đầy đủ (5 đường + Kumo) cho 1 mã (dùng OHLCV thật).
+// ==========================================
+
+/**
+ * GET /api/ichimoku-breadth?periods=9,26,65,129,234&scope=market|industry&industryCode=8300
+ * periods: comma-separated (default 9,26,65,129,234 — user có thể edit số lượng + giá trị).
+ * scope=market: trả market + ALL industries. scope=industry: chỉ trả 1 ngành (nhẹ hơn).
+ */
+app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
+    try {
+        const ichiB = require('./ichimoku-breadth');
+        // Parse periods (cho phép user edit: 5-6 đường, mỗi đường 1 số)
+        let periods = ichiB.DEFAULT_PERIODS;
+        if (req.query.periods) {
+            const parsed = String(req.query.periods).split(',')
+                .map(s => parseInt(s, 10))
+                .filter(n => Number.isInteger(n) && n > 0 && n <= 1000);
+            if (parsed.length > 0) periods = parsed;
+        }
+        const scope = req.query.scope === 'industry' ? 'industry' : 'market';
+        const industryCode = req.query.industryCode || null;
+
+        // Build symbol→icb2 map từ all-stocks cache (đếm theo ngành cần map này)
+        let symbolIcb2 = null;
+        try {
+            const allStocksData = await fetchInternal(req, '/api/all-stocks');
+            const stocks = (allStocksData && (allStocksData.stocks || allStocksData.allStocks || allStocksData)) || [];
+            const list = Array.isArray(stocks) ? stocks : (stocks.hsx || []);
+            symbolIcb2 = ichiB.buildSymbolIcb2Map(list, INDUSTRY_OVERRIDE);
+        } catch (e) { /* nếu all-stocks fail → breadth vẫn tính được phần market */ }
+
+        let result;
+        if (scope === 'industry' && industryCode) {
+            result = ichiB.computeIchimokuBreadth({ periods, symbolIcb2 });
+            // Lọc chỉ ngành được chọn
+            const ind = result.industries[industryCode];
+            result = {
+                success: !!ind,
+                scope: 'industry',
+                industryCode,
+                industryName: ichiB.ICB2_MAP[industryCode] || industryCode,
+                periods,
+                industry: ind || null,
+                market: result.market,
+                meta: result.meta
+            };
+        } else {
+            result = ichiB.computeIchimokuBreadth({ periods, symbolIcb2 });
+            result.scope = 'market';
+        }
+        res.json(result);
+    } catch (e) {
+        console.error('Ichimoku breadth error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/ichimoku/:symbol?tenkan=9&kijun=26&senkouB=52&displacement=26
+ * Tính Ichimoku đầy đủ (5 đường + Kumo) cho 1 mã dùng OHLCV thật.
+ * Trả chart series + nhận định chuyên gia (interpretIchimoku).
+ */
+app.get('/api/ichimoku/:symbol', requireAuth, async (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const { computeIchimoku, interpretIchimoku, ICHIMOKU_GUIDE } = require('./ta/ichimoku');
+        const opts = {
+            tenkan: parseInt(req.query.tenkan) || 9,
+            kijun: parseInt(req.query.kijun) || 26,
+            senkouB: parseInt(req.query.senkouB) || 52,
+            displacement: parseInt(req.query.displacement) || 26
+        };
+
+        // Thử price-history.json trước (nhanh, local). Nếu thiếu → fetch OHLCV FireAnt.
+        const { getHistory } = require('./ta/price-history');
+        let history = getHistory(symbol);
+        if (!history || !history.ohlc || history.ohlc.length < 60) {
+            try {
+                const { fetchOHLCV } = require('./data/ohlcv-fetch');
+                history = await fetchOHLCV(symbol, 300);
+            } catch (e) { history = null; }
+        }
+        if (!history || !history.ohlc || history.ohlc.length < 60) {
+            return res.status(404).json({ success: false, error: 'Không đủ dữ liệu OHLCV cho mã này.' });
+        }
+
+        const ic = computeIchimoku(history, opts);
+        if (!ic) return res.status(500).json({ success: false, error: 'computeIchimoku trả null (data quá ngắn).' });
+
+        const interp = interpretIchimoku(ic);
+        res.json({
+            success: true,
+            symbol,
+            opts,
+            lastDate: history.dates ? history.dates[history.dates.length - 1] : null,
+            historyDays: (history.ohlc || []).length,
+            current: {
+                close: ic.close,
+                tenkan: ic.tenkan,
+                kijun: ic.kijun,
+                spanA: ic.spanA,
+                spanB: ic.spanB,
+                chikou: ic.chikou,
+                kumo: ic.kumo
+            },
+            series: {
+                dates: ic.series.closes.map((_, i) => (history.dates || [])[i] || i),
+                close: ic.series.closes,
+                tenkan: ic.series.tenkan,
+                kijun: ic.series.kijun,
+                spanA: ic.series.spanA,
+                spanB: ic.series.spanB
+            },
+            interpretation: interp,
+            guide: ICHIMOKU_GUIDE
+        });
+    } catch (e) {
+        console.error('Ichimoku single error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * GET /api/elliott/:symbol — phân tích Elliott Wave (swing detection + Fib).
+ * Dùng OHLCV (price-history.json hoặc fetch FireAnt nếu thiếu).
+ */
+app.get('/api/elliott/:symbol', requireAuth, async (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const { analyzeElliott, ELLIOTT_GUIDE } = require('./ta/elliott');
+
+        // Ưu tiên VNINDEX đặc biệt (dùng cho phân tích thị trường tổng)
+        let history;
+        const { getHistory } = require('./ta/price-history');
+        history = getHistory(symbol);
+        if (!history || !history.ohlc || history.ohlc.length < 60) {
+            try {
+                const { fetchOHLCV } = require('./data/ohlcv-fetch');
+                history = await fetchOHLCV(symbol, 400);  // 400 ngày cho Elliott (cần nhiều swing)
+            } catch (e) { history = null; }
+        }
+        if (!history || !history.ohlc || history.ohlc.length < 60) {
+            return res.status(404).json({ success: false, error: 'Không đủ dữ liệu OHLCV cho mã này.' });
+        }
+
+        const result = analyzeElliott(history);
+        res.json({ ...result, symbol, guide: ELLIOTT_GUIDE });
+    } catch (e) {
+        console.error('Elliott error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 /**
  * GET /api/ta/:symbol — full TA result (mas/momentum/trend/volatility/bollinger/sepa).
  * Auth required (middleware /api đã mount). Trả 404 nếu chưa có data (cần backfill).
@@ -4304,8 +4460,9 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
     }
 
     const forceRefresh = req.query.refresh === 'true';
-    // Cache per-user: mỗi user có prompt/key khác nhau → cache key riêng
-    const cacheKey = `ai-report:user:${userId}`;
+    const period = ['today', 'week', 'month'].includes(req.query.period) ? req.query.period : 'today';
+    // Cache per-user + period: mỗi user/period có prompt khác nhau → cache key riêng
+    const cacheKey = `ai-report:user:${userId}:${period}`;
 
     // 1. Cache check (24h) — skip nếu forceRefresh
     if (!forceRefresh) {
@@ -4317,24 +4474,50 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
     }
 
     try {
-        console.log(`🤖 [ai] Generating market report (user ${userId}, provider ${userSettings.provider})...`);
+        console.log(`🤖 [ai] Generating market report (user ${userId}, provider ${userSettings.provider}, period ${period})...`);
 
         // 2. Gom data song song (9 endpoint)
+        // Range MA breadth + investor theo period: today→days=1/range=today, week→days=5/range=oneWeek, month→days=20/range=oneMonth
+        const periodRange = period === 'week' ? 'oneWeek' : (period === 'month' ? 'oneMonth' : 'today');
+        const maDays = period === 'week' ? 5 : (period === 'month' ? 20 : 5);
         const [dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential] = await Promise.all([
             fetchInternal(req, '/api/market-dashboard'),
             fetchInternal(req, '/api/market-breadth'),
             fetchInternal(req, '/api/industry-stats'),
-            fetchInternal(req, '/api/investor-detail?range=today'),
+            fetchInternal(req, `/api/investor-detail?range=${periodRange}`),
             fetchInternal(req, '/api/foreign-flow'),
             fetchInternal(req, '/api/breadth-breakout'),
             fetchInternal(req, '/api/influential-stocks'),
-            fetchInternal(req, '/api/ma-breadth?scope=market&days=5'),
+            fetchInternal(req, `/api/ma-breadth?scope=market&days=${maDays}`),
             fetchInternal(req, '/api/potential-stocks')
         ]);
 
         // 3. Build context gọn
         const dateStr = require('./cache').vnToday();
         const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential);
+        // Gắn period để AI biết đang viết báo cáo loại nào + thêm điểm nhấn tuần/tháng
+        context.loaiBaoCao = period === 'week' ? 'TUẦN (5 phiên)' : (period === 'month' ? 'THÁNG (~20 phiên)' : 'NGÀY');
+        if (period === 'week' || period === 'month') {
+            // Tính điểm nhấn multi-day từ chuỗi MA breadth: %MA đầu vs cuối kỳ
+            if (maBreadth?.success && Array.isArray(maBreadth.series) && maBreadth.series.length >= 2) {
+                const first = maBreadth.series[0];
+                const last = maBreadth.series[maBreadth.series.length - 1];
+                const total = last.total || 1;
+                const pct = (n) => Math.round((n / total) * 1000) / 10;
+                context.diemNhanBreadth = {
+                    kyGhiChu: `Đầu kỳ (${first.date}) → Cuối kỳ (${last.date})`,
+                    ma50DauCuoi: `${pct(first.ma50)}% → ${pct(last.ma50)}%`,
+                    ma100DauCuoi: `${pct(first.ma100)}% → ${pct(last.ma100)}%`,
+                    ma200DauCuoi: `${pct(first.ma200)}% → ${pct(last.ma200)}%`,
+                    tongMaCuoiKy: last.total,
+                    nhanDinh: (last.ma50 - first.ma50) > 0
+                        ? 'Breadth MỞ RỘNG (số mã trên MA tăng) → xu hướng tích cực trong kỳ'
+                        : (last.ma50 - first.ma50) < 0
+                            ? 'Breadth THU HẸP (số mã trên MA giảm) → xu hướng suy yếu trong kỳ'
+                            : 'Breadth đi ngang trong kỳ'
+                };
+            }
+        }
 
         // 3b. Thêm MA VNINDEX (giá trị điểm ~1771) — async, tính riêng
         const vnindexMA = await computeVNIndexMA();
@@ -4357,13 +4540,15 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
             geminiKey: userSettings.geminiKey,
             tokenrouterKey: userSettings.tokenrouterKey,
             systemPrompt: userSettings.systemPrompt,
-            provider: userSettings.provider
+            provider: userSettings.provider,
+            period
         });
 
         const responseData = {
             success: true,
             report: text,
             provider,
+            period,
             generatedAt: new Date().toISOString(),
             date: dateStr,
             userId

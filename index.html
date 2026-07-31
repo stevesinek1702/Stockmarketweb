@@ -36,6 +36,9 @@
                 <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
                 <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
                 <button class="nav-btn" data-tab="ai-report">🤖 Báo Cáo AI</button>
+                <button class="nav-btn" data-tab="week-report">📅 Báo Cáo Tuần</button>
+                <button class="nav-btn" data-tab="month-report">🗓️ Báo Cáo Tháng</button>
+                <button class="nav-btn" data-tab="technical">📊 Kỹ Thuật (Ichimoku + Elliott)</button>
                 <button class="nav-btn" data-tab="sector-ai">🎯 AI Đánh Giá Ngành</button>
   <button class="nav-btn" data-tab="paper-trade">💼 Paper Trade</button>
 
@@ -1446,6 +1449,120 @@
                         <div style="font-size:3rem;margin-bottom:16px;">📊</div>
                         <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo thị trường tự động bằng AI</p>
                         <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo"</strong> để AI phân tích VNINDEX, lực cầu, dòng tiền, breadth, breakout và viết báo cáo tóm tắt.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 📅 Báo Cáo Tuần Tab -->
+        <section class="tab-content" id="week-report">
+            <div class="card full-width">
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                    <h3>📅 Báo Cáo Thị Trường Tuần</h3>
+                    <button class="btn-secondary" id="week-report-generate" title="AI tổng kết 5 phiên gần nhất">🤖 Tạo Báo Cáo Tuần</button>
+                    <button class="btn-secondary" id="week-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
+                    <span id="week-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                </div>
+                <div id="week-report-body">
+                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                        <div style="font-size:3rem;margin-bottom:16px;">📅</div>
+                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tuần bằng AI</p>
+                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tuần"</strong> để AI tổng kết 5 phiên: xu hướng VNINDEX, breadth, dòng tiền tích lũy, ngành dẫn dặt + triển vọng tuần tới.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 🗓️ Báo Cáo Tháng Tab -->
+        <section class="tab-content" id="month-report">
+            <div class="card full-width">
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                    <h3>🗓️ Báo Cáo Thị Trường Tháng</h3>
+                    <button class="btn-secondary" id="month-report-generate" title="AI tổng kết ~20 phiên gần nhất">🤖 Tạo Báo Cáo Tháng</button>
+                    <button class="btn-secondary" id="month-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
+                    <span id="month-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                </div>
+                <div id="month-report-body">
+                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                        <div style="font-size:3rem;margin-bottom:16px;">🗓️</div>
+                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tháng bằng AI</p>
+                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tháng"</strong> để AI tổng kết ~20 phiên: xu hướng tháng, độ rộng thị trường, dịch chuyển ngành, dòng tiền lớn + triển vọng tháng tới.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 📊 Kỹ Thuật Tab (Ichimoku + Elliott Wave) -->
+        <section class="tab-content" id="technical">
+            <div class="card full-width">
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                    <h3>📊 Phân Tích Kỹ Thuật Nâng Cao</h3>
+                    <!-- Sub-tab switcher -->
+                    <div class="tech-subtabs" style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="investor-sub-tab active" data-tech="ichi-breadth">🌐 Ichimoku Breadth</button>
+                        <button class="investor-sub-tab" data-tech="ichi-stock">🎯 Ichimoku 1 Mã</button>
+                        <button class="investor-sub-tab" data-tech="elliott">🌊 Sóng Elliott</button>
+                    </div>
+                    <span id="technical-meta" style="font-size:0.8rem;color:var(--text-muted);margin-left:auto;"></span>
+                </div>
+
+                <!-- SUB 1: Ichimoku Breadth — bao nhiêu CP trên/dưới từng đường Tenkan -->
+                <div class="investor-sub-panel active" id="tech-ichi-breadth">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Đường Tenkan (số phiên, edit được):</label>
+                            <div id="ichi-periods-input" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+                            <button class="btn-secondary" style="margin-top:6px;padding:4px 10px;font-size:0.75rem;" id="ichi-add-period">➕ Thêm đường</button>
+                        </div>
+                        <div>
+                            <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Phạm vi:</label>
+                            <select id="ichi-scope" style="padding:6px 8px;">
+                                <option value="market">Toàn thị trường</option>
+                                <option value="industry">Theo ngành</option>
+                            </select>
+                        </div>
+                        <div id="ichi-industry-wrap" style="display:none;">
+                            <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Ngành:</label>
+                            <select id="ichi-industry" style="padding:6px 8px;max-width:220px;"></select>
+                        </div>
+                        <button class="btn-primary" id="ichi-breadth-load">📊 Tính Breadth</button>
+                    </div>
+                    <div id="ichi-breadth-result" style="font-size:0.85rem;">
+                        <p style="color:var(--text-muted);">Chọn đường Tenkan + phạm vi → nhấn <b>Tính Breadth</b>. Đếm số CP đang trên/dưới từng đường cho toàn thị trường hoặc từng ngành.</p>
+                    </div>
+                    <details style="margin-top:12px;">
+                        <summary style="cursor:pointer;font-size:0.85rem;color:var(--text-secondary);">📖 Hướng dẫn Ichimoku (cho người mới)</summary>
+                        <div id="ichi-guide-box" style="margin-top:8px;font-size:0.82rem;"></div>
+                    </details>
+                </div>
+
+                <!-- SUB 2: Ichimoku 1 Mã — 5 đường + Kumo + nhận định -->
+                <div class="investor-sub-panel" id="tech-ichi-stock">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Mã cổ phiếu:</label>
+                            <input type="text" id="ichi-symbol" placeholder="VD: VCB, FPT, HPG..." style="padding:6px 10px;text-transform:uppercase;width:140px;">
+                        </div>
+                        <button class="btn-primary" id="ichi-stock-load">🎯 Phân Tích</button>
+                        <span style="font-size:0.75rem;color:var(--text-muted);">Dùng OHLCV thật (high/low) → Tenkan/Kijun/Span chính xác.</span>
+                    </div>
+                    <div id="ichi-stock-result" style="font-size:0.85rem;">
+                        <p style="color:var(--text-muted);">Nhập mã → xem 5 đường Ichimoku + đám mây Kumo + nhận định chuyên gia.</p>
+                    </div>
+                </div>
+
+                <!-- SUB 3: Sóng Elliott -->
+                <div class="investor-sub-panel" id="tech-elliott">
+                    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:12px;">
+                        <div>
+                            <label style="font-size:0.8rem;display:block;margin-bottom:4px;">Mã cổ phiếu (hoặc VNINDEX):</label>
+                            <input type="text" id="elliott-symbol" placeholder="VNINDEX, VCB, FPT..." style="padding:6px 10px;text-transform:uppercase;width:160px;">
+                        </div>
+                        <button class="btn-primary" id="elliott-load">🌊 Phân Tích Sóng</button>
+                        <span style="font-size:0.75rem;color:var(--text-muted);">Heuristic nhận diện sóng động lực (5 sóng) / điều chỉnh (ABC) + Fibonacci.</span>
+                    </div>
+                    <div id="elliott-result" style="font-size:0.85rem;">
+                        <p style="color:var(--text-muted);">Nhập mã → xem nhận diện sóng + dự phóng Fibonacci tương lai.</p>
                     </div>
                 </div>
             </div>

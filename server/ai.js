@@ -73,6 +73,77 @@ Cấu trúc đề xuất (có thể điều chỉnh theo data):
 ## Mã nổi bật (tác động VNINDEX, top dòng tiền)
 ## Nhận định & Cảnh báo`;
 
+// ═══════════════════════════════════════════════════════════════════════
+// BÁO CÁO TUẦN / THÁNG — góc nhìn xu hướng (không phải "hôm nay")
+// ═══════════════════════════════════════════════════════════════════════
+
+const WEEKLY_PROMPT = `Bạn là chuyên gia phân tích chứng khoán Việt Nam với hơn 10 năm kinh nghiệm.
+
+Nhiệm vụ: viết BÁO CÁO TUẦN (tổng kết 5 phiên giao dịch gần nhất) dựa trên data JSON.
+
+Khác biệt so với báo cáo ngày: đây là GÓC NHÌN XU HƯỚNG, không phải mô tả 1 ngày.
+Tập trung vào: diễn biến cả tuần, động lượng, sức mạnh tương đối, dòng tiền tích lũy,
+nhận định xu hướng + triển vọng tuần tới.
+
+Quy tắc:
+1. Phong cách: NGẮN GỌN, SÚC ÍCH, có INSIGHT xu hướng (không liệt kê lan man).
+2. Dùng Markdown: ## tiêu đề section, **bold** số liệu quan trọng, - bullet list.
+3. Tiếng Việt, thuật ngữ tài chính giữ nguyên (lucCau, breadth, breakout, GTGD...).
+4. LUÔN dẫn số liệu cụ thể. KHÔNG bịa số liệu — chỉ dùng data được cung cấp.
+5. Đưa ra nhận định xu hướng + cảnh báo rủi ro + triển vọng tuần tới.
+
+PHÂN TÍCH SÂU:
+- **Tổng kết tuần**: VNINDEX biến động ra sao (đầu vs cuối tuần, % cả tuần),
+  tổng GTGD tuần, trạng thái thị trường.
+- **Độ rộng kỹ thuật (doRongKyThuat)**: % mã trên MA50/100/200 ĐẦU vs CUỐI tuần —
+  breadth MỞ RỘNG (tăng) hay THU HẸP (giảm)? Đây là tín hiệu xu hướng then chốt.
+- **Dòng tiền tuần**: khối ngoại + 4 nhóm NĐT ròng cả tuần (netTuanTy).
+  Tự institutional/Tự doanh đang mua hay bán cả tuần?
+- **Phá Đỉnh/Đáy**: verdict tuần + vốn hóa phá đáy/đỉnh (tyLeDayDinh).
+- **Ngành dẫn dặt**: top ngành mạnh/yếu cả tuần theo lucCau + breadth.
+- **Triển vọng tuần tới**: dựa trên breadth trend + dòng tiền + vị trí giá vs MA.
+
+Cấu trúc đề xuất:
+## Tổng kết tuần (VNINDEX + GTGD + trạng thái)
+## Độ rộng thị trường & Xu hướng breadth
+## Dòng tiền tuần (Khối ngoại + NĐT)
+## Ngành nổi bật tuần
+## Triển vọng & Cảnh báo tuần tới`;
+
+const MONTHLY_PROMPT = `Bạn là chuyên gia phân tích chứng khoán Việt Nam với hơn 10 năm kinh nghiệm.
+
+Nhiệm vụ: viết BÁO CÁO THÁNG (tổng kết ~20 phiên giao dịch gần nhất) dựa trên data JSON.
+
+Khác biệt so với báo cáo ngày: đây là GÓC NHÌN TRUNG HẠN (tháng), bức tranh lớn.
+Tập trung vào: xu hướng tháng, sự dịch chuyển ngành, dòng tiền lớn, cấu trúc thị trường,
+nhận định chiến lược + triển vọng tháng tới.
+
+Quy tắc:
+1. Phong cách: NGẮN GỌN, SÚC ÍCH, có INSIGHT chiến lược (không liệt kê lan man).
+2. Dùng Markdown: ## tiêu đề section, **bold** số liệu quan trọng, - bullet list.
+3. Tiếng Việt, thuật ngữ tài chính giữ nguyên (lucCau, breadth, breakout, GTGD...).
+4. LUÔN dẫn số liệu cụ thể. KHÔNG bịa số liệu — chỉ dùng data được cung cấp.
+5. Đưa ra nhận định xu hướng + cảnh báo rủi ro + triển vọng tháng tới.
+
+PHÂN TÍCH SÂU:
+- **Tổng kết tháng**: VNINDEX biến động cả tháng (% đầu→cuối tháng), GTGD tháng,
+  trạng thái thị trường tổng thể.
+- **Độ rộng kỹ thuật (doRongKyThuat)**: % mã trên MA50/100/200 ĐẦU vs CUỐI tháng —
+  breadth xu hướng tháng là gì? Mở rộng (tăng điểm) hay thu hẹp?
+- **Dòng tiền tháng**: khối ngoại + 4 nhóm NĐT ròng cả tháng (netThangTy).
+  Dòng tiền lớn (khối ngoại + tự doanh) đang đổ vào hay rút khỏi thị trường?
+- **Phá Đỉnh/Đáy**: verdict tháng + vốn hóa phá đáy/đỉnh (tyLeDayDinh) — xu hướng
+  rủi ro lớn (vốn hóa đáy >> đỉnh = dòng tiền lớn rút).
+- **Chuyển dịch ngành**: ngành nào mạnh lên/yếu đi trong tháng (so sánh lucCau).
+- **Triển vọng tháng tới**: dựa trên breadth trend + dòng tiền + cấu trúc thị trường.
+
+Cấu trúc đề xuất:
+## Tổng kết tháng (VNINDEX + GTGD + trạng thái)
+## Độ rộng thị trường & Xu hướng breadth tháng
+## Dòng tiền tháng (Khối ngoại + NĐT)
+## Chuyển dịch ngành trong tháng
+## Triển vọng & Cảnh báo tháng tới`;
+
 
 /**
  * Gọi DeepSeek chat completion (OpenAI-compatible API).
@@ -186,23 +257,37 @@ async function tokenrouterChat(messages, apiKey) {
  *   'gemini' = chỉ Gemini
  * @param {object} context — data thị trường (đã được buildMarketContext gọn)
  * @param {string} dateStr — ngày báo cáo (YYYY-MM-DD) cho tiêu đề
- * @param {object} [opts] — { deepseekKey, geminiKey, tokenrouterKey, systemPrompt, provider }
+ * @param {object} [opts] — { deepseekKey, geminiKey, tokenrouterKey, systemPrompt, provider, period }
+ *   period: 'today' (mặc định) | 'week' | 'month' → chọn prompt + tiêu đề phù hợp.
+ *   Nếu user set systemPrompt riêng → ưu tiên (override period prompt).
  * @returns {Promise<{text:string, provider:string}>}
  */
 async function generateMarketReport(context, dateStr, opts = {}) {
     const dsKey = opts.deepseekKey || DEEPSEEK_API_KEY;
     const gmKey = opts.geminiKey || GEMINI_API_KEY;
     const trKey = opts.tokenrouterKey || TOKENROUTER_API_KEY;
-    const prompt = opts.systemPrompt || SYSTEM_PROMPT;
     const providerPref = opts.provider || 'auto';
 
-    const userPrompt = `Data thị trường chứng khoán Việt Nam ngày ${dateStr} (JSON):
+    // Chọn prompt theo period (user override systemPrompt vẫn được ưu tiên cao nhất)
+    const period = opts.period || 'today';
+    const periodPromptMap = { today: SYSTEM_PROMPT, week: WEEKLY_PROMPT, month: MONTHLY_PROMPT };
+    const prompt = opts.systemPrompt || periodPromptMap[period] || SYSTEM_PROMPT;
+
+    // Tiêu đề user-prompt theo period
+    const labelMap = {
+        today: { ten: 'hôm nay', yeuCau: 'Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã nêu.' },
+        week:  { ten: 'tuần qua (5 phiên)', yeuCau: 'Hãy viết báo cáo tổng kết TUẦN theo cấu trúc đã nêu.' },
+        month: { ten: 'tháng qua (~20 phiên)', yeuCau: 'Hãy viết báo cáo tổng kết THÁNG theo cấu trúc đã nêu.' }
+    };
+    const label = labelMap[period] || labelMap.today;
+
+    const userPrompt = `Data thị trường chứng khoán Việt Nam — ${label.ten} — cập nhật ${dateStr} (JSON):
 
 \`\`\`json
 ${JSON.stringify(context, null, 2)}
 \`\`\`
 
-Hãy viết báo cáo tóm tắt thị trường hôm nay theo cấu trúc đã nêu.`;
+${label.yeuCau}`;
 
     const errors = [];
 
@@ -422,5 +507,7 @@ module.exports = {
     parsePickerJSON,
     isAvailable,
     SYSTEM_PROMPT,
+    WEEKLY_PROMPT,
+    MONTHLY_PROMPT,
     PICKER_SYSTEM_PROMPT
 };

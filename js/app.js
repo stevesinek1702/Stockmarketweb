@@ -4199,9 +4199,706 @@ function setupAIReportEvents() {
     if (resetBtn) resetBtn.addEventListener('click', resetAIPrompt);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// BÁO CÁO TUẦN / THÁNG — cùng cơ chế AI report, chỉ thêm ?period=week|month
+// Tái dùng: cùng endpoint /api/ai/market-report, cùng prompt selector phía server.
+// ═══════════════════════════════════════════════════════════════════════
+
+const PeriodReportState = { week: { loading: false }, month: { loading: false } };
+
+/**
+ * Load báo cáo theo period (week/month). Generic — tránh duplicate loadAIReport 2 lần.
+ * @param {'week'|'month'} period
+ * @param {boolean} force — true = tạo mới (skip cache), false = dùng cache khi switchTab
+ * @param {Object} ids — { body, meta, genBtn, copyBtn, genLabel, loadingText, errorText, placeholderText }
+ */
+async function loadPeriodReport(period, force, ids) {
+    const body = document.getElementById(ids.body);
+    const metaEl = document.getElementById(ids.meta);
+    const genBtn = document.getElementById(ids.genBtn);
+    if (!body) return;
+
+    const st = PeriodReportState[period];
+    if (st.loading) return;
+    st.loading = true;
+    if (genBtn) { genBtn.disabled = true; genBtn.textContent = ids.loadingText; }
+    if (metaEl) metaEl.textContent = '';
+
+    if (force) {
+        body.innerHTML = `
+            <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                <div style="font-size:2.5rem;margin-bottom:16px;">🤖</div>
+                <p style="font-size:1rem;">${ids.placeholderText}</p>
+                <p style="font-size:0.8rem;margin-top:8px;opacity:0.7;">AI cần 10-30 giây để xử lý. Vui lòng chờ.</p>
+            </div>`;
+    }
+
+    try {
+        const q = new URLSearchParams({ period });
+        if (force) q.set('refresh', 'true');
+        const url = `${window.StockAPI.SERVER_BASE}/api/ai/market-report?${q.toString()}`;
+        const resp = await fetch(url, { method: 'POST', credentials: 'same-origin' });
+        const data = await resp.json();
+
+        if (!data || !data.success) {
+            const errMsg = data?.error || 'Không tạo được báo cáo';
+            const isConfigError = errMsg.includes('chưa cấu hình');
+            body.innerHTML = `
+                <div style="text-align:center;padding:40px 20px;">
+                    <div style="font-size:2.5rem;margin-bottom:12px;">${isConfigError ? '🔑' : '⚠️'}</div>
+                    <p style="color:var(--accent-red);font-size:0.95rem;margin-bottom:8px;">${errMsg}</p>
+                    ${isConfigError ? '<p style="font-size:0.8rem;color:var(--text-muted);">Mở tab "🤖 Báo Cáo AI" → ⚙️ Cấu hình AI để nhập API key.</p>' : ''}
+                </div>`;
+            return;
+        }
+
+        const html = window.marked ? marked.parse(data.report) : `<pre>${data.report}</pre>`;
+        body.innerHTML = `<div class="ai-report-content">${html}</div>`;
+
+        st.text = data.report;
+        const copyBtn = document.getElementById(ids.copyBtn);
+        if (copyBtn) copyBtn.style.display = '';
+
+        const providerName = data.provider === 'gemini' ? 'Google Gemini' : (data.provider === 'deepseek' ? 'DeepSeek' : (data.provider === 'glm' ? 'GLM-5.2' : data.provider));
+        const genTime = new Date(data.generatedAt).toLocaleString('vi-VN');
+        if (metaEl) metaEl.textContent = `⚡ ${providerName} · tạo lúc ${genTime}`;
+    } catch (e) {
+        console.error(`loadPeriodReport(${period}) error:`, e);
+        body.innerHTML = `
+            <div style="text-align:center;padding:40px 20px;">
+                <div style="font-size:2.5rem;margin-bottom:12px;">⚠️</div>
+                <p style="color:var(--accent-red);">Lỗi kết nối: ${e.message}</p>
+            </div>`;
+    } finally {
+        st.loading = false;
+        if (genBtn) { genBtn.disabled = false; genBtn.textContent = ids.genLabel; }
+    }
+}
+
+function loadWeeklyReport(force) {
+    return loadPeriodReport('week', force, {
+        body: 'week-report-body', meta: 'week-report-meta',
+        genBtn: 'week-report-generate', copyBtn: 'week-report-copy',
+        genLabel: '🤖 Tạo Báo Cáo Tuần',
+        loadingText: '⏳ Đang tổng kết tuần...',
+        placeholderText: 'Đang tổng kết dữ liệu cả tuần...'
+    });
+}
+
+function loadMonthlyReport(force) {
+    return loadPeriodReport('month', force, {
+        body: 'month-report-body', meta: 'month-report-meta',
+        genBtn: 'month-report-generate', copyBtn: 'month-report-copy',
+        genLabel: '🤖 Tạo Báo Cáo Tháng',
+        loadingText: '⏳ Đang tổng kết tháng...',
+        placeholderText: 'Đang tổng kết dữ liệu cả tháng...'
+    });
+}
+
+/**
+ * Setup nút cho báo cáo tuần/tháng (generate + copy). Dùng chung copy logic.
+ */
+function setupPeriodReportEvents(period, ids) {
+    const genBtn = document.getElementById(ids.genBtn);
+    if (genBtn) genBtn.addEventListener('click', () => loadPeriodReport(period, true, ids));
+    const copyBtn = document.getElementById(ids.copyBtn);
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const report = PeriodReportState[period]?.text || '';
+            if (!report) return;
+            try {
+                await navigator.clipboard.writeText(report);
+                copyBtn.textContent = '✅ Đã copy';
+                setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+            } catch (e) {
+                const ta = document.createElement('textarea');
+                ta.value = report;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); copyBtn.textContent = '✅ Đã copy'; setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000); }
+                catch (e2) { alert('Không copy được. Hãy copy thủ công.'); }
+                document.body.removeChild(ta);
+            }
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 📊 TAB KỸ THUẬT — Ichimoku (Breadth + 1 mã) + Sóng Elliott
+// ═══════════════════════════════════════════════════════════════════════
+
+const TechState = {
+    periods: [9, 26, 65, 129, 234],   // 5 đường Tenkan mặc định (user có thể edit)
+    ichiChart: null,                   // Chart.js instance cho Ichimoku 1 mã
+    elliottChart: null                 // Chart.js instance cho Elliott
+};
+
+const ICB2_NAMES = {
+    '0500': 'Dầu khí', '1300': 'Hóa chất', '1700': 'Tài nguyên cơ bản',
+    '2300': 'Xây dựng và VLXD', '2700': 'Sản phẩm & DV công nghiệp',
+    '3300': 'Ôtô và linh kiện', '3500': 'Thực phẩm và đồ uống',
+    '3700': 'Hàng tiêu dùng', '4500': 'Y tế', '5300': 'Bán lẻ',
+    '5500': 'Truyền thông', '5700': 'Du lịch và giải trí', '6500': 'Viễn thông',
+    '7500': 'Các dịch vụ hạ tầng', '8300': 'Ngân hàng', '8500': 'Bảo hiểm',
+    '8600': 'Bất động sản', '8700': 'Dịch vụ tài chính', '8900': 'Quỹ', '9500': 'Công nghệ'
+};
+
+/** Khởi tạo tab Kỹ thuật lần đầu (gọi từ switchTab khi user vào tab). */
+function initTechnicalTab() {
+    if (window._technicalInit) return;
+    window._technicalInit = true;
+
+    // Sub-tab switcher
+    document.querySelectorAll('.tech-subtabs .investor-sub-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tech-subtabs .investor-sub-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tech = btn.dataset.tech;
+            document.querySelectorAll('#technical .investor-sub-panel').forEach(p => p.classList.remove('active'));
+            const panelId = tech === 'ichi-breadth' ? 'tech-ichi-breadth'
+                          : tech === 'ichi-stock' ? 'tech-ichi-stock' : 'tech-elliott';
+            const panel = document.getElementById(panelId);
+            if (panel) panel.classList.add('active');
+        });
+    });
+
+    // Render input periods động (5 ô số + nút thêm đường)
+    renderIchiPeriodInputs();
+
+    // Populate dropdown ngành
+    const indSel = document.getElementById('ichi-industry');
+    if (indSel) {
+        Object.entries(ICB2_NAMES).forEach(([code, name]) => {
+            const o = document.createElement('option');
+            o.value = code; o.textContent = name;
+            indSel.appendChild(o);
+        });
+    }
+
+    // Scope toggle: industry → hiện dropdown ngành
+    const scopeSel = document.getElementById('ichi-scope');
+    if (scopeSel) {
+        scopeSel.addEventListener('change', () => {
+            document.getElementById('ichi-industry-wrap').style.display =
+                scopeSel.value === 'industry' ? '' : 'none';
+        });
+    }
+
+    // Nút load breadth
+    const loadBtn = document.getElementById('ichi-breadth-load');
+    if (loadBtn) loadBtn.addEventListener('click', loadIchimokuBreadth);
+
+    // Nút add period
+    const addBtn = document.getElementById('ichi-add-period');
+    if (addBtn) addBtn.addEventListener('click', () => {
+        TechState.periods.push(52);
+        renderIchiPeriodInputs();
+    });
+
+    // Ichimoku 1 mã
+    const ichiStockBtn = document.getElementById('ichi-stock-load');
+    if (ichiStockBtn) ichiStockBtn.addEventListener('click', loadIchimokuStock);
+    const ichiSym = document.getElementById('ichi-symbol');
+    if (ichiSym) ichiSym.addEventListener('keydown', e => { if (e.key === 'Enter') loadIchimokuStock(); });
+
+    // Elliott
+    const elliottBtn = document.getElementById('elliott-load');
+    if (elliottBtn) elliottBtn.addEventListener('click', loadElliott);
+    const ellSym = document.getElementById('elliott-symbol');
+    if (ellSym) ellSym.addEventListener('keydown', e => { if (e.key === 'Enter') loadElliott(); });
+}
+
+/** Render ô nhập periods động (mỗi đường 1 input số, có nút xóa). */
+function renderIchiPeriodInputs() {
+    const wrap = document.getElementById('ichi-periods-input');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    TechState.periods.forEach((p, idx) => {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '2'; inp.max = '500';
+        inp.value = p;
+        inp.style.cssText = 'width:64px;padding:4px 6px;text-align:center;';
+        inp.title = `Đường ${idx + 1} (số phiên)`;
+        inp.addEventListener('change', () => {
+            const v = parseInt(inp.value, 10);
+            TechState.periods[idx] = (Number.isInteger(v) && v >= 2 && v <= 500) ? v : p;
+            inp.value = TechState.periods[idx];
+        });
+        const del = document.createElement('button');
+        del.textContent = '✕';
+        del.title = 'Xóa đường này';
+        del.style.cssText = 'padding:4px 6px;font-size:0.7rem;background:var(--accent-red-bg, #3a1a1a);color:var(--accent-red);border:1px solid var(--accent-red);border-radius:4px;cursor:pointer;';
+        del.addEventListener('click', () => {
+            if (TechState.periods.length <= 1) return; // giữ ít nhất 1
+            TechState.periods.splice(idx, 1);
+            renderIchiPeriodInputs();
+        });
+        const cell = document.createElement('span');
+        cell.style.cssText = 'display:flex;align-items:center;gap:2px;';
+        cell.append(inp, del);
+        wrap.appendChild(cell);
+    });
+}
+
+/** Đọc periods hiện tại từ state (đã sync qua input change). */
+function getIchiPeriods() {
+    // Loại trùng + sort + đảm bảo hợp lệ
+    const set = new Set(TechState.periods.filter(p => Number.isInteger(p) && p >= 2 && p <= 500));
+    return set.size ? [...set].sort((a, b) => a - b) : [9];
+}
+
+/** Load Ichimoku breadth: số CP trên/dưới từng đường Tenkan. */
+async function loadIchimokuBreadth() {
+    const result = document.getElementById('ichi-breadth-result');
+    const meta = document.getElementById('technical-meta');
+    if (!result) return;
+    const periods = getIchiPeriods();
+    const scope = document.getElementById('ichi-scope')?.value || 'market';
+    const industryCode = document.getElementById('ichi-industry')?.value || '';
+    result.innerHTML = '<p style="color:var(--text-muted);">⏳ Đang tính breadth trên toàn thị trường...</p>';
+    try {
+        const params = new URLSearchParams({ periods: periods.join(','), scope });
+        if (scope === 'industry') params.set('industryCode', industryCode);
+        const resp = await fetch(`${window.StockAPI.SERVER_BASE}/api/ichimoku-breadth?${params}`, { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error(data?.error || 'Lỗi tính breadth');
+        renderIchimokuBreadth(data, scope);
+        if (meta) meta.textContent = `Cập nhật ${data.meta?.lastDate || ''} · ${data.meta?.symbolCount || 0} mã`;
+    } catch (e) {
+        console.error('loadIchimokuBreadth error:', e);
+        result.innerHTML = `<p style="color:var(--accent-red);">⚠️ ${e.message}</p>`;
+    }
+}
+
+/** Render bảng breadth: market + (nếu market) bảng ngành. */
+function renderIchimokuBreadth(data, scope) {
+    const result = document.getElementById('ichi-breadth-result');
+    const periods = data.periods;
+    const fmt = n => (n != null ? n.toLocaleString('vi-VN') : '—');
+
+    // Bảng market
+    let html = '<h4 style="margin:8px 0;">🌐 Toàn Thị Trường</h4>';
+    html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="text-align:left;">';
+    html += '<th style="padding:6px 8px;">Đường Tenkan</th>';
+    periods.forEach(p => html += `<th style="padding:6px 8px;text-align:center;">T${p}</th>`);
+    html += '</tr></thead><tbody>';
+    html += '<tr><td style="padding:6px 8px;">Số CP trên đường</td>';
+    periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-green);"><b>${fmt(data.market.byPeriod[p]?.above)}</b></td>`);
+    html += '</tr><tr><td style="padding:6px 8px;">Số CP dưới đường</td>';
+    periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-red);"><b>${fmt(data.market.byPeriod[p]?.below)}</b></td>`);
+    html += '</tr><tr style="background:var(--bg-card-hover);"><td style="padding:6px 8px;"><b>% CP trên đường</b></td>';
+    periods.forEach(p => {
+        const pct = data.market.byPeriod[p]?.pctAbove;
+        const color = pct >= 60 ? 'var(--accent-green)' : (pct <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
+        html += `<td style="padding:6px 8px;text-align:center;"><b style="color:${color};">${pct ?? 0}%</b></td>`;
+    });
+    html += '</tr><tr><td style="padding:6px 8px;color:var(--text-muted);">Số mã đủ data</td>';
+    periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--text-muted);">${fmt(data.market.byPeriod[p]?.coverage)}</td>`);
+    html += '</tr></tbody></table>';
+    html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;">Tổng ${data.market.total} mã. ${data.meta?.note || ''}</p>`;
+
+    // Bảng ngành (chỉ khi scope=market)
+    if (scope === 'market' && data.industries) {
+        const inds = Object.entries(data.industries)
+            .map(([code, d]) => ({ code, ...d }))
+            .sort((a, b) => (b.byPeriod[periods[0]]?.pctAbove || 0) - (a.byPeriod[periods[0]]?.pctAbove || 0));
+        html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.88rem;">📊 Breadth theo ngành (xếp theo % trên T' + periods[0] + ')</summary>';
+        html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:8px;"><thead><tr style="text-align:left;">';
+        html += '<th style="padding:5px 8px;">Ngành</th><th style="padding:5px 8px;text-align:center;">Số mã</th>';
+        periods.forEach(p => html += `<th style="padding:5px 8px;text-align:center;">T${p} %trên</th>`);
+        html += '</tr></thead><tbody>';
+        inds.forEach(ind => {
+            html += `<tr><td style="padding:5px 8px;">${ind.name}</td><td style="padding:5px 8px;text-align:center;color:var(--text-muted);">${ind.total}</td>`;
+            periods.forEach(p => {
+                const pct = ind.byPeriod[p]?.pctAbove ?? 0;
+                const color = pct >= 60 ? 'var(--accent-green)' : (pct <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
+                html += `<td style="padding:5px 8px;text-align:center;color:${color};">${pct}%</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table></details>';
+    } else if (scope === 'industry' && data.industry) {
+        const ind = data.industry;
+        html += `<h4 style="margin:12px 0 4px;">🏭 ${data.industryName}</h4>`;
+        html += `<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="padding:6px 8px;text-align:left;">Đường</th>`;
+        periods.forEach(p => html += `<th style="padding:6px 8px;text-align:center;">T${p}</th>`);
+        html += '</tr></thead><tbody>';
+        html += '<tr><td style="padding:6px 8px;">CP trên đường</td>';
+        periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-green);">${fmt(ind.byPeriod[p]?.above)}</td>`);
+        html += '</tr><tr><td style="padding:6px 8px;">% trên đường</td>';
+        periods.forEach(p => {
+            const pct = ind.byPeriod[p]?.pctAbove ?? 0;
+            html += `<td style="padding:6px 8px;text-align:center;"><b>${pct}%</b></td>`;
+        });
+        html += `</tr></tbody></table><p style="font-size:0.78rem;color:var(--text-muted);">Tổng ${ind.total} mã trong ngành.</p>`;
+    }
+    result.innerHTML = html;
+}
+
+/** Load Ichimoku cho 1 mã: 5 đường + Kumo + nhận định. */
+async function loadIchimokuStock() {
+    const result = document.getElementById('ichi-stock-result');
+    if (!result) return;
+    const sym = (document.getElementById('ichi-symbol')?.value || '').toUpperCase().trim();
+    if (!sym) { result.innerHTML = '<p style="color:var(--accent-red);">Vui lòng nhập mã cổ phiếu.</p>'; return; }
+    result.innerHTML = '<p style="color:var(--text-muted);">⏳ Đang tính Ichimoku (lấy OHLCV thật)...</p>';
+    try {
+        const resp = await fetch(`${window.StockAPI.SERVER_BASE}/api/ichimoku/${encodeURIComponent(sym)}?tenkan=9&kijun=26&senkouB=52&displacement=26`, { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error(data?.error || 'Không tính được Ichimoku');
+        renderIchimokuStock(data);
+    } catch (e) {
+        console.error('loadIchimokuStock error:', e);
+        result.innerHTML = `<p style="color:var(--accent-red);">⚠️ ${e.message}</p>`;
+    }
+}
+
+/** Render Ichimoku 1 mã: bảng giá trị + nhận định + chart. */
+function renderIchimokuStock(data) {
+    const result = document.getElementById('ichi-stock-result');
+    const c = data.current;
+    const interp = data.interpretation || {};
+    const f2 = n => (n != null ? n.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) : '—');
+    const kumoColor = c.kumo?.state === 'green' ? 'var(--accent-green)' : (c.kumo?.state === 'red' ? 'var(--accent-red)' : 'var(--text-muted)');
+    const kumoTxt = c.kumo?.state === 'green' ? 'Mây XANH (Bullish)' : (c.kumo?.state === 'red' ? 'Mây ĐỎ (Bearish)' : '—');
+
+    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">`;
+    // Trái: bảng giá trị hiện tại
+    html += `<div><h4 style="margin:0 0 8px;">${data.symbol} — Giá trị hiện tại (${data.lastDate})</h4>`;
+    html += `<table class="data-table" style="width:100%;font-size:0.82rem;border-collapse:collapse;">
+        <tr><td style="padding:4px 8px;">Giá đóng cửa</td><td style="padding:4px 8px;text-align:right;"><b>${f2(c.close)}</b></td></tr>
+        <tr><td style="padding:4px 8px;">Tenkan-sen (9)</td><td style="padding:4px 8px;text-align:right;">${f2(c.tenkan)}</td></tr>
+        <tr><td style="padding:4px 8px;">Kijun-sen (26)</td><td style="padding:4px 8px;text-align:right;">${f2(c.kijun)}</td></tr>
+        <tr><td style="padding:4px 8px;">Senkou Span A</td><td style="padding:4px 8px;text-align:right;">${f2(c.spanA)}</td></tr>
+        <tr><td style="padding:4px 8px;">Senkou Span B</td><td style="padding:4px 8px;text-align:right;">${f2(c.spanB)}</td></tr>
+        <tr><td style="padding:4px 8px;">Chikou Span</td><td style="padding:4px 8px;text-align:right;">${f2(c.chikou)}</td></tr>
+        <tr style="background:var(--bg-card-hover);"><td style="padding:4px 8px;">Trạng thái Kumo</td><td style="padding:4px 8px;text-align:right;color:${kumoColor};"><b>${kumoTxt}</b></td></tr>
+    </table>`;
+    if (c.kumo?.top != null) html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">Mây Kumo: ${f2(c.kumo.bottom)} – ${f2(c.kumo.top)}</p>`;
+    html += `</div>`;
+    // Phải: nhận định
+    html += `<div><h4 style="margin:0 0 8px;">🎯 Nhận định chuyên gia</h4>`;
+    html += `<p style="font-size:1.1rem;margin-bottom:8px;"><b>${interp.verdict || ''}</b> <span style="color:var(--text-muted);">(score ${interp.score ?? '—'}/100)</span></p>`;
+    if (Array.isArray(interp.signals)) {
+        html += '<ul style="margin:4px 0 8px;padding-left:18px;font-size:0.82rem;">';
+        interp.signals.forEach(s => html += `<li style="margin-bottom:3px;">${s}</li>`);
+        html += '</ul>';
+    }
+    if (Array.isArray(interp.advice)) {
+        html += '<p style="font-weight:600;margin:8px 0 4px;">💡 Gợi ý hành động:</p><ul style="margin:4px 0;padding-left:18px;font-size:0.82rem;">';
+        interp.advice.forEach(a => html += `<li style="margin-bottom:3px;">${a}</li>`);
+        html += '</ul>';
+    }
+    html += `</div></div>`;
+
+    // Chart
+    html += `<div style="margin-top:8px;"><h4 style="margin:0 0 8px;">📈 Biểu đồ Ichimoku</h4><div style="height:380px;"><canvas id="ichi-stock-chart"></canvas></div></div>`;
+
+    // Education (collapse)
+    if (Array.isArray(interp.education) && interp.education.length) {
+        html += '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:0.85rem;">📖 Giải thích chi tiết (học Ichimoku)</summary><ul style="margin-top:6px;padding-left:18px;font-size:0.8rem;">';
+        interp.education.forEach(ed => html += `<li style="margin-bottom:4px;">${ed}</li>`);
+        html += '</ul></details>';
+    }
+    result.innerHTML = html;
+
+    // Vẽ chart
+    drawIchimokuChart(data);
+}
+
+/** Vẽ chart Ichimoku bằng Chart.js (close + tenkan + kijun + Kumo fill). */
+function drawIchimokuChart(data) {
+    const canvas = document.getElementById('ichi-stock-chart');
+    if (!canvas || !window.Chart) return;
+    if (TechState.ichiChart) { TechState.ichiChart.destroy(); TechState.ichiChart = null; }
+    const s = data.series;
+    const n = s.close.length;
+    const tail = Math.min(n, 120); // vẽ 120 phiên gần nhất cho gọn
+    const labels = s.dates.slice(-tail);
+    const close = s.close.slice(-tail);
+    const tenkan = s.tenkan.slice(-tail);
+    const kijun = s.kijun.slice(-tail);
+    const spanA = s.spanA.slice(-tail);
+    const spanB = s.spanB.slice(-tail);
+
+    // Kumo fill: giữa spanA và spanB — dùng 2 dataset fill
+    const ctx = canvas.getContext('2d');
+    TechState.ichiChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Giá', data: close, borderColor: '#4dc9ff', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+                { label: 'Span A', data: spanA, borderColor: 'rgba(0,200,83,0.7)', backgroundColor: 'rgba(0,200,83,0.12)', fill: '+1', borderWidth: 1, pointRadius: 0, tension: 0.1 },
+                { label: 'Span B', data: spanB, borderColor: 'rgba(255,99,132,0.7)', backgroundColor: 'rgba(255,99,132,0.12)', fill: false, borderWidth: 1, pointRadius: 0, tension: 0.1 },
+                { label: 'Tenkan(9)', data: tenkan, borderColor: '#ffb74d', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.1 },
+                { label: 'Kijun(26)', data: kijun, borderColor: '#ba68c8', backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+            scales: { x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
+        }
+    });
+}
+
+/** Load phân tích Elliott Wave. */
+async function loadElliott() {
+    const result = document.getElementById('elliott-result');
+    if (!result) return;
+    const sym = (document.getElementById('elliott-symbol')?.value || 'VNINDEX').toUpperCase().trim() || 'VNINDEX';
+    result.innerHTML = '<p style="color:var(--text-muted);">⏳ Đang phân tích sóng Elliott...</p>';
+    try {
+        const resp = await fetch(`${window.StockAPI.SERVER_BASE}/api/elliott/${encodeURIComponent(sym)}`, { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error(data?.error || 'Không phân tích được Elliott');
+        renderElliott(data);
+    } catch (e) {
+        console.error('loadElliott error:', e);
+        result.innerHTML = `<p style="color:var(--accent-red);">⚠️ ${e.message}</p>`;
+    }
+}
+
+/** Render kết quả Elliott. */
+function renderElliott(data) {
+    const result = document.getElementById('elliott-result');
+    const f2 = n => (n != null ? n.toLocaleString('vi-VN', { maximumFractionDigits: 2 }) : '—');
+    let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">`;
+    // Trái: tóm tắt
+    html += `<div><h4 style="margin:0 0 8px;">🌊 ${data.symbol} — Cấu trúc sóng (${data.lastDate})</h4>`;
+    html += `<p style="font-size:0.95rem;margin-bottom:6px;"><b>${data.pattern || '—'}</b></p>`;
+    html += `<p style="font-size:0.85rem;margin-bottom:6px;">Vị trí hiện tại: <b>${data.currentWave || '—'}</b></p>`;
+    html += `<p style="font-size:0.82rem;color:var(--text-muted);">Giá hiện tại: ${f2(data.lastPrice)} · Xu hướng: <b>${data.trendDir === 'up' ? 'TĂNG' : 'GIẢM'}</b> (${Math.round((data.trendStrength || 0) * 100)}%)</p>`;
+    // Fib levels
+    if (data.fibLevels) {
+        html += '<p style="font-weight:600;margin:10px 0 4px;">📐 Fibonacci Retracement:</p><ul style="margin:0;padding-left:18px;font-size:0.8rem;">';
+        Object.entries(data.fibLevels).forEach(([r, lvl]) => html += `<li>${r}: <b>${f2(lvl)}</b></li>`);
+        html += '</ul>';
+    }
+    html += `</div>`;
+    // Phải: targets + notes
+    html += `<div>`;
+    if (Array.isArray(data.projectionTargets) && data.projectionTargets.length) {
+        html += '<p style="font-weight:600;margin:0 0 4px;">🎯 Mục tiêu dự phóng (Fib Extension):</p><ul style="margin:0 0 8px;padding-left:18px;font-size:0.8rem;">';
+        // Sắp xếp: trên trước
+        data.projectionTargets.sort((a, b) => b.price - a.price).forEach(t => {
+            const color = t.dir === 'trên' ? 'var(--accent-green)' : 'var(--accent-red)';
+            html += `<li>${t.ext}× → <b style="color:${color};">${f2(t.price)}</b> (${t.dir} giá hiện tại)</li>`;
+        });
+        html += '</ul>';
+    }
+    if (Array.isArray(data.notes)) {
+        html += '<p style="font-weight:600;margin:8px 0 4px;">📝 Phân tích:</p><ul style="margin:0;padding-left:18px;font-size:0.8rem;">';
+        data.notes.forEach(n => html += `<li style="margin-bottom:3px;">${n}</li>`);
+        html += '</ul>';
+    }
+    html += `</div></div>`;
+
+    // 🏷️ Block nâng cấp: Nhãn sóng quá khứ + trọng số đo được
+    const wl = data.waveLabels;
+    const wr = data.waveRatios;
+    if (wl && wr) {
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:8px 0 12px;">';
+        // Trái: nhãn sóng
+        html += '<div><h4 style="margin:0 0 6px;">🏷️ Nhãn sóng quá khứ</h4>';
+        if (wl.labels && wl.labels.length) {
+            html += `<p style="font-size:0.82rem;margin-bottom:4px;">${wl.pattern} · <span style="color:var(--text-muted);">điểm ${wl.score}/100</span></p>`;
+            html += '<p style="font-size:0.8rem;margin-bottom:4px;">Trình tự sóng: ';
+            html += wl.labels.map(l => {
+                const imp = ['1','3','5'].includes(l.label);
+                const corr = ['2','4'].includes(l.label);
+                const abc = ['A','B','C'].includes(l.label);
+                const color = imp ? 'var(--accent-green)' : (corr ? 'var(--accent-red)' : (abc ? '#ba68c8' : 'var(--text-muted)'));
+                return `<b style="color:${color};">${l.label}</b>(${f2(l.price)})`;
+            }).join(' → ');
+            html += '</p>';
+        } else {
+            html += `<p style="font-size:0.82rem;color:var(--text-muted);">${wl.pattern || 'Không dán nhãn được (thiếu swings hợp lệ)'}</p>`;
+        }
+        html += '</div>';
+        // Phải: trọng số đo được
+        html += '<div><h4 style="margin:0 0 6px;">🔬 Trọng số thực tế (tính cách sóng)</h4>';
+        if (wr.sampleCount > 0) {
+            html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Đo từ ${wr.sampleCount} chu kỳ quá khứ — so với Fibonacci chuẩn:</p>`;
+            html += '<table style="width:100%;font-size:0.78rem;border-collapse:collapse;">';
+            const row = (label, actual, std) => `<tr><td style="padding:2px 6px;">${label}</td><td style="padding:2px 6px;text-align:right;"><b>${actual ?? '—'}</b></td><td style="padding:2px 6px;text-align:right;color:var(--text-muted);">${std}</td></tr>`;
+            html += `<tr style="background:var(--bg-card-hover);font-weight:600;font-size:0.72rem;"><td style="padding:2px 6px;">Tỷ lệ</td><td style="padding:2px 6px;text-align:right;">Thực tế</td><td style="padding:2px 6px;text-align:right;">Chuẩn</td></tr>`;
+            html += row('Sóng 3 / Sóng 1', wr.wave3OverWave1, '1.618×');
+            html += row('Sóng 5 / Sóng 1', wr.wave5OverWave1, '0.618×');
+            html += row('Sóng 2 hồi (%)', wr.retrace2Pct != null ? wr.retrace2Pct + '%' : null, '50-62%');
+            html += row('Sóng 4 hồi (%)', wr.retrace4Pct != null ? wr.retrace4Pct + '%' : null, '23-38%');
+            html += row('Sóng C / Sóng A', wr.waveCOverWaveA, '1.0×');
+            html += '</table>';
+        } else {
+            html += `<p style="font-size:0.8rem;color:var(--text-muted);">${wr.note || 'Chưa đủ mẫu — dùng Fibonacci chuẩn.'}</p>`;
+        }
+        html += '</div></div>';
+    }
+
+    // 🔮 Block dự phóng tương lai
+    const fp = data.futureProjection;
+    if (fp) {
+        html += '<div style="margin:0 0 12px;padding:10px;background:var(--bg-card-hover);border-radius:8px;border-left:3px solid #ba68c8;">';
+        html += `<h4 style="margin:0 0 6px;">🔮 Dự phóng tương lai</h4>`;
+        html += `<p style="font-size:0.82rem;margin-bottom:4px;">Vị trí: <b>${fp.currentWave || '—'}</b></p>`;
+        if (fp.note) html += `<p style="font-size:0.76rem;color:var(--text-muted);margin-bottom:6px;">${fp.note}</p>`;
+        if (Array.isArray(fp.targets) && fp.targets.length) {
+            html += '<p style="font-size:0.8rem;margin:4px 0;">Mục tiêu dự phóng:</p><ul style="margin:0;padding-left:18px;font-size:0.78rem;">';
+            fp.targets.forEach(t => {
+                const color = t.dir === 'trên' ? 'var(--accent-green)' : 'var(--accent-red)';
+                html += `<li>${t.level}: <b style="color:${color};">${f2(t.price)}</b> (${t.dir} giá hiện tại)</li>`;
+            });
+            html += '</ul>';
+        }
+        html += '</div>';
+    }
+
+    // Disclaimer
+    if (data.disclaimer) html += `<p style="font-size:0.78rem;color:var(--text-muted);padding:8px;background:var(--bg-card-hover);border-radius:6px;margin-bottom:8px;">${data.disclaimer}</p>`;
+    // Chart
+    html += `<div><h4 style="margin:0 0 8px;">📈 Biểu đồ giá + Nhãn sóng + Dự phóng (nét đứt)</h4><div style="height:400px;"><canvas id="elliott-chart"></canvas></div></div>`;
+    result.innerHTML = html;
+    drawElliottChart(data);
+}
+
+/** Vẽ chart Elliott: đường giá + nhãn sóng 1-5/ABC tại pivot + đường dự phóng nét đứt ra tương lai. */
+function drawElliottChart(data) {
+    const canvas = document.getElementById('elliott-chart');
+    if (!canvas || !window.Chart || !Array.isArray(data.series?.close)) return;
+    if (TechState.elliottChart) { TechState.elliottChart.destroy(); TechState.elliottChart = null; }
+    const s = data.series;
+    const n = s.close.length;
+    const ctx = canvas.getContext('2d');
+
+    // Mở rộng trục X ra tương lai: thêm các label ảo (→) cho dự phóng
+    const futureBars = Math.max(20, Math.ceil(n * 0.15)); // ~15% thêm cho tương lai
+    const labels = s.dates.slice();
+    for (let i = 1; i <= futureBars; i++) labels.push(`→${i}`);
+
+    // Dán nhãn sóng (1-5, A-C) tại các pivot — tạo dataset point + label text
+    const wl = data.waveLabels;
+    const labelPoints = []; // {index, price, label}
+    if (wl && Array.isArray(wl.labels)) {
+        const idxByI = {};
+        (data.swings || []).forEach(sw => { idxByI[sw.i] = true; });
+        // Map label.i (index trong chuỗi close) → vị trí pivot
+        wl.labels.forEach(l => {
+            // l.i là index trong chuỗi close gốc; chỉ dùng nếu hợp lệ
+            if (l.i >= 0 && l.i < n) {
+                labelPoints.push({ index: l.i, price: l.price, label: l.label });
+            }
+        });
+    }
+    const waveLabelData = s.close.map((v, i) => {
+        const lp = labelPoints.find(p => p.index === i);
+        return lp ? lp.price : null;
+    });
+    const waveLabelText = s.close.map((v, i) => {
+        const lp = labelPoints.find(p => p.index === i);
+        return lp ? lp.label : '';
+    });
+
+    // Đường dự phóng nét đứt ra tương lai: nối điểm cuối giá hiện tại → các target
+    // futureSegments: [{fromPrice, toPrice, label, barsAhead}]
+    const fp = data.futureProjection;
+    const projData = new Array(labels.length).fill(null);
+    const projBars = [];
+    if (fp && Array.isArray(fp.futureSegments) && fp.futureSegments.length) {
+        // Bắt đầu từ giá hiện tại (cuối chuỗi thật)
+        projData[n - 1] = data.lastPrice;
+        let cursor = n - 1;
+        fp.futureSegments.forEach((seg, idx) => {
+            // Mỗi đoạn chiếm ~seg.barsAhead / số đoạn bars, but đơn giản: đều nhau
+            const stepBars = Math.max(2, Math.floor(futureBars / (fp.futureSegments.length + 1)));
+            cursor += stepBars;
+            if (cursor < labels.length) projData[cursor] = seg.toPrice;
+        });
+    } else if (fp && Array.isArray(fp.targets) && fp.targets.length) {
+        // Fallback: chỉ vẽ target đầu/cuối trên trục tương lai
+        projData[n - 1] = data.lastPrice;
+        fp.targets.forEach((t, idx) => {
+            const pos = n + Math.floor((idx + 1) * futureBars / (fp.targets.length + 1));
+            if (pos < labels.length) projData[pos] = t.price;
+        });
+    }
+
+    // Swing markers (giữ cũ)
+    const swingHighIdx = new Set((data.swings || []).filter(x => x.type === 'high').map(x => x.i));
+    const swingLowIdx = new Set((data.swings || []).filter(x => x.type === 'low').map(x => x.i));
+    const highMarkers = s.close.map((v, i) => swingHighIdx.has(i) ? v : null).concat(new Array(futureBars).fill(null));
+    const lowMarkers = s.close.map((v, i) => swingLowIdx.has(i) ? v : null).concat(new Array(futureBars).fill(null));
+    const closeExt = s.close.concat(new Array(futureBars).fill(null));
+    const waveLabelExt = waveLabelData.concat(new Array(futureBars).fill(null));
+    const waveLabelTextExt = waveLabelText.concat(new Array(futureBars).fill(''));
+
+    TechState.elliottChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Giá', data: closeExt, borderColor: '#4dc9ff', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: 0.15 },
+                { label: 'Dự phóng (tương lai)', data: projData, borderColor: '#ba68c8', backgroundColor: 'rgba(186,104,200,0.08)', borderWidth: 2, borderDash: [6, 4], pointRadius: 4, pointBackgroundColor: '#ba68c8', tension: 0.2, spanGaps: true },
+                { label: 'Nhãn sóng', data: waveLabelExt, borderColor: 'transparent', backgroundColor: '#ffb74d', pointRadius: 5, showLine: false,
+                  datalabels: { display: true } },
+                { label: 'Swing High', data: highMarkers, borderColor: 'transparent', backgroundColor: '#00c853', pointStyle: 'triangle', pointRadius: 5, showLine: false },
+                { label: 'Swing Low', data: lowMarkers, borderColor: 'transparent', backgroundColor: '#ff5252', pointStyle: 'crossRot', pointRadius: 5, showLine: false }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        // Hiển thị nhãn sóng trong tooltip nếu có
+                        afterBody: (items) => {
+                            const idx = items[0]?.dataIndex;
+                            if (idx == null) return '';
+                            const lbl = waveLabelTextExt[idx];
+                            return lbl ? `Sóng ${lbl}` : '';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { maxTicksLimit: 8, font: { size: 10 }, autoSkip: true } },
+                y: { ticks: { font: { size: 10 } } }
+            },
+            // Vẽ text nhãn sóng trực tiếp lên chart qua plugin onAnimationProgress không khả thi;
+            // thay vào đó dùng callback afterDraw để vẽ label tại điểm.
+            animation: { duration: 0 }
+        },
+        // Custom plugin inline: vẽ text nhãn sóng (1-5, A-C) tại các điểm pivot
+        plugins: [{
+            id: 'waveLabels',
+            afterDatasetsDraw(chart) {
+                const ds = chart.data.datasets[2]; // dataset 'Nhãn sóng'
+                if (!ds) return;
+                const meta = chart.getDatasetMeta(2);
+                const ctx2 = chart.ctx;
+                ctx2.save();
+                ctx2.font = 'bold 11px sans-serif';
+                ctx2.fillStyle = '#ffb74d';
+                ctx2.textAlign = 'center';
+                meta.data.forEach((pt, i) => {
+                    const lbl = waveLabelTextExt[i];
+                    if (!lbl || pt == null) return;
+                    ctx2.fillText(lbl, pt.x, pt.y - 10);
+                });
+                ctx2.restore();
+            }
+        }]
+    });
+}
+
 // ==========================================
 // 🎯 AI ĐÁNH GIÁ NGÀNH & CHỌN CP (Spec 2026-07-31)
 // ==========================================
+
 
 const SectorAIState = { loadingSectors: false, loadingPicks: false, sectorData: null };
 
@@ -4510,6 +5207,19 @@ function switchTab(tabId) {
         try { loadAISettings(); loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
     }
 
+    // Load báo cáo tuần/tháng khi switch sang tab (lazy-load, dùng cache nếu có)
+    if (tabId === 'week-report') {
+        try { loadWeeklyReport(false); } catch (e) { console.error('Week report load error:', e); }
+    }
+    if (tabId === 'month-report') {
+        try { loadMonthlyReport(false); } catch (e) { console.error('Month report load error:', e); }
+    }
+
+    // Init tab Kỹ thuật khi switch sang lần đầu
+    if (tabId === 'technical') {
+        try { if (!window._technicalInit) initTechnicalTab(); } catch (e) { console.error('Technical init error:', e); }
+    }
+
     // Load bảng ngành khi switch sang tab sector-ai (lazy-load)
     if (tabId === 'sector-ai') {
         try { if (!SectorAIState.sectorData) loadSectorStrength(false); } catch (e) { console.error('Sector AI load error:', e); }
@@ -4577,6 +5287,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     initApp();
     setupNewsEventListeners();
     setupAIReportEvents();
+    setupPeriodReportEvents('week', {
+        genBtn: 'week-report-generate', copyBtn: 'week-report-copy'
+    });
+    setupPeriodReportEvents('month', {
+        genBtn: 'month-report-generate', copyBtn: 'month-report-copy'
+    });
     setupSectorAIEvents();
     setupIndustryTableSort();
 });
