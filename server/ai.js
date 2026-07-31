@@ -402,9 +402,9 @@ Hãy chọn top ${maxPicks} CP tốt nhất, xếp hạng (rank), và giải th�
     // Tất cả provider fail/parse fail → trả pre-rank không lý do (aiFallback)
     const fallbackPicks = (context.candidates || []).slice(0, maxPicks).map((c, i) => ({
         symbol: c.symbol, rank: i + 1,
-        sectorReason: '(AI không khả dụng — xếp hạng thuật toán)',
-        stockReason: `SEPA ${c.sepaScore} (${c.sepaGrade}), ngành ${c.sectorName || c.sector} ${c.sectorGrade}`,
-        riskNote: 'Không có phân tích AI'
+        sectorReason: `(AI không khả dụng — ngành ${c.sectorName || c.sector} ${c.sectorGrade || ''}, điểm ngành ${c.sectorScore || '?'})`,
+        stockReason: `SEPA ${c.sepaScore ?? c.score} (${c.sepaGrade ?? c.grade}), effectiveScore ${c.effectiveScore ?? '?'}`,
+        riskNote: 'Không có phân tích AI — dùng xếp hạng thuật toán'
     }));
     const err = new Error(`AI picker fail, dùng fallback thuật toán: ${errors.join('; ')}`);
     err.picks = fallbackPicks;

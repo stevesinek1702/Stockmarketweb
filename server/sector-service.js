@@ -19,6 +19,7 @@ const assembly = require('./scoring/sector-assembly');
 const { computeSectorScore } = require('./scoring/sector-score');
 const { pickFromCandidates } = require('./scoring/picker');
 const fundamentals = require('./data/fundamentals');
+const { fetchOHLCVBatch } = require('./data/ohlcv-fetch');
 
 /**
  * Lấy industry-stats (lucCau, totalValue, stockCount per ICB2) — gọi internal
@@ -102,6 +103,44 @@ function computeLiquidityRanks(industryStats) {
   entries.forEach(([code], idx) => {
     out[code] = { rank: idx + 1, totalSectors: n };
   });
+  return out;
+}
+
+/**
+ * Fetch top CP mỗi ngành từ /api/industry-top-stocks (lucCau cao, giá trên MA10).
+ * Trả map {icb2: [{symbol, price, change}]}.
+ * @param {number} port
+ * @param {string[]} sectorCodes
+ * @param {number} [limitPerSector=8]
+ */
+async function fetchIndustryTopStocks(port, sectorCodes, limitPerSector = 8) {
+  const axios = require('axios');
+  const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-internal';
+  const out = {};
+  // Fetch song song (mỗi ngành 1 call, ~10 ngành)
+  const results = await Promise.all(sectorCodes.map(async code => {
+    try {
+      const { data } = await axios.get(
+        `http://localhost:${port}/api/industry-top-stocks`,
+        { params: { code, limit: limitPerSector }, timeout: 15000,
+          headers: { 'X-Internal-Secret': INTERNAL_SECRET } }
+      );
+      return { code, data };
+    } catch (e) {
+      console.warn(`[sector-service] industry-top-stocks ${code} fail:`, e.message);
+      return { code, data: null };
+    }
+  }));
+  for (const { code, data } of results) {
+    if (!data || !data.success) { out[code] = []; continue; }
+    // industry-top-stocks trả {stocks:[{symbol,...}] hoặc array}
+    const stocks = data.stocks || data.data || data.results || [];
+    out[code] = stocks.map(s => ({
+      symbol: s.symbol,
+      price: s.priceCurrent || s.price || 0,
+      change: s.percentChange || s.change || 0
+    })).filter(s => s.symbol);
+  }
   return out;
 }
 
@@ -195,72 +234,105 @@ async function computeStockPicks(opts = {}) {
     }
   }
 
-  // 2) SEPA screen (reuse screener.screenAll)
-  let screenResult;
-  try {
-    const { screenAll } = require('./scoring/screener');
-    screenResult = screenAll({ minScore: 70, limit: 100, grade: 'A' });
-  } catch (e) {
-    // price-history.json có thể chưa backfill → screenAll rỗng
-    console.warn('[sector-service] screenAll fail (cần backfill price-history?):', e.message);
-    screenResult = { results: [] };
+  // 2) Per-sector ứng viên: top CP mạnh mỗi ngành (KHÔNG cần screenAll toàn bộ
+  //    price-history.json). Lấy top ngành mạnh → industry-top-stocks → ứng viên.
+  const strongSectors = sectorResult.sectors
+    .filter(s => s.score >= 40) // bỏ ngành yếu (D)
+    .slice(0, 10);              // top 10 ngành
+  const topStocksBySector = await fetchIndustryTopStocks(
+    opts.port || (process.env.PORT || 3000),
+    strongSectors.map(s => s.code)
+  );
+
+  // 3) Fetch OHLCV thật cho ứng viên (on-demand, công khai FireAnt)
+  const allCandidates = [];
+  for (const sec of strongSectors) {
+    const stocks = topStocksBySector[sec.code] || [];
+    for (const st of stocks) {
+      allCandidates.push({
+        symbol: st.symbol, sector: sec.code, sectorName: sec.name,
+        price: st.price, change: st.change,
+        sectorScore: sec.score, sectorGrade: sec.grade
+      });
+    }
+  }
+  const symbols = [...new Set(allCandidates.map(c => c.symbol))];
+  console.log(`🤖 [ai-picker] ${symbols.length} ứng viên từ ${strongSectors.length} ngành → fetch OHLCV...`);
+  const ohlcvMap = await fetchOHLCVBatch(symbols, 5);
+
+  // 4) Compute TA + SEPA cho mỗi ứng viên có OHLCV
+  const { computeTA } = require('./ta');
+  const { computeSEPA } = require('./scoring/score');
+  const { rsRating } = require('./scoring/rs');
+  const vnindexCloses = await fetchVNIndexCloses(opts.port || (process.env.PORT || 3000));
+  const scoredCandidates = [];
+  for (const c of allCandidates) {
+    const h = ohlcvMap[c.symbol];
+    if (!h || !h.ohlc || h.ohlc.length < 60) continue;
+    try {
+      const ta = computeTA(h);
+      if (!ta) continue;
+      const closes = h.ohlc.map(x => x.c);
+      const rs = rsRating(closes, vnindexCloses);
+      const ma20 = closes.slice(-20).reduce((s, v) => s + v, 0) / 20;
+      const distMA20 = ((closes[closes.length - 1] - ma20) / ma20) * 100;
+      const r = computeSEPA(ta, { rsRating: rs, distMA20 });
+      scoredCandidates.push({
+        ...c,
+        score: r.score, grade: r.grade, breakdown: r.breakdown,
+        ta, price: closes[closes.length - 1]
+      });
+    } catch (e) { /* skip TA error */ }
   }
 
-  // 3) Symbol→sector map + per-stock PE
-  const symbolBySector = assembly.buildSymbolBySector();
+  // 5) Picker: filter + rank (sectorScores/sectorPeMedian đã build ở trên)
   const symbolSector = {};
-  for (const [sector, syms] of Object.entries(symbolBySector)) {
-    for (const sym of syms) symbolSector[sym] = sector;
-  }
+  allCandidates.forEach(c => { symbolSector[c.symbol] = c.sector; });
   const allFunds = fundamentals.getAll();
   const stockPe = {};
   for (const [sym, f] of Object.entries(allFunds)) {
     if (f.pe != null) stockPe[sym] = f.pe;
   }
-
-  // 4) Picker: filter + rank
-  const candidates = pickFromCandidates(screenResult.results || [], {
+  const candidates = pickFromCandidates(scoredCandidates, {
     symbolSector, sectorScores, sectorPeMedian, stockPe,
     maxPicks: 15, maxPerSector: 3
   });
 
-  // 5) Enrich with signal (entry/stop/target) + sector name
+  // 6) Enrich with signal (entry/stop/target) + sector name
+  //    Picker luôn đưa entry/stop/target (ATR-based) cho mọi pick, kể cả khi
+  //    signal = WATCH/NONE — để UX luôn có trade cụ thể. ATR stop = entry - 2×ATR.
+  const { generateSignal } = require('./signals/signal');
+  const { loadConfig } = require('./signals/config');
+  const cfg = loadConfig();
   const enriched = candidates.map(c => {
+    const atr = (c.ta && c.ta.volatility && c.ta.volatility.atr) || 0;
+    const entry = c.price;
+    const stop = atr > 0 ? entry - cfg.atrMultiplier * atr : null;
+    const risk = stop ? entry - stop : 0;
+    const target1 = risk > 0 ? entry + cfg.targetRR * risk : null;
+    // Signal (action/reason) — informational
     let signal = null;
     try {
-      // Tính signal cần TA — heavy; skip nếu không có price-history
-      const ph = require('./ta/price-history');
-      const h = ph.getHistory(c.symbol);
-      if (h) {
-        const { computeTA } = require('./ta');
-        const { computeSEPA } = require('./scoring/score');
-        const { rsRating } = require('./scoring/rs');
-        const ta = computeTA(h);
-        if (ta) {
-          const closes = h.ohlc.map(x => x.c);
-          const rs = rsRating(closes, null);
-          const scoreResult = computeSEPA(ta, { rsRating: rs });
-          const { generateSignal } = require('./signals/signal');
-          signal = generateSignal(scoreResult, ta, c.price);
-        }
+      if (c.ta) {
+        const scoreResult = { score: c.score, grade: c.grade, breakdown: c.breakdown };
+        signal = generateSignal(scoreResult, c.ta, c.price);
       }
-    } catch (e) { /* skip signal */ }
+    } catch (e) { /* skip */ }
+    const { ta, breakdown, ...rest } = c; // strip heavy TA/breakdown khỏi response
     return {
-      ...c,
-      sectorName: sectorNames[c.sector] || c.sector,
-      sectorGrade: sectorScores[c.sector] ? sectorScores[c.sector].grade : null,
-      sepaScore: c.score,
-      sepaGrade: c.grade,
+      ...rest,
       pe: stockPe[c.symbol] || null,
-      entry: signal ? signal.entry : c.price,
-      stop: signal ? signal.stop : null,
-      target1: signal ? signal.target1 : null,
-      atr: signal ? signal.atr : null,
-      rr: signal ? signal.rr : null
+      entry,
+      stop,
+      target1,
+      atr: atr > 0 ? Math.round(atr) : null,
+      rr: cfg.targetRR,
+      signal: signal ? signal.action : null,
+      signalReason: signal ? signal.reason : null
     };
   });
 
-  // 6) AI reasoning (LLM xếp hạng + giải thích)
+  // 7) AI reasoning (LLM xếp hạng + giải thích)
   const sectorContext = sectorResult.sectors.slice(0, 8).map(s => ({
     code: s.code, name: s.name, score: s.score, grade: s.grade, trend: s.trend
   }));
@@ -277,7 +349,7 @@ async function computeStockPicks(opts = {}) {
     aiResult = { picks: e.picks || [], provider: 'fallback', aiFallback: true };
   }
 
-  // 7) Merge AI reasoning với entry/stop đã tính
+  // 8) Merge AI reasoning với entry/stop đã tính
   const finalPicks = (aiResult.picks || []).map(p => {
     const match = enriched.find(c => c.symbol === p.symbol);
     return { ...p, ...(match || {}) };
@@ -299,6 +371,7 @@ module.exports = {
   computeStockPicks,
   fetchSectorInputs,
   fetchIndustryStats,
+  fetchIndustryTopStocks,
   fetchVNIndexCloses,
   buildFundamentalsBySector,
   computeLiquidityRanks
