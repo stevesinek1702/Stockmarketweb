@@ -404,6 +404,21 @@ async function getStaleResponse(key) {
     return getStale(key);
 }
 
+/**
+ * Negative cache: khi fiintrade block/timeout → cache kết quả lỗi ngắn (10 phút)
+ * để KHÔNG spam retry (fiintrade block IP vì thấy gọi liên tục dù đều fail).
+ * Trả error cached trước đó nếu còn hạn (tránh fetch lại khi đang bị block).
+ */
+const NEG_CACHE_TTL = 10 * 60 * 1000; // 10 phút
+async function getCachedOrStaleError(key) {
+    const cached = await getStale(key);
+    return cached;
+}
+async function cacheNegativeEOD(key, errorData) {
+    // Cache error EOD ngắn 10 phút — tránh retry spam khi fiintrade block
+    return setCachedEOD(key, errorData, NEG_CACHE_TTL);
+}
+
 // ==========================================
 // FIREANT API ENDPOINTS
 // ==========================================
@@ -1371,7 +1386,9 @@ app.get('/api/industry-flow', async (req, res) => {
         res.json(responseData);
     } catch (error) {
         console.error('Industry flow error:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        await cacheNegativeEOD(cacheKey, { success: false, error: error.message, cachedAt: Date.now() });
+        const stale = await getStaleResponse(cacheKey);
+        res.status(503).json(stale || { success: false, error: error.message + ' (fiintrade bị block IP, thử lại sau)' });
     }
 });
 
@@ -1712,7 +1729,11 @@ app.get('/api/investor-flow', async (req, res) => {
         res.json(responseData);
     } catch (error) {
         console.error('Investor flow error:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+        // Negative cache: fiintrade block/timeout → cache error 10 phút tránh spam retry
+        await cacheNegativeEOD('investor-flow', { success: false, error: error.message, cachedAt: Date.now() });
+        // Trả cache cũ (data hôm qua) nếu còn — tốt hơn lỗi trống
+        const stale = await getStaleResponse('investor-flow');
+        res.status(503).json(stale || { success: false, error: error.message + ' (fiintrade bị block IP, thử lại sau)' });
     }
 });
 

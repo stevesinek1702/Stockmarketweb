@@ -66,8 +66,8 @@ const EOD_TARGETS = [
 // Fundamentals refresh: 1 lần/ngày sau đóng cửa (P/E,P/B,ROE,EPS đổi chậm).
 // POST endpoint — khác với EOD_TARGETS (GET). Tách logic riêng, chạy 1 lần/ngày.
 const FUNDAMENTALS_TARGET = { key: 'fundamentals', url: '/api/admin/refresh-fundamentals' };
-const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
-const CATCHUP_INTERVAL_MS = 30 * 60 * 1000;   // 30 phút — morning catch-up
+const EOD_RETRY_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 giờ (giảm spam fiintrade — bị block IP nếu gọi liên tục)
+const CATCHUP_INTERVAL_MS = 2 * 60 * 60 * 1000;   // 2 giờ — morning catch-up
 
 // State cho /api/admin/system-status giám sát scheduler health.
 let running = false;
