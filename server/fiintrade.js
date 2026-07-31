@@ -27,10 +27,26 @@ const round1 = (x) => Math.round((x || 0) * 10) / 10;
 // Bỏ hậu tố " L1"/" L2" trong tên ngành ICB của Fiintrade (vd "Bất động sản L2")
 const cleanSectorName = (name) => String(name || '').replace(/\s*L\d+\s*$/i, '').trim();
 
+/**
+ * Proxy bypass: Fiintrade chặn IP datacenter VPS (wl-*.fiintrade.vn timeout).
+ * FIINTRADE_PROXY_URL = Cloudflare Worker URL forward request fiintrade
+ * (IP Cloudflare không bị block). Set qua env. Không set → gọi trực tiếp.
+ * Worker nhận {url gốc} qua path, forward + thêm Origin header iBoard.
+ */
+const FIINTRADE_PROXY = process.env.FIINTRADE_PROXY_URL || '';
+
+function buildFiinUrl(url) {
+    if (!FIINTRADE_PROXY) return url;
+    // Worker: https://<worker>.workers.fiintrade-proxy.workers.dev/<encoded-url>
+    // Worker forward tới URL thật + thêm Origin/Referer iBoard.
+    return FIINTRADE_PROXY.replace(/\/$/, '') + '/' + encodeURIComponent(url);
+}
+
 async function fiinGet(url) {
     // Đếm API call tới Fiintrade
     try { require('./cache').apiCounter.bump('fiintrade').catch(() => {}); } catch (e) {}
-    const res = await axios.get(url, { headers: FII_HEADERS, timeout: 15000 });
+    const finalUrl = buildFiinUrl(url);
+    const res = await axios.get(finalUrl, { headers: FII_HEADERS, timeout: 15000 });
     return res.data;
 }
 
@@ -420,6 +436,7 @@ async function getTopNewLow(timeRange)  { return getTopMover('GetTopNewLow',  ti
 module.exports = {
     FII_HEADERS,
     fiinGet,
+    buildFiinUrl,
     getOrganCodeMap,
     resolveOrganCode,
     getSectorFlow,
