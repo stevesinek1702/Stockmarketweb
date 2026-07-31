@@ -4199,6 +4199,172 @@ function setupAIReportEvents() {
     if (resetBtn) resetBtn.addEventListener('click', resetAIPrompt);
 }
 
+// ==========================================
+// 🎯 AI ĐÁNH GIÁ NGÀNH & CHỌN CP (Spec 2026-07-31)
+// ==========================================
+
+const SectorAIState = { loadingSectors: false, loadingPicks: false, sectorData: null };
+
+/**
+ * Load bảng xếp hạng 20 ngành theo điểm 9 yếu tố.
+ */
+async function loadSectorStrength(force) {
+    if (SectorAIState.loadingSectors) return;
+    const tableEl = document.getElementById('sector-strength-table');
+    const metaEl = document.getElementById('sector-ai-meta');
+    const btn = document.getElementById('sector-strength-refresh');
+    if (!tableEl) return;
+
+    SectorAIState.loadingSectors = true;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang tính...'; }
+    if (force) tableEl.innerHTML = '<p style="color:var(--text-muted);">⏳ Đang tính điểm 20 ngành...</p>';
+
+    try {
+        const url = `${window.StockAPI.SERVER_BASE}/api/sector-strength${force ? '?refresh=1' : ''}`;
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error(data?.error || 'Lỗi không xác định');
+
+        SectorAIState.sectorData = data;
+        renderSectorStrengthTable(data.sectors || []);
+        const genTime = new Date(data.generatedAt).toLocaleString('vi-VN');
+        if (metaEl) metaEl.textContent = `· ${data.sectors.length} ngành · tính lúc ${genTime}`;
+    } catch (e) {
+        console.error('loadSectorStrength error:', e);
+        tableEl.innerHTML = `<p style="color:var(--accent-red);">⚠️ ${e.message}</p>`;
+    } finally {
+        SectorAIState.loadingSectors = false;
+        if (btn) { btn.disabled = false; btn.textContent = '📊 Tính Điểm Ngành'; }
+    }
+}
+
+/**
+ * Render bảng xếp hạng ngành (sort by score desc).
+ */
+function renderSectorStrengthTable(sectors) {
+    const el = document.getElementById('sector-strength-table');
+    if (!el) return;
+    if (!sectors.length) { el.innerHTML = '<p style="color:var(--text-muted);">Không có dữ liệu.</p>'; return; }
+
+    const gradeColor = (g) => ({
+        'A+': 'var(--accent-green)', 'A': 'var(--accent-green)',
+        'B': 'var(--accent-blue)', 'C': 'var(--text-muted)', 'D': 'var(--accent-red)'
+    }[g] || 'var(--text-muted)');
+    const trendIcon = (t) => ({ up: '▲', down: '▼', flat: '—' }[t] || '—');
+    const trendColor = (t) => ({ up: 'var(--accent-green)', down: 'var(--accent-red)', flat: 'var(--text-muted)' }[t] || 'var(--text-muted)');
+
+    const rows = sectors.map(s => {
+        const score = Math.round(s.score);
+        const bar = `<div style="background:var(--bg-secondary);height:4px;border-radius:2px;width:60px;overflow:hidden;margin-top:2px;">
+            <div style="background:${gradeColor(s.grade)};height:100%;width:${score}%;"></div></div>`;
+        return `<tr>
+            <td style="padding:4px 8px;color:var(--text-muted);">${s.rank || ''}</td>
+            <td style="padding:4px 8px;font-weight:600;">${s.name}</td>
+            <td style="padding:4px 8px;text-align:center;font-weight:700;color:${gradeColor(s.grade)};">${score}</td>
+            <td style="padding:4px 8px;text-align:center;color:${gradeColor(s.grade)};">${s.grade}</td>
+            <td style="padding:4px 8px;text-align:center;color:${trendColor(s.trend)};">${trendIcon(s.trend)}</td>
+            <td style="padding:4px 8px;">${bar}</td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="font-size:0.75rem;color:var(--text-muted);text-align:left;">
+                <th style="padding:4px 8px;">#</th><th style="padding:4px 8px;">Ngành</th>
+                <th style="padding:4px 8px;text-align:center;">Score</th>
+                <th style="padding:4px 8px;text-align:center;">Grade</th>
+                <th style="padding:4px 8px;text-align:center;">Xu hướng</th>
+                <th style="padding:4px 8px;">Điểm</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+/**
+ * Chạy AI pick CP từ ngành mạnh + giải thích.
+ */
+async function runAIPicker() {
+    if (SectorAIState.loadingPicks) return;
+    const resultsEl = document.getElementById('ai-picker-results');
+    const metaEl = document.getElementById('sector-ai-meta');
+    const btn = document.getElementById('ai-picker-run');
+    if (!resultsEl) return;
+
+    SectorAIState.loadingPicks = true;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ AI đang chọn...'; }
+    resultsEl.innerHTML = `
+        <div style="text-align:center;color:var(--text-muted);padding:40px 20px;">
+            <div style="font-size:2rem;margin-bottom:12px;">🤖</div>
+            <p>AI đang phân tích ngành mạnh + chọn CP...</p>
+            <p style="font-size:0.75rem;opacity:0.7;margin-top:6px;">Cần 15-40 giây (LLM reasoning).</p>
+        </div>`;
+
+    try {
+        const url = `${window.StockAPI.SERVER_BASE}/api/ai/stock-picker`;
+        const resp = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ maxPicks: 8, provider: 'auto' })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error(data?.error || 'Lỗi AI');
+
+        renderAIPickerResults(data.picks || [], data);
+        const providerName = ({ glm: 'GLM-5.2', deepseek: 'DeepSeek', gemini: 'Gemini', fallback: 'Thuật toán' })[data.provider] || data.provider;
+        const fallbackNote = data.aiFallback ? ' (AI fail → fallback)' : '';
+        const genTime = new Date(data.generatedAt).toLocaleString('vi-VN');
+        if (metaEl) metaEl.textContent = `· ${data.picks.length} picks · ${providerName}${fallbackNote} · ${genTime}`;
+    } catch (e) {
+        console.error('runAIPicker error:', e);
+        resultsEl.innerHTML = `<p style="color:var(--accent-red);">⚠️ ${e.message}</p>`;
+    } finally {
+        SectorAIState.loadingPicks = false;
+        if (btn) { btn.disabled = false; btn.textContent = '🤖 Chạy AI Pick'; }
+    }
+}
+
+/**
+ * Render danh sách CP AI chọn kèm entry/stop/lý do.
+ */
+function renderAIPickerResults(picks, meta) {
+    const el = document.getElementById('ai-picker-results');
+    if (!el) return;
+    if (!picks.length) { el.innerHTML = '<p style="color:var(--text-muted);">AI không chọn được CP nào (thiếu ứng viên hoặc ngành đều yếu).</p>'; return; }
+
+    const fmt = (v) => (v != null && !isNaN(v)) ? Number(v).toLocaleString('vi-VN') : '—';
+    const cards = picks.map(p => {
+        const sectorTag = p.sectorName ? `<span style="font-size:0.7rem;background:var(--bg-secondary);padding:1px 6px;border-radius:8px;margin-left:6px;">${p.sectorName}</span>` : '';
+        const sepaTag = (p.sepaScore != null) ? `<span style="font-size:0.7rem;color:var(--text-muted);">SEPA ${p.sepaScore}</span>` : '';
+        const flagTag = (p.flags && p.flags.length) ? `<span style="color:var(--accent-red);font-size:0.7rem;">⚠️ ${p.flags.join(', ')}</span>` : '';
+        return `<div style="border:1px solid var(--border-color);border-radius:8px;padding:10px;margin-bottom:10px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-weight:700;font-size:1rem;">#${p.rank || ''} ${p.symbol}</span>
+                ${sectorTag}${sepaTag}${flagTag}
+            </div>
+            <div style="display:grid;grid-template-columns:auto auto auto;gap:8px;font-size:0.78rem;margin-bottom:8px;color:var(--text-secondary);">
+                <span>📥 Entry: <b>${fmt(p.entry)}</b></span>
+                <span>🛑 Stop: <b style="color:var(--accent-red);">${fmt(p.stop)}</b></span>
+                <span>🎯 Target: <b style="color:var(--accent-green);">${fmt(p.target1)}</b></span>
+            </div>
+            <div style="font-size:0.78rem;line-height:1.4;">
+                ${p.sectorReason ? `<p style="margin:0 0 4px;"><b>🏭 Ngành:</b> ${p.sectorReason}</p>` : ''}
+                ${p.stockReason ? `<p style="margin:0 0 4px;"><b>📊 CP:</b> ${p.stockReason}</p>` : ''}
+                ${p.riskNote ? `<p style="margin:0;color:var(--accent-red);"><b>⚠️ Rủi ro:</b> ${p.riskNote}</p>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = cards;
+}
+
+function setupSectorAIEvents() {
+    const strengthBtn = document.getElementById('sector-strength-refresh');
+    if (strengthBtn) strengthBtn.addEventListener('click', () => loadSectorStrength(true));
+    const pickerBtn = document.getElementById('ai-picker-run');
+    if (pickerBtn) pickerBtn.addEventListener('click', () => runAIPicker());
+}
+
 /**
  * Lưu CHỈ prompt lên hệ thống (giữ nguyên provider + keys hiện tại).
  * Dùng khi user sửa prompt xong muốn lưu ngay mà không đụng fields khác.
@@ -4344,6 +4510,11 @@ function switchTab(tabId) {
         try { loadAISettings(); loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
     }
 
+    // Load bảng ngành khi switch sang tab sector-ai (lazy-load)
+    if (tabId === 'sector-ai') {
+        try { if (!SectorAIState.sectorData) loadSectorStrength(false); } catch (e) { console.error('Sector AI load error:', e); }
+    }
+
     // Init MA breadth khi switch sang tab industry lần đầu (lazy-load)
     if (tabId === 'industry') {
         try { initMABreadth(); } catch (e) { console.error('MA breadth init error:', e); }
@@ -4406,6 +4577,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initApp();
     setupNewsEventListeners();
     setupAIReportEvents();
+    setupSectorAIEvents();
     setupIndustryTableSort();
 });
 

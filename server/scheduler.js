@@ -62,6 +62,10 @@ const EOD_TARGETS = [
     { key: 'top-net-stocks',  url: '/api/top-net-stocks',  validateToDate: false }
     // industry-flow: dynamic key (timeRange:level) — user-driven, scheduler không pre-warm
 ];
+
+// Fundamentals refresh: 1 lần/ngày sau đóng cửa (P/E,P/B,ROE,EPS đổi chậm).
+// POST endpoint — khác với EOD_TARGETS (GET). Tách logic riêng, chạy 1 lần/ngày.
+const FUNDAMENTALS_TARGET = { key: 'fundamentals', url: '/api/admin/refresh-fundamentals' };
 const EOD_RETRY_INTERVAL_MS = 30 * 60 * 1000; // 30 phút
 const CATCHUP_INTERVAL_MS = 30 * 60 * 1000;   // 30 phút — morning catch-up
 
@@ -81,6 +85,23 @@ async function refreshOne(target, port) {
         console.log(`🔄 [scheduler] refreshed ${target.key}`);
     } catch (e) {
         console.warn(`⚠️  [scheduler] refresh ${target.key} failed: ${e.message}`);
+    }
+}
+
+/**
+ * Refresh POST endpoint (fundamentals). Tương tự refreshOne nhưng POST.
+ * Endpoint /api/admin/refresh-fundamentals là POST nên cần helper riêng.
+ */
+async function refreshOnePost(target, port) {
+    const url = `http://localhost:${port}${target.url}`;
+    try {
+        await axios.post(url, {}, {
+            timeout: 60000, // fundamentals fetch nhiều batch → timeout dài hơn
+            headers: { 'X-Internal-Secret': INTERNAL_SECRET }
+        });
+        console.log(`🔄 [scheduler] refreshed ${target.key} (POST)`);
+    } catch (e) {
+        console.warn(`⚠️  [scheduler] refresh ${target.key} (POST) failed: ${e.message}`);
     }
 }
 
@@ -143,6 +164,22 @@ function startScheduler(port) {
             const today = tt.vnToday();
             for (const target of EOD_TARGETS) {
                 await refreshEOD(target, port, today);
+            }
+
+            // ── Fundamentals refresh: 1 lần/ngày (POST endpoint) ─────────
+            // P/E,P/B,ROE,EPS đổi chậm → đủ 1 lần/ngày. Check hasEODToday
+            // (cache file lastUpdated = today) để skip nếu đã refresh.
+            try {
+                const { hasEODToday } = require('./cache');
+                const already = await hasEODToday(FUNDAMENTALS_TARGET.key, {
+                    validateToDate: true, expectedDate: today
+                });
+                if (!already) {
+                    console.log(`📊 [scheduler-eod] ${FUNDAMENTALS_TARGET.key} refresh fundamentals ${today}`);
+                    await refreshOnePost(FUNDAMENTALS_TARGET, port);
+                }
+            } catch (e) {
+                console.warn(`⚠️  [scheduler-eod] fundamentals refresh fail: ${e.message}`);
             }
         };
         eodTick(); // chạy thử ngay khi start (phòng khi start trong giờ EOD)

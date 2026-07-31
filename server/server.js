@@ -4384,6 +4384,125 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
 });
 
 // ==========================================
+// SECTOR STRENGTH + AI STOCK PICKER (Spec 2026-07-31)
+// ==========================================
+
+/**
+ * GET /api/sector-strength — 9-factor composite score cho 20 ngành ICB2.
+ * ?refresh=1 → bypass cache. Cache 2 phút (compute nặng: breadth + flow + RS).
+ */
+app.get('/api/sector-strength', requireAuth, async (req, res) => {
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheKey = 'sector-strength';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse(cacheKey, 2 * 60 * 1000);
+        if (cached) {
+            console.log('📊 Returning cached sector-strength');
+            return res.json(cached);
+        }
+    }
+    try {
+        console.log('📊 Computing sector strength scores...');
+        const sectorService = require('./sector-service');
+        const result = await sectorService.computeSectorScores({
+            port: process.env.PORT || 3000
+        });
+        await setCachedResponse(cacheKey, result);
+        res.json(result);
+    } catch (error) {
+        console.error('[sector-strength] error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/ai/stock-picker — AI chọn CP từ ngành mạnh + giải thích.
+ * Body: { maxPicks?, provider? }  (provider: auto|glm|deepseek|gemini)
+ * Hybrid: thuật toán pre-rank → LLM reasoning + giải thích.
+ * Cache 5 phút (LLM chậm). ?refresh=1 bypass.
+ */
+app.post('/api/ai/stock-picker', requireAuth, async (req, res) => {
+    const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+    const cacheKey = 'ai-stock-picker';
+    if (!forceRefresh) {
+        const cached = await getCachedResponse(cacheKey, 5 * 60 * 1000);
+        if (cached) {
+            console.log('📊 Returning cached ai-stock-picker');
+            return res.json(cached);
+        }
+    }
+    try {
+        const maxPicks = parseInt(req.body.maxPicks) || 8;
+        const provider = req.body.provider || 'auto';
+        console.log(`🤖 [ai-picker] computing picks (maxPicks=${maxPicks}, provider=${provider})...`);
+        const sectorService = require('./sector-service');
+        const result = await sectorService.computeStockPicks({
+            port: process.env.PORT || 3000,
+            maxPicks, provider
+        });
+        await setCachedResponse(cacheKey, result);
+        res.json(result);
+    } catch (error) {
+        console.error('[ai-stock-picker] error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/refresh-fundamentals — fetch FireAnt quotes → extract + cache
+ * P/E, P/B, ROE, EPS vào fundamentals.json. Được scheduler gọi EOD mỗi ngày.
+ * (Internal — bypass auth qua X-Internal-Secret.) Fundamentals đổi chậm nên 1 lần/ngày đủ.
+ */
+app.post('/api/admin/refresh-fundamentals', async (req, res) => {
+    try {
+        const cookie = await getFireAntCookieWithHeal();
+        const authHeaders = {
+            ...API_CONFIG.fireant.headers,
+            'Cookie': cookie,
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8'
+        };
+        const quotesUrl = `${API_CONFIG.fireant.base}/Markets/Quotes`;
+
+        // Lấy danh sách symbol từ breadth-symbols (full universe)
+        const breadthSymbols = require('./breadth-symbols');
+        const allSyms = Array.isArray(breadthSymbols) ? breadthSymbols
+            : (breadthSymbols && Array.isArray(breadthSymbols.symbols) ? breadthSymbols.symbols : []);
+
+        // Fetch quotes theo batch (~85 symbol/request, giống industry-stats)
+        const fundamentals = require('./data/fundamentals');
+        let totalStored = 0;
+        let totalFetched = 0;
+
+        for (let i = 0; i < allSyms.length; i += 85) {
+            const batch = allSyms.slice(i, i + 85).join(',');
+            try {
+                const data = await fetchAPI(`${quotesUrl}?symbols=${batch}`, authHeaders).catch(() => []);
+                if (Array.isArray(data)) {
+                    totalFetched += data.length;
+                    const added = fundamentals.storeFromQuotes(data);
+                    totalStored += added;
+                }
+            } catch (e) { /* skip batch */ }
+            // Rate-limit nhẹ giữa batch
+            if (i + 85 < allSyms.length) await new Promise(r => setTimeout(r, 200));
+        }
+
+        const result = {
+            success: true,
+            fetched: totalFetched,
+            stored: totalStored,
+            updatedAt: new Date().toISOString()
+        };
+        console.log(`📊 [fundamentals] refreshed: fetched=${totalFetched}, stored=${totalStored}`);
+        res.json(result);
+    } catch (error) {
+        console.error('[refresh-fundamentals] error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ==========================================
 // START SERVER
 // ==========================================
 

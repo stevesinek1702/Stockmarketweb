@@ -36,6 +36,7 @@
                 <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
                 <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
                 <button class="nav-btn" data-tab="ai-report">🤖 Báo Cáo AI</button>
+                <button class="nav-btn" data-tab="sector-ai">🎯 AI Đánh Giá Ngành</button>
   <button class="nav-btn" data-tab="paper-trade">💼 Paper Trade</button>
 
             </nav>
@@ -1445,6 +1446,39 @@
                         <div style="font-size:3rem;margin-bottom:16px;">📊</div>
                         <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo thị trường tự động bằng AI</p>
                         <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo"</strong> để AI phân tích VNINDEX, lực cầu, dòng tiền, breadth, breakout và viết báo cáo tóm tắt.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 🎯 AI Đánh Giá Ngành Tab (Spec 2026-07-31) -->
+        <section class="tab-content" id="sector-ai">
+            <div class="card full-width">
+                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                    <h3>🎯 AI Đánh Giá Ngành & Chọn Cổ Phiếu</h3>
+                    <button class="btn-secondary" id="sector-strength-refresh" title="Tính lại điểm 20 ngành (9 yếu tố đa chiều)">📊 Tính Điểm Ngành</button>
+                    <button class="btn-primary" id="ai-picker-run" title="AI chọn CP từ ngành mạnh + giải thích lý do">🤖 Chạy AI Pick</button>
+                    <span id="sector-ai-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                </div>
+                <p style="font-size:0.82rem;color:var(--text-secondary);margin:4px 0 12px;">
+                    Điểm ngành 0-100 = 9 yếu tố: breadth trend (22%), RS vs VNINDEX (18%), smart-money 20D (15%),
+                    momentum breadth (12%), breadth expansion (10%), lucCau (8%), MA alignment (6%), định giá (5%), thanh khoản (4%).
+                    A+≥85 · A≥70 · B≥55 · C≥40 · D&lt;40
+                </p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <!-- BẢNG TRÁI: Xếp hạng ngành -->
+                    <div>
+                        <h4 style="margin:0 0 8px;">📈 Xếp Hạng Ngành</h4>
+                        <div id="sector-strength-table" style="font-size:0.85rem;">
+                            <p style="color:var(--text-muted);">Nhấn <b>Tính Điểm Ngành</b> để xem xếp hạng.</p>
+                        </div>
+                    </div>
+                    <!-- BẢNG PHẢI: Top CP AI chọn -->
+                    <div>
+                        <h4 style="margin:0 0 8px;">🤖 Top CP AI Chọn</h4>
+                        <div id="ai-picker-results" style="font-size:0.85rem;">
+                            <p style="color:var(--text-muted);">Nhấn <b>Chạy AI Pick</b> để AI chọn CP + giải thích.</p>
+                        </div>
                     </div>
                 </div>
             </div>

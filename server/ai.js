@@ -266,11 +266,161 @@ function isAvailable() {
     return !!(TOKENROUTER_API_KEY || DEEPSEEK_API_KEY || GEMINI_API_KEY);
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// AI STOCK PICKER (Hybrid: thuật toán pre-rank → LLM reasoning + giải thích)
+// ═══════════════════════════════════════════════════════════════════════
+// Nguyên tắc: KHÔNG để LLM pick từ data thô (tránh ảo). Thuật toán deterministic
+// đã filter + rank + tính entry/stop. LLM chỉ: (1) xếp hạng lại top picks,
+// (2) giải thích "Tại sao mã này? Ngành mạnh ở điểm nào? Rủi ro gì?".
+// Output JSON strict (parse được). Spec §6.
+
+const PICKER_SYSTEM_PROMPT = `Bạn là chuyên gia phân tích & chọn cổ phiếu Việt Nam (swing trading 1-4 tuần).
+Đầu vào: danh sách top CP ĐÃ ĐƯỢC thuật toán pre-rank (SEPA score + sector score + entry/stop).
+Nhiệm vụ: xếp hạng lại top picks (có thể điều chỉnh thứ tự dựa reasoning) + GIẢI THÍCH.
+
+Quy tắc:
+1. Chỉ dùng data được cung cấp — KHÔNG bịa số liệu, KHÔNG bịa mã CP.
+2. Ưu tiên: CP thuộc ngành mạnh (sectorGrade A/A+), SEPA cao, RS mạnh, entry/stop R:R tốt.
+3. Giải thích NGẮN GỌN: 1-2 câu lý do ngành + 1-2 câu lý do CP + 1 câu rủi ro.
+4. Trả kết quả là JSON thuần, KHÔNG markdown wrapper, theo đúng schema:
+{
+  "picks": [
+    {
+      "symbol": "VCB",
+      "rank": 1,
+      "sectorReason": "Ngành Ngân hàng breadth mở rộng, smart-money gom 20D...",
+      "stockReason": "VCB RS mạnh vs VNINDEX, VCP co hẹp, breakout pocket pivot...",
+      "riskNote": "Thanh khoản phiên giảm nhẹ, canh MA10"
+    }
+  ]
+}
+5. Số picks: theo maxPicks (mặc định 5-8). Chỉ chọn CP thực sự tốt, không cố cho đủ số.
+6. rank theo thứ tự ưu tiên giảm dần (1 = tốt nhất).
+7. Không chọn CP bị flag EXPENSIVE trừ khi理由 rất mạnh (khi đó nêu rõ trong riskNote).`;
+
+/**
+ * Parse JSON từ LLM response (chịu markdown wrapper/code fence).
+ */
+function parsePickerJSON(text) {
+    if (!text) return null;
+    let t = text.trim();
+    // Bỏ ```json ... ``` wrapper nếu có
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) t = fence[1].trim();
+    // Cắt phần đầu/cuối không phải JSON (tìm { đầu và } cuối)
+    const first = t.indexOf('{');
+    const last = t.lastIndexOf('}');
+    if (first !== -1 && last !== -1 && last > first) {
+        t = t.slice(first, last + 1);
+    }
+    try { return JSON.parse(t); } catch (e) { return null; }
+}
+
+/**
+ * Sinh AI stock picks từ context (đã pre-rank bởi picker).
+ * Hybrid: LLM chỉ reasoning + giải thích trên kết quả thuật toán.
+ *
+ * @param {object} context — { sectorContext: [...top ngành], candidates: [...pre-ranked picks] }
+ *   mỗi candidate đã có: symbol, sector, sectorScore, sepaScore, sepaGrade,
+ *   effectiveScore, entry, stop, target1, atr, rr, flags, price, change
+ * @param {object} [opts] — { maxPicks, provider, tokenrouterKey, deepseekKey, geminiKey }
+ * @returns {Promise<{picks:Array, provider:string, aiFallback?:boolean}>}
+ */
+async function generateStockPicks(context, opts = {}) {
+    const maxPicks = opts.maxPicks || 8;
+    const trKey = opts.tokenrouterKey || TOKENROUTER_API_KEY;
+    const dsKey = opts.deepseekKey || DEEPSEEK_API_KEY;
+    const gmKey = opts.geminiKey || GEMINI_API_KEY;
+    const providerPref = opts.provider || 'auto';
+
+    const userPrompt = `Dữ liệu AI Stock Picker (đã pre-rank bởi thuật toán SEPA + sector score):
+
+## Ngành mạnh nhất (sector context)
+${JSON.stringify((context.sectorContext || []).slice(0, 8), null, 2)}
+
+## Top CP ứng viên (đã filter + rank, có entry/stop/target)
+${JSON.stringify((context.candidates || []).slice(0, 15).map(c => ({
+    symbol: c.symbol, sector: c.sector, sectorName: c.sectorName,
+    sectorScore: c.sectorScore, sectorGrade: c.sectorGrade,
+    sepaScore: c.sepaScore, sepaGrade: c.sepaGrade,
+    effectiveScore: c.effectiveScore, price: c.price, change: c.change,
+    entry: c.entry, stop: c.stop, target1: c.target1, atr: c.atr, rr: c.rr,
+    flags: c.flags, pe: c.pe
+})), null, 2)}
+
+Hãy chọn top ${maxPicks} CP tốt nhất, xếp hạng (rank), và giải thích theo JSON schema đã nêu.`;
+
+    const errors = [];
+    const attemptGLM = async () => {
+        const text = await tokenrouterChat([
+            { role: 'system', content: PICKER_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt }
+        ], trKey);
+        return { raw: text, provider: 'glm' };
+    };
+    const attemptDeepSeek = async () => {
+        const text = await deepseekChat([
+            { role: 'system', content: PICKER_SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt }
+        ], dsKey);
+        return { raw: text, provider: 'deepseek' };
+    };
+    const attemptGemini = async () => {
+        const text = await geminiChat(`${PICKER_SYSTEM_PROMPT}\n\n---\n\n${userPrompt}`, gmKey);
+        return { raw: text, provider: 'gemini' };
+    };
+
+    const providerMap = {
+        'glm': { name: 'GLM-5.2', fn: attemptGLM },
+        'deepseek': { name: 'DeepSeek', fn: attemptDeepSeek },
+        'gemini': { name: 'Gemini', fn: attemptGemini }
+    };
+    const attempts = [];
+    if (providerPref === 'auto') {
+        attempts.push(providerMap.glm, providerMap.deepseek, providerMap.gemini);
+    } else if (providerMap[providerPref]) {
+        attempts.push(providerMap[providerPref]);
+    } else {
+        attempts.push(providerMap.glm, providerMap.deepseek, providerMap.gemini);
+    }
+
+    for (const attempt of attempts) {
+        try {
+            const { raw, provider } = await attempt.fn();
+            const parsed = parsePickerJSON(raw);
+            if (parsed && Array.isArray(parsed.picks) && parsed.picks.length > 0) {
+                return { picks: parsed.picks, provider, raw };
+            }
+            console.warn(`⚠️  [ai-picker] ${attempt.name} parse JSON fail/thiếu picks`);
+            errors.push(`${attempt.name}: JSON parse fail`);
+        } catch (e) {
+            errors.push(`${attempt.name}: ${e.message}`);
+            console.warn(`⚠️  [ai-picker] ${attempt.name} fail:`, e.message);
+        }
+    }
+
+    // Tất cả provider fail/parse fail → trả pre-rank không lý do (aiFallback)
+    const fallbackPicks = (context.candidates || []).slice(0, maxPicks).map((c, i) => ({
+        symbol: c.symbol, rank: i + 1,
+        sectorReason: '(AI không khả dụng — xếp hạng thuật toán)',
+        stockReason: `SEPA ${c.sepaScore} (${c.sepaGrade}), ngành ${c.sectorName || c.sector} ${c.sectorGrade}`,
+        riskNote: 'Không có phân tích AI'
+    }));
+    const err = new Error(`AI picker fail, dùng fallback thuật toán: ${errors.join('; ')}`);
+    err.picks = fallbackPicks;
+    err.provider = 'fallback';
+    err.aiFallback = true;
+    throw err;
+}
+
 module.exports = {
     deepseekChat,
     geminiChat,
     tokenrouterChat,
     generateMarketReport,
+    generateStockPicks,
+    parsePickerJSON,
     isAvailable,
-    SYSTEM_PROMPT
+    SYSTEM_PROMPT,
+    PICKER_SYSTEM_PROMPT
 };
