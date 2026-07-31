@@ -156,11 +156,13 @@ function startScheduler(port) {
         }, delay);
     }
 
-    // ── EOD endpoints: sau đóng cửa (15-23h VN, T2-T6) ──────────────────
+    // ── EOD endpoints: Fiintrade auto-fetch CHỈ 19:00-20:00 VN, T2-T6 ────
+    // Fiintrade update EOD data ~18-19h. Giới hạn 1h tránh spam → block IP.
+    // Ngoài khoảng này → chỉ fetch khi user nhấn nút thủ công (?force=1).
     setTimeout(() => {
         const eodTick = async () => {
             lastTickAt = new Date().toISOString();
-            if (!tt.isInEODWindow()) return;
+            if (!tt.isInFiintradeWindow()) return; // chỉ 19-20h T2-T6
             const today = tt.vnToday();
             for (const target of EOD_TARGETS) {
                 await refreshEOD(target, port, today);
@@ -186,15 +188,13 @@ function startScheduler(port) {
         timers.push(setInterval(eodTick, EOD_RETRY_INTERVAL_MS));
     }, 20000);
 
-    // ── MORNING CATCH-UP: mỗi 30 phút, kiểm tra data phiên gần nhất ─────
-    // Fix bug "data stuck hôm trước": nếu container restart đêm hoặc lỡ window
-    // 15-23h, data EOD của phiên gần nhất (lastTradingDay) sẽ thiếu → user vào
-    // buổi sáng hôm sau thấy data cũ. Catch-up này fetch lại bất kể giờ (miễn
-    // là ngày giao dịch) khi data phiên gần nhất còn thiếu.
+    // ── MORNING CATCH-UP: chỉ trong window Fiintrade (19-20h T2-T6) ───────
+    // Trước đây chạy mỗi 30 phút cả ngày → spam fiintrade → block IP.
+    // Giờ chỉ kiểm tra thiếu data trong cùng window 19-20h.
     setTimeout(() => {
         const catchupTick = async () => {
             lastTickAt = new Date().toISOString();
-            if (!tt.isTradingDay()) return; // cuối tuần skip
+            if (!tt.isInFiintradeWindow()) return; // chỉ 19-20h T2-T6
             const ltd = tt.lastTradingDay();
             for (const target of EOD_TARGETS) {
                 const { hasEODToday } = require('./cache');

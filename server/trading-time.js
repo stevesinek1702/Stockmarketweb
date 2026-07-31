@@ -73,6 +73,18 @@ function isInEODWindow() {
 }
 
 /**
+ * true nếu trong khoảng Fiintrade auto-fetch (19:00-20:00 VN, T2-T6).
+ * Fiintrade update EOD data xong ~18-19h. Gọi lúc này để có data hôm nay.
+ * Giới hạn 1h để giảm tần suất gọi fiintrade (tránh bị block IP do spam).
+ * Ngoài khoảng này → chỉ gọi khi user nhấn nút thủ công (?force=1).
+ * Cuối tuần luôn false.
+ */
+function isInFiintradeWindow() {
+    const t = _vnDecimalHour();
+    return isTradingDay() && t >= 19 && t < 20;
+}
+
+/**
  * Ngày giao dịch gần nhất MÀ dữ liệu EOD có thể đã có sẵn.
  *
  * Quy tắc:
@@ -130,5 +142,6 @@ module.exports = {
     isTradingDay,
     isInTradingHours,
     isInEODWindow,
+    isInFiintradeWindow,
     lastTradingDay
 };

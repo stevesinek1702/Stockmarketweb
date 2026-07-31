@@ -1357,13 +1357,17 @@ app.get('/api/industry-flow', async (req, res) => {
         const level = parseInt(req.query.level) === 1 ? 1 : 2;
         const cacheKey = `industry-flow:${timeRange}:${level}`;
 
-        const cached = await getCachedResponse(cacheKey, 60000);
-        if (cached) {
-            console.log('📊 Returning cached industry-flow data');
-            return res.json(cached);
+        // ?refresh=1 → nút gọi thủ công (bypass cache, gọi fiintrade ngay)
+        const force = req.query.refresh === '1' || req.query.refresh === 'true';
+        if (!force) {
+            const cached = await getCachedResponse(cacheKey, 60000);
+            if (cached) {
+                console.log('📊 Returning cached industry-flow data');
+                return res.json(cached);
+            }
         }
 
-        console.log(`📊 Fetching industry flow from Fiintrade (timeRange=${timeRange}, level=${level})...`);
+        console.log(`📊 Fetching industry flow from Fiintrade (timeRange=${timeRange}, level=${level})${force ? ' (force)' : ''}...`);
         const { fromDate, toDate, data } = await fiintrade.getSectorFlow(timeRange, level);
 
         if (!data || data.length === 0) {
@@ -1700,10 +1704,14 @@ app.post('/api/breadth-snapshot/capture', async (req, res) => {
  * Nguồn: Fiintrade (tổng hợp 10 ngành cấp 1). Đơn vị: tỷ đồng.
  */
 app.get('/api/investor-flow', async (req, res) => {
-    const cached = await getCachedResponse('investor-flow', 60000);
-    if (cached) return res.json(cached);
+    // ?refresh=1 → nút gọi thủ công (bypass cache, gọi fiintrade ngay)
+    const force = req.query.refresh === '1' || req.query.refresh === 'true';
+    if (!force) {
+        const cached = await getCachedResponse('investor-flow', 60000);
+        if (cached) return res.json(cached);
+    }
     try {
-        console.log('📊 Fetching investor-group flow from Fiintrade...');
+        console.log(`📊 Fetching investor-group flow from Fiintrade${force ? ' (force)' : ''}...`);
         const [d1, d5, d20] = await Promise.all([
             fiintrade.getMarketInvestorFlow(1),
             fiintrade.getMarketInvestorFlow(5),
