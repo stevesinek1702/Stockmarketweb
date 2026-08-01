@@ -4251,10 +4251,14 @@ app.get('/api/top-net-stocks', async (req, res) => {
 async function fetchInternal(req, path) {
     try {
         const url = `http://localhost:${PORT}${path}`;
-        // News endpoint fetch nhiều RSS → cần timeout dài hơn (20s)
+        // News endpoint fetch nhiều RSS → cần timeout dài hơn (25s)
         const isNews = path.includes('/api/news');
+        const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'vnstock-scheduler-internal';
         const resp = await axios.get(url, {
-            headers: { Cookie: req.headers.cookie || '' },
+            headers: {
+                Cookie: req.headers.cookie || '',
+                'X-Internal-Secret': INTERNAL_SECRET  // bypass auth cho internal call
+            },
             timeout: isNews ? 25000 : 10000
         });
         return resp.data;
