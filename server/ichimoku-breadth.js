@@ -225,13 +225,19 @@ function buildSymbolIcb2Map(quotes, override = {}) {
 
 /**
  * Load symbol→icb2 map từ history file (meta.symMeta — ổn định, không cần live fetch).
- * buildHistory lưu symMeta khi build. Fallback rỗng nếu chưa có.
+ * buildHistory lưu symMeta dạng {SYM:{icb2:"3700"}}. Convert về {SYM:"3700"}
+ * (string) để computeIchimokuBreadth dùng được (nó check ICB2_MAP[code]).
  */
 function loadSymMetaFromHistory() {
     try {
         const HISTORY_FILE = path.join(DATA_DIR, 'ma-breadth-history.json');
         const d = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-        return (d.meta && d.meta.symMeta) || {};
+        const raw = (d.meta && d.meta.symMeta) || {};
+        const out = {};
+        for (const [sym, m] of Object.entries(raw)) {
+            if (m && m.icb2) out[sym] = m.icb2;
+        }
+        return out;
     } catch (e) { return {}; }
 }
 
