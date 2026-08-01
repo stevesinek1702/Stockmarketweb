@@ -4686,6 +4686,16 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         }
 
         // 4. Generate AI report với user settings
+        // Reorder context: VĨ MÔ + THỐNG KÊ TUẦN lên ĐẦU (AI tập trung phần đầu JSON,
+        // tránh bị lẫn/bỏ qua khi context lớn). LLM hay "quên" section cuối.
+        if (context.tinTucViMo || context.thongKeKy) {
+            const reordered = {};
+            if (context.thongKeKy) reordered.thongKeKy = context.thongKeKy;
+            if (context.tinTucViMo) reordered.tinTucViMo = context.tinTucViMo;
+            if (context.diemNhanBreadth) reordered.diemNhanBreadth = context.diemNhanBreadth;
+            Object.assign(reordered, context); // phần còn lại giữ nguyên
+            Object.assign(context, reordered);
+        }
         const { text, provider } = await aiModule.generateMarketReport(context, dateStr, {
             deepseekKey: userSettings.deepseekKey,
             geminiKey: userSettings.geminiKey,

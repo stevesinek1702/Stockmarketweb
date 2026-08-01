@@ -81,6 +81,11 @@ const WEEKLY_PROMPT = `Bạn là chuyên gia phân tích chứng khoán Việt N
 
 Nhiệm vụ: viết BÁO CÁO TUẦN (tổng kết 5 phiên giao dịch gần nhất) dựa trên data JSON.
 
+⚠️ YÊU CẦU TỐI ƯU TIÊN:
+1. JSON có thongKeKy (đẦU file) → LUÔN dùng cho "## Thống kê tuần" (VNINDEX % cả tuần, breadth MA đầu→cuối).
+2. JSON có tinTucViMo (15 tin vĩ mô NHNN/chính sách) → LUÔN viết "## 📌 Vĩ mô & Chính sách" phân tích từng tin.
+BẮT BUỘC có cả 2 section này. KHÔNG ĐƯỢC BỎ. Nếu bỏ = báo cáo SAI.
+
 Khác biệt so với báo cáo ngày: đây là GÓC NHÌN XU HƯỚNG, không phải mô tả 1 ngày.
 Tập trung vào: diễn biến cả tuần, động lượng, sức mạnh tương đối, dòng tiền tích lũy,
 nhận định xu hướng + triển vọng tuần tới.
