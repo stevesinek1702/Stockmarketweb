@@ -100,13 +100,20 @@ PHÂN TÍCH SÂU:
 - **Dòng tiền tuần**: khối ngoại + 4 nhóm NĐT ròng cả tuần (netTuanTy).
   Tự institutional/Tự doanh đang mua hay bán cả tuần?
 - **Phá Đỉnh/Đáy**: verdict tuần + vốn hóa phá đáy/đỉnh (tyLeDayDinh).
-- **Ngành dẫn dặt**: top ngành mạnh/yếu cả tuần theo lucCau + breadth.
-- **Triển vọng tuần tới**: dựa trên breadth trend + dòng tiền + vị trí giá vs MA.
+- **Ngành dẫn dắt**: top ngành mạnh/yếu cả tuần theo lucCau + breadth.
+- **VĨ MÔ & CHÍNH SÁCH (tinTucViMo)**: ĐÂY LÀ PHẦN RẤT QUAN TRỌNG. Nếu data có tinTucViMo,
+  phân tích TỪNG tin quan trọng: quyết định NHNN (lãi suất OMO/tái chiết khấu, room tín dụng,
+  tỷ giá), chính sách Chính phủ tác động nhóm ngành (ví dụ: nới room tín dụng BĐS → lợi BĐS;
+  tăng thuế → bất lợi; gói kích cầu → lợi ngành liên quan). Nêu rõ tin nào TÍCH CỰC,
+  tin nào TIÊU CỰC, tác động đến NGÀNH NÀO cụ thể. Liên kết với biến động giá/ dòng tiền
+  trong tuần (vd: tin NHNN giữ lãi suất → ngành Ngân hàng phản ứng thế nào).
+- **Triển vọng tuần tới**: dựa trên breadth trend + dòng tiền + vị trí giá vs MA + vĩ mô.
 
 Cấu trúc đề xuất:
 ## Tổng kết tuần (VNINDEX + GTGD + trạng thái)
 ## Độ rộng thị trường & Xu hướng breadth
 ## Dòng tiền tuần (Khối ngoại + NĐT)
+## 📌 Vĩ mô & Chính sách quan trọng (NHNN + tác động ngành)
 ## Ngành nổi bật tuần
 ## Triển vọng & Cảnh báo tuần tới`;
 
@@ -135,12 +142,18 @@ PHÂN TÍCH SÂU:
 - **Phá Đỉnh/Đáy**: verdict tháng + vốn hóa phá đáy/đỉnh (tyLeDayDinh) — xu hướng
   rủi ro lớn (vốn hóa đáy >> đỉnh = dòng tiền lớn rút).
 - **Chuyển dịch ngành**: ngành nào mạnh lên/yếu đi trong tháng (so sánh lucCau).
-- **Triển vọng tháng tới**: dựa trên breadth trend + dòng tiền + cấu trúc thị trường.
+- **VĨ MÔ & CHÍNH SÁCH (tinTucViMo)**: ĐÂY LÀ PHẦN RẤT QUAN TRỌNG. Nếu data có tinTucViMo,
+  phân tích TỪNG tin quan trọng trong tháng: quyết định NHNN (lãi suất, room tín dụng, tỷ giá),
+  chính sách Chính phủ, Nghị quyết tác động nhóm ngành. Nêu rõ tin nào TÍCH CỰC/TIÊU CỰC,
+  tác động NGÀNH NÀO. Liên kết với dịch chuyển ngành + dòng tiền trong tháng
+  (vd: chính sách nới room tín dụng → ngành BĐS/Ngân hàng hưởng lợi → dòng tiền đổ vào).
+- **Triển vọng tháng tới**: dựa trên breadth trend + dòng tiền + cấu trúc + vĩ mô.
 
 Cấu trúc đề xuất:
 ## Tổng kết tháng (VNINDEX + GTGD + trạng thái)
 ## Độ rộng thị trường & Xu hướng breadth tháng
 ## Dòng tiền tháng (Khối ngoại + NĐT)
+## 📌 Vĩ mô & Chính sách quan trọng (NHNN + tác động ngành)
 ## Chuyển dịch ngành trong tháng
 ## Triển vọng & Cảnh báo tháng tới`;
 

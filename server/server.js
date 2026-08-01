@@ -4551,6 +4551,42 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         // 3. Build context gọn
         const dateStr = require('./cache').vnToday();
         const context = buildMarketContext(dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential);
+        // Thêm tin tức vĩ mô cho báo cáo Tuần/Tháng (NHNN, chính sách, tin tác động ngành)
+        if (period === 'week' || period === 'month') {
+            try {
+                // Lấy tin vĩ mô + ngân hàng (chứa quyết định NHNN, lãi suất, chính sách)
+                const [viMoNews, nganHangNews] = await Promise.all([
+                    fetchInternal(req, '/api/news?category=Kinh tế vĩ mô&limit=15'),
+                    fetchInternal(req, '/api/news?category=Ngân hàng&limit=10')
+                ]);
+                const allNews = [
+                    ...((viMoNews && viMoNews.news) || viMoNews || []),
+                    ...((nganHangNews && nganHangNews.news) || nganHangNews || [])
+                ];
+                if (allNews.length) {
+                    // Lọc tin quan trọng: NHNN, lãi suất, chính sách, tín dụng, tỷ giá, FED
+                    const kw = /NHNN|ngân hàng nhà nước|lãi suất|OMO|tái cấp vốn|tái chiết khấu|chính sách|tín dụng|tỷ giá|FED|Fed|inflation|lạm phát|giá dầu|Nghị quyết|nghị định|thông tư|công bố|quyết định/i;
+                    const filtered = allNews
+                        .filter(n => n && (n.title || n.ten))
+                        .filter(n => kw.test(n.title || '') || kw.test(n.summary || n.mota || ''))
+                        .slice(0, 12)
+                        .map(n => ({
+                            ten: n.title || n.ten,
+                            tomTat: (n.summary || n.mota || '').slice(0, 200),
+                            nguon: n.source || n.nguon,
+                            ngay: n.pubDate || n.ngay || n.date,
+                            link: n.link || n.url
+                        }));
+                    if (filtered.length) {
+                        context.tinTucViMo = {
+                            ghiChu: 'Tin vĩ mô quan trọng trong kỳ (lọc từ RSS Vietstock/CafeF)',
+                            soTin: filtered.length,
+                            tin: filtered
+                        };
+                    }
+                }
+            } catch (e) { /* news fail → báo cáo vẫn chạy không có vĩ mô */ }
+        }
         // Gắn period để AI biết đang viết báo cáo loại nào + thêm điểm nhấn tuần/tháng
         context.loaiBaoCao = period === 'week' ? 'TUẦN (5 phiên)' : (period === 'month' ? 'THÁNG (~20 phiên)' : 'NGÀY');
         if (period === 'week' || period === 'month') {
