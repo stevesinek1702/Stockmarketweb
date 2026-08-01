@@ -3347,15 +3347,21 @@ app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
         const scope = req.query.scope === 'industry' ? 'industry' : 'market';
         const industryCode = req.query.industryCode || null;
 
-        // Build symbol→icb2 map từ all-stocks cache (đếm theo ngành cần map này)
+        // Build symbol→icb2 map. all-stocks KHÔNG có industryCode → dùng
+        // industry-stats (fetch quotes có IndustryCode, group theo icb2).
         let symbolIcb2 = null;
         try {
-            const allStocksData = await fetchInternal(req, '/api/all-stocks');
-            // all-stocks trả {stocks:{HSX:[],HNX:[],UPCOM:[]}} hoặc {allStocks:[...]}
-            const stocks = (allStocksData && (allStocksData.stocks || allStocksData.allStocks || allStocksData)) || [];
-            // buildSymbolIcb2Map tự xử lý cả array lẫn object {HSX,HNX,UPCOM}
-            symbolIcb2 = ichiB.buildSymbolIcb2Map(stocks, INDUSTRY_OVERRIDE);
-        } catch (e) { /* nếu all-stocks fail → breadth vẫn tính được phần market */ }
+            const indStatsData = await fetchInternal(req, '/api/industry-stats');
+            const results = (indStatsData && indStatsData.results) || [];
+            symbolIcb2 = {};
+            for (const grp of results) {
+                if (grp.code && Array.isArray(grp.stocks)) {
+                    for (const s of grp.stocks) {
+                        if (s.symbol) symbolIcb2[s.symbol] = grp.code;
+                    }
+                }
+            }
+        } catch (e) { /* industry-stats fail → breadth vẫn tính được phần market */ }
 
         let result;
         // ?withStocks=1 → include danh sách mã CP trên/dưới đường (cho click detail)
