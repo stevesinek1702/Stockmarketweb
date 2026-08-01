@@ -223,11 +223,24 @@ function buildSymbolIcb2Map(quotes, override = {}) {
     return map;
 }
 
+/**
+ * Load symbol→icb2 map từ history file (meta.symMeta — ổn định, không cần live fetch).
+ * buildHistory lưu symMeta khi build. Fallback rỗng nếu chưa có.
+ */
+function loadSymMetaFromHistory() {
+    try {
+        const HISTORY_FILE = path.join(DATA_DIR, 'ma-breadth-history.json');
+        const d = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+        return (d.meta && d.meta.symMeta) || {};
+    } catch (e) { return {}; }
+}
+
 module.exports = {
     computeIchimokuBreadth,
     computeIchimokuBreadthForIndustry,
     tenkanOfCloses,
     buildSymbolIcb2Map,
+    loadSymMetaFromHistory,
     ICB2_MAP,
     DEFAULT_PERIODS,
     CLOSE_FILE

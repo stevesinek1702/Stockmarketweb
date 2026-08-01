@@ -550,7 +550,8 @@ async function buildHistory({ fetchFn, getCookie, onProgress } = {}, windowDays 
             symbolsTracked: Object.keys(closeData.symbols).length,
             historyDays: Object.keys(history.history).length,
             firstDate: dateList[0],
-            lastDate: dateList[dateList.length - 1]
+            lastDate: dateList[dateList.length - 1],
+            symMeta: symMeta  // lưu symbol→icb2 cho các module khác (ichimoku-breadth)
         };
         _saveJSON(HISTORY_FILE, history);
 

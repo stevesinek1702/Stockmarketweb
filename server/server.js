@@ -3347,21 +3347,25 @@ app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
         const scope = req.query.scope === 'industry' ? 'industry' : 'market';
         const industryCode = req.query.industryCode || null;
 
-        // Build symbol→icb2 map. all-stocks KHÔNG có industryCode → dùng
-        // industry-stats (fetch quotes có IndustryCode, group theo icb2).
+        // Build symbol→icb2 map từ history file (meta.symMeta — ổn định,
+        // không cần live fetch). buildHistory lưu symMeta khi build.
         let symbolIcb2 = null;
         try {
-            const indStatsData = await fetchInternal(req, '/api/industry-stats');
-            const results = (indStatsData && indStatsData.results) || [];
-            symbolIcb2 = {};
-            for (const grp of results) {
-                if (grp.code && Array.isArray(grp.stocks)) {
-                    for (const s of grp.stocks) {
-                        if (s.symbol) symbolIcb2[s.symbol] = grp.code;
+            symbolIcb2 = ichiB.loadSymMetaFromHistory();
+            if (Object.keys(symbolIcb2).length === 0) {
+                // Fallback: industry-stats (nếu symMeta chưa có)
+                const indStatsData = await fetchInternal(req, '/api/industry-stats');
+                const results = (indStatsData && indStatsData.results) || [];
+                symbolIcb2 = {};
+                for (const grp of results) {
+                    if (grp.code && Array.isArray(grp.stocks)) {
+                        for (const s of grp.stocks) {
+                            if (s.symbol) symbolIcb2[s.symbol] = grp.code;
+                        }
                     }
                 }
             }
-        } catch (e) { /* industry-stats fail → breadth vẫn tính được phần market */ }
+        } catch (e) { /* fallback → breadth vẫn tính được phần market */ }
 
         let result;
         // ?withStocks=1 → include danh sách mã CP trên/dưới đường (cho click detail)
