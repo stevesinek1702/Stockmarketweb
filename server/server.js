@@ -2034,7 +2034,14 @@ const RSS_FEEDS = [
     { url: 'https://baodautu.vn/dau-tu.rss', category: 'Đầu tư', source: 'Báo Đầu Tư' },
     { url: 'https://baodautu.vn/chung-khoan.rss', category: 'Chứng khoán', source: 'Báo Đầu Tư' },
     { url: 'https://baodautu.vn/doanh-nghiep.rss', category: 'Doanh nghiệp', source: 'Báo Đầu Tư' },
-    { url: 'https://baodautu.vn/bat-dong-san.rss', category: 'Bất động sản', source: 'Báo Đầu Tư' }
+    { url: 'https://baodautu.vn/bat-dong-san.rss', category: 'Bất động sản', source: 'Báo Đầu Tư' },
+    // Vĩ mô & chính sách chuyên sâu (cho báo cáo Tuần/Tháng)
+    { url: 'https://cafef.vn/thoi-su.chn', category: 'Vĩ mô - Chính sách', source: 'CafeF' },
+    { url: 'https://vnexpress.net/rss/kinh-doanh.rss', category: 'Kinh doanh', source: 'VnExpress' },
+    { url: 'https://ndh.vn/rss/kinh-te.chn', category: 'Vĩ mô - Chính sách', source: 'NDH' },
+    { url: 'https://vneconomy.vn/chinh-suc.rss', category: 'Vĩ mô - Chính sách', source: 'VnEconomy' },
+    { url: 'https://vneconomy.vn/tai-chinh.rss', category: 'Tài chính - Ngân hàng', source: 'VnEconomy' },
+    { url: 'https://thesaigontime.vn/tai-chinh-kinh-doanh/chinh-sach.rss', category: 'Vĩ mô - Chính sách', source: 'SGT' }
 ];
 
 /**
@@ -4554,32 +4561,38 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         // Thêm tin tức vĩ mô cho báo cáo Tuần/Tháng (NHNN, chính sách, tin tác động ngành)
         if (period === 'week' || period === 'month') {
             try {
-                // Lấy tin vĩ mô + ngân hàng (chứa quyết định NHNN, lãi suất, chính sách)
-                const [viMoNews, nganHangNews] = await Promise.all([
-                    fetchInternal(req, '/api/news?category=Kinh tế vĩ mô&limit=15'),
-                    fetchInternal(req, '/api/news?category=Ngân hàng&limit=10')
-                ]);
-                const allNews = [
-                    ...((viMoNews && viMoNews.news) || viMoNews || []),
-                    ...((nganHangNews && nganHangNews.news) || nganHangNews || [])
-                ];
+                // Lấy TẤT CẢ news rồi lọc keyword vĩ mô (RSS category thiế vĩ mô,
+                // lấy all + keyword lọc ra nhiều tin quan trọng hơn)
+                const allNewsResp = await fetchInternal(req, '/api/news?limit=100');
+                const allNews = (allNewsResp && (allNewsResp.news || allNewsResp.data)) || [];
                 if (allNews.length) {
-                    // Lọc tin quan trọng: NHNN, lãi suất, chính sách, tín dụng, tỷ giá, FED
-                    const kw = /NHNN|ngân hàng nhà nước|lãi suất|OMO|tái cấp vốn|tái chiết khấu|chính sách|tín dụng|tỷ giá|FED|Fed|inflation|lạm phát|giá dầu|Nghị quyết|nghị định|thông tư|công bố|quyết định/i;
-                    const filtered = allNews
+                    // Lọc tin vĩ mô quan trọng (rộng): NHNN, lãi suất, chính sách, FED, v.v.
+                    const kw = /NHNN|ngân hàng nhà nước|lãi suất|OMO|tái cấp vốn|tái chiết khấu|chính sách|tín dụng|tỷ giá|FED|Fed|inflation|lạm phát|giá dầu|Nghị quyết|nghị định|thông tư|công bố|quyết định|kinh tế|GDP|CPI|xuất khẩu|nhập khẩu|thâm hụt|thặng dư|đầu tư công|trái phiếu|quỹ đầu tư|định hướng/i;
+                    // Ưu tiên: tin match keyword TRƯỚC, rồi tin category vĩ mô/ngân hàng
+                    const macroCats = /vĩ mô|chính sách|ngân hàng|tài chính|kinh tế/i;
+                    const scored = allNews
                         .filter(n => n && (n.title || n.ten))
-                        .filter(n => kw.test(n.title || '') || kw.test(n.summary || n.mota || ''))
-                        .slice(0, 12)
-                        .map(n => ({
-                            ten: n.title || n.ten,
-                            tomTat: (n.summary || n.mota || '').slice(0, 200),
-                            nguon: n.source || n.nguon,
-                            ngay: n.pubDate || n.ngay || n.date,
-                            link: n.link || n.url
-                        }));
+                        .map(n => {
+                            const text = (n.title || '') + ' ' + (n.summary || n.mota || '') + ' ' + (n.category || '');
+                            let score = 0;
+                            if (kw.test(n.title || '')) score += 3;
+                            if (kw.test(n.summary || n.mota || '')) score += 1;
+                            if (macroCats.test(n.category || '')) score += 2;
+                            return { n, score };
+                        })
+                        .filter(x => x.score > 0)
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 15);
+                    const filtered = scored.map(x => ({
+                        ten: x.n.title || x.n.ten,
+                        tomTat: (x.n.summary || x.n.mota || '').slice(0, 250),
+                        danhMuc: x.n.category,
+                        nguon: x.n.source || x.n.nguon,
+                        ngay: x.n.pubDate || x.n.ngay || x.n.date
+                    }));
                     if (filtered.length) {
                         context.tinTucViMo = {
-                            ghiChu: 'Tin vĩ mô quan trọng trong kỳ (lọc từ RSS Vietstock/CafeF)',
+                            ghiChu: `${filtered.length} tin vĩ mô/chính sách quan trọng trong kỳ (lọc từ RSS)`,
                             soTin: filtered.length,
                             tin: filtered
                         };
