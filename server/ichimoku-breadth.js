@@ -205,11 +205,20 @@ function computeIchimokuBreadthForIndustry(industryCode, periods) {
  */
 function buildSymbolIcb2Map(quotes, override = {}) {
     const map = {};
-    if (!Array.isArray(quotes)) return map;
-    for (const q of quotes) {
-        if (!q || !q.Symbol) continue;
-        const ic = q.IndustryCode || '';
-        map[q.Symbol] = override[q.Symbol] || (ic.substring(0, 2) + '00');
+    // Chấp nhận: array HOẶC object {HSX:[],HNX:[],UPCOM:[]}
+    let list = [];
+    if (Array.isArray(quotes)) list = quotes;
+    else if (quotes && typeof quotes === 'object') {
+        // all-stocks trả {HSX:[...], HNX:[...], UPCOM:[...]} → gộp
+        list = Object.values(quotes).flat();
+    }
+    for (const q of list) {
+        if (!q) continue;
+        // Field tên linh hoạt: Symbol/symbol, IndustryCode/industryCode
+        const sym = q.Symbol || q.symbol;
+        if (!sym) continue;
+        const ic = q.IndustryCode || q.industryCode || '';
+        map[sym] = override[sym] || (ic.substring(0, 2) + '00');
     }
     return map;
 }

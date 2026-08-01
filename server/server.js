@@ -3351,9 +3351,10 @@ app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
         let symbolIcb2 = null;
         try {
             const allStocksData = await fetchInternal(req, '/api/all-stocks');
+            // all-stocks trả {stocks:{HSX:[],HNX:[],UPCOM:[]}} hoặc {allStocks:[...]}
             const stocks = (allStocksData && (allStocksData.stocks || allStocksData.allStocks || allStocksData)) || [];
-            const list = Array.isArray(stocks) ? stocks : (stocks.hsx || []);
-            symbolIcb2 = ichiB.buildSymbolIcb2Map(list, INDUSTRY_OVERRIDE);
+            // buildSymbolIcb2Map tự xử lý cả array lẫn object {HSX,HNX,UPCOM}
+            symbolIcb2 = ichiB.buildSymbolIcb2Map(stocks, INDUSTRY_OVERRIDE);
         } catch (e) { /* nếu all-stocks fail → breadth vẫn tính được phần market */ }
 
         let result;
