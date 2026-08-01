@@ -2036,12 +2036,9 @@ const RSS_FEEDS = [
     { url: 'https://baodautu.vn/doanh-nghiep.rss', category: 'Doanh nghiệp', source: 'Báo Đầu Tư' },
     { url: 'https://baodautu.vn/bat-dong-san.rss', category: 'Bất động sản', source: 'Báo Đầu Tư' },
     // Vĩ mô & chính sách chuyên sâu (cho báo cáo Tuần/Tháng)
-    { url: 'https://cafef.vn/thoi-su.chn', category: 'Vĩ mô - Chính sách', source: 'CafeF' },
-    { url: 'https://vnexpress.net/rss/kinh-doanh.rss', category: 'Kinh doanh', source: 'VnExpress' },
-    { url: 'https://ndh.vn/rss/kinh-te.chn', category: 'Vĩ mô - Chính sách', source: 'NDH' },
     { url: 'https://vneconomy.vn/chinh-suc.rss', category: 'Vĩ mô - Chính sách', source: 'VnEconomy' },
     { url: 'https://vneconomy.vn/tai-chinh.rss', category: 'Tài chính - Ngân hàng', source: 'VnEconomy' },
-    { url: 'https://thesaigontime.vn/tai-chinh-kinh-doanh/chinh-sach.rss', category: 'Vĩ mô - Chính sách', source: 'SGT' }
+    { url: 'https://vnexpress.net/rss/kinh-doanh.rss', category: 'Kinh doanh', source: 'VnExpress' }
 ];
 
 /**
@@ -4254,9 +4251,11 @@ app.get('/api/top-net-stocks', async (req, res) => {
 async function fetchInternal(req, path) {
     try {
         const url = `http://localhost:${PORT}${path}`;
+        // News endpoint fetch nhiều RSS → cần timeout dài hơn (20s)
+        const isNews = path.includes('/api/news');
         const resp = await axios.get(url, {
             headers: { Cookie: req.headers.cookie || '' },
-            timeout: 10000
+            timeout: isNews ? 25000 : 10000
         });
         return resp.data;
     } catch (e) {
