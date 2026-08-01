@@ -5329,10 +5329,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupNewsEventListeners();
     setupAIReportEvents();
     setupPeriodReportEvents('week', {
-        genBtn: 'week-report-generate', copyBtn: 'week-report-copy'
+        body: 'week-report-body', meta: 'week-report-meta',
+        genBtn: 'week-report-generate', copyBtn: 'week-report-copy',
+        genLabel: '🤖 Tạo Báo Cáo Tuần',
+        loadingText: '⏳ Đang tổng kết tuần...',
+        placeholderText: 'Đang tổng kết dữ liệu cả tuần...'
     });
     setupPeriodReportEvents('month', {
-        genBtn: 'month-report-generate', copyBtn: 'month-report-copy'
+        body: 'month-report-body', meta: 'month-report-meta',
+        genBtn: 'month-report-generate', copyBtn: 'month-report-copy',
+        genLabel: '🤖 Tạo Báo Cáo Tháng',
+        loadingText: '⏳ Đang tổng kết tháng...',
+        placeholderText: 'Đang tổng kết dữ liệu cả tháng...'
     });
     setupSectorAIEvents();
     setupIndustryTableSort();
