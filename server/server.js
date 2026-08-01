@@ -4546,7 +4546,7 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
         // Range MA breadth + investor theo period: today→days=1/range=today, week→days=5/range=oneWeek, month→days=20/range=oneMonth
         const periodRange = period === 'week' ? 'oneWeek' : (period === 'month' ? 'oneMonth' : 'today');
         const maDays = period === 'week' ? 5 : (period === 'month' ? 20 : 5);
-        const [dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential] = await Promise.all([
+        const [dashboard, breadth, industry, investor, foreign, breakout, influential, maBreadth, potential, topNet] = await Promise.all([
             fetchInternal(req, '/api/market-dashboard'),
             fetchInternal(req, '/api/market-breadth'),
             fetchInternal(req, '/api/industry-stats'),
@@ -4555,7 +4555,8 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
             fetchInternal(req, '/api/breadth-breakout'),
             fetchInternal(req, '/api/influential-stocks'),
             fetchInternal(req, `/api/ma-breadth?scope=market&days=${maDays}`),
-            fetchInternal(req, '/api/potential-stocks')
+            fetchInternal(req, '/api/potential-stocks'),
+            fetchInternal(req, '/api/top-net-stocks')
         ]);
 
         // 3. Build context gọn
@@ -4570,9 +4571,10 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
                 const allNews = (allNewsResp && (allNewsResp.news || allNewsResp.data)) || [];
                 if (allNews.length) {
                     // Lọc tin vĩ mô quan trọng (rộng): NHNN, lãi suất, chính sách, FED, v.v.
-                    const kw = /NHNN|ngân hàng nhà nước|lãi suất|OMO|tái cấp vốn|tái chiết khấu|chính sách|tín dụng|tỷ giá|FED|Fed|inflation|lạm phát|giá dầu|Nghị quyết|nghị định|thông tư|công bố|quyết định|kinh tế|GDP|CPI|xuất khẩu|nhập khẩu|thâm hụt|thặng dư|đầu tư công|trái phiếu|quỹ đầu tư|định hướng/i;
+                    // Keyword vĩ mô CHÍNH XÁC (tránh tin rác: "kinh tế" quá rộng → bỏ)
+                    const kw = /NHNN|ngân hàng nhà nước|State Bank|lãi suất|OMO|tái cấp vốn|tái chiết khấu|room tín dụng|tín dụng|tỷ giá|FED|Fed|hạ đo lưỡng|tăng lãi suất|giảm lãi suất|inflation|lạm phát|giá dầu|Nghị quyết\s+\d|nghị định\s+\d|thông tư\s+\d|GDP|CPI|PMI|xuất siêu|nhập siêu|thâm hụt thương mại|thặng dư thương mại|đầu tư công|trái phiếu chính phủ|TPCP|ngân sách nhà nước|giải ngân|bội chi/i;
                     // Ưu tiên: tin match keyword TRƯỚC, rồi tin category vĩ mô/ngân hàng
-                    const macroCats = /vĩ mô|chính sách|ngân hàng|tài chính|kinh tế/i;
+                    const macroCats = /vĩ mô|chính sách|tài chính/i;
                     const scored = allNews
                         .filter(n => n && (n.title || n.ten))
                         .map(n => {
@@ -4610,13 +4612,13 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
             if (maBreadth?.success && Array.isArray(maBreadth.series) && maBreadth.series.length >= 2) {
                 const first = maBreadth.series[0];
                 const last = maBreadth.series[maBreadth.series.length - 1];
-                const total = last.total || 1;
-                const pct = (n) => Math.round((n / total) * 1000) / 10;
+                const pctFirst = (n) => first.total > 0 ? Math.round((n / first.total) * 1000) / 10 : 0;
+                const pctLast = (n) => last.total > 0 ? Math.round((n / last.total) * 1000) / 10 : 0;
                 context.diemNhanBreadth = {
-                    kyGhiChu: `Đầu kỳ (${first.date}) → Cuối kỳ (${last.date})`,
-                    ma50DauCuoi: `${pct(first.ma50)}% → ${pct(last.ma50)}%`,
-                    ma100DauCuoi: `${pct(first.ma100)}% → ${pct(last.ma100)}%`,
-                    ma200DauCuoi: `${pct(first.ma200)}% → ${pct(last.ma200)}%`,
+                    kyGhiChu: `Đầu kỳ (${first.date}) → Cuối kỳ (${last.date}), ${maBreadth.series.length} phiên`,
+                    ma50DauCuoi: `${pctFirst(first.ma50)}% → ${pctLast(last.ma50)}%`,
+                    ma100DauCuoi: `${pctFirst(first.ma100)}% → ${pctLast(last.ma100)}%`,
+                    ma200DauCuoi: `${pctFirst(first.ma200)}% → ${pctLast(last.ma200)}%`,
                     tongMaCuoiKy: last.total,
                     nhanDinh: (last.ma50 - first.ma50) > 0
                         ? 'Breadth MỞ RỘNG (số mã trên MA tăng) → xu hướng tích cực trong kỳ'
@@ -4625,6 +4627,47 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
                             : 'Breadth đi ngang trong kỳ'
                 };
             }
+
+            // THỐNG KÊ TUẦN/THÁNG tổng hợp (VNINDEX, GTGD, foreign net cả kỳ)
+            // Lấy data từ dashboard + maBreadth series
+            try {
+                const series = (maBreadth?.series) || [];
+                const dashData = dashboard?.data || dashboard || {};
+                const vnindexNow = dashData.vnindex || dashData.indices?.vnindex || {};
+                // VNINDEX close hiện tại + thay đổi cả kỳ (nếu có vnindex trong series)
+                let vnindexDauKy = null;
+                if (series.length && series[0].vnindex) vnindexDauKy = series[0].vnindex;
+                const vnindexCuoiKy = vnindexNow.close || (series.length ? series[series.length-1].vnindex : null);
+                const vnindexPctKy = (vnindexDauKy && vnindexCuoiKy)
+                    ? Math.round(((vnindexCuoiKy / vnindexDauKy - 1) * 100) * 100) / 100 : null;
+
+                // Foreign net: tổng cả kỳ nếu có trend
+                const foreignTrend = (foreign?.trend) || [];
+                const foreignToday = foreign?.today || {};
+                // trend có {label, net} — tìm "5 phiên" hoặc "20 phiên"
+                const weekNet = foreignTrend.find(t => t.label && t.label.includes('5'));
+                const monthNet = foreignTrend.find(t => t.label && t.label.includes('20'));
+
+                context.thongKeKy = {
+                    loaiKy: period === 'week' ? 'TUẦN' : 'THÁNG',
+                    soPhien: series.length,
+                    kyGhiChu: `${series[0]?.date || '?'} → ${series[series.length-1]?.date || '?'}`,
+                    vnindex: {
+                        dauKy: vnindexDauKy,
+                        cuoiKy: vnindexCuoiKy,
+                        phanTramThayDoi: vnindexPctKy !== null ? `${vnindexPctKy}%` : null,
+                        lucCauHienTai: vnindexNow.lucCau || vnindexNow.demandStrength || null,
+                        gtgdHomNayTy: vnindexNow.gtgd || vnindexNow.valueTraded || null
+                    },
+                    khoiNgoai: {
+                        netHomNayTy: foreignToday.net || null,
+                        netCuaKyTy: period === 'week' ? (weekNet?.net ?? null) : (monthNet?.net ?? null),
+                        ghiChu: 'Dòng tiền NĐT chi tiết (cá nhân, tổ chức, tự doanh) hiện bị gián đoạn nguồn data Fiintrade — đang chờ khôi phục.'
+                    },
+                    topMuaRong10Ngay: (topNet?.data?.tenDay?.buy || []).slice(0, 5).map(s => (s.symbol||s.ma||'') + ' ' + (s.net||s.value||'') + ' tỷ'),
+                    topBanRong10Ngay: (topNet?.data?.tenDay?.sell || []).slice(0, 5).map(s => (s.symbol||s.ma||'') + ' ' + (s.net||s.value||'') + ' tỷ')
+                };
+            } catch (e) { /* stats fail → vẫn có breadth */ }
         }
 
         // 3b. Thêm MA VNINDEX (giá trị điểm ~1771) — async, tính riêng

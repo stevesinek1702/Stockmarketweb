@@ -93,26 +93,28 @@ Quy tắc:
 5. Đưa ra nhận định xu hướng + cảnh báo rủi ro + triển vọng tuần tới.
 
 PHÂN TÍCH SÂU:
-- **Tổng kết tuần**: VNINDEX biến động ra sao (đầu vs cuối tuần, % cả tuần),
-  tổng GTGD tuần, trạng thái thị trường.
-- **Độ rộng kỹ thuật (doRongKyThuat)**: % mã trên MA50/100/200 ĐẦU vs CUỐI tuần —
+- **Thống kê tuần (thongKeKy)**: ĐÂY LÀ DATA QUAN TRỌNG NHẤT cho báo cáo tuần. Dùng
+  thongKeKy.vnindex (dauKy → cuoiKy, phanTramThayDoi %), thongKeKy.khoiNgoai (netCuaKyTy),
+  top mua/bán ròng. LUÔN dẫn số liệu cụ thể từ đây. Nếu null → nói rõ "chưa có data".
+- **Tổng kết tuần**: VNINDEX đầu kỳ → cuối kỳ (% thay đổi), GTGD, trạng thái thị trường.
+  ĐÂY LÀ BÁO CÁO TUẦN — tập trung diễn biến CẢ TUẦN, không phải 1 ngày!
+- **Độ rộng kỹ thuật (diemNhanBreadth)**: % mã trên MA50/100/200 ĐẦU vs CUỐI tuần —
   breadth MỞ RỘNG (tăng) hay THU HẸP (giảm)? Đây là tín hiệu xu hướng then chốt.
-- **Dòng tiền tuần**: khối ngoại + 4 nhóm NĐT ròng cả tuần (netTuanTy).
-  Tự institutional/Tự doanh đang mua hay bán cả tuần?
+- **Dòng tiền tuần**: khối ngoại net cả tuần (thongKeKy.khoiNgoai.netCuaKyTy) +
+  top mua/bán ròng. 4 nhóm NĐT chi tiết có thể null (đang chờ data Fiintrade).
 - **Phá Đỉnh/Đáy**: verdict tuần + vốn hóa phá đáy/đỉnh (tyLeDayDinh).
 - **Ngành dẫn dắt**: top ngành mạnh/yếu cả tuần theo lucCau + breadth.
-- **VĨ MÔ & CHÍNH SÁCH (tinTucViMo)**: ĐÂY LÀ PHẦN RẤT QUAN TRỌNG. Nếu data có tinTucViMo,
-  phân tích TỪNG tin quan trọng: quyết định NHNN (lãi suất OMO/tái chiết khấu, room tín dụng,
-  tỷ giá), chính sách Chính phủ tác động nhóm ngành (ví dụ: nới room tín dụng BĐS → lợi BĐS;
-  tăng thuế → bất lợi; gói kích cầu → lợi ngành liên quan). Nêu rõ tin nào TÍCH CỰC,
-  tin nào TIÊU CỰC, tác động đến NGÀNH NÀO cụ thể. Liên kết với biến động giá/ dòng tiền
-  trong tuần (vd: tin NHNN giữ lãi suất → ngành Ngân hàng phản ứng thế nào).
+- **VĨ MÔ & CHÍNH SÁCH (tinTucViMo)**: ĐÂY LÀ PHẦN BẮT BUỘC, RẤT QUAN TRỌNG. Nếu data có
+  tinTucViMo (soTin > 0), LUÔN phân tích TỪNG tin quan trọng: quyết định NHNN (lãi suất
+  OMO/tái chiết khấu, room tín dụng, tỷ giá), chính sách Chính phủ tác động nhóm ngành.
+  Nêu rõ tin nào TÍCH CỰC, tin nào TIÊU CỰC, tác động NGÀNH NÀO cụ thể.
+  Nếu tinTucViMo KHÔNG có hoặc soTin=0 → viết rõ "Chưa thu thập được tin vĩ mô trong kỳ".
 - **Triển vọng tuần tới**: dựa trên breadth trend + dòng tiền + vị trí giá vs MA + vĩ mô.
 
-Cấu trúc đề xuất:
-## Tổng kết tuần (VNINDEX + GTGD + trạng thái)
+Cấu trúc BẮT BUỘC (đừng bỏ phần nào):
+## Thống kê tuần (VNINDEX đầu→cuối %, GTGD, breadth MA đầu→cuối)
 ## Độ rộng thị trường & Xu hướng breadth
-## Dòng tiền tuần (Khối ngoại + NĐT)
+## Dòng tiền tuần (Khối ngoại + top mua/bán ròng)
 ## 📌 Vĩ mô & Chính sách quan trọng (NHNN + tác động ngành)
 ## Ngành nổi bật tuần
 ## Triển vọng & Cảnh báo tuần tới`;
