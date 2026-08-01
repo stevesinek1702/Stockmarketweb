@@ -3357,10 +3357,22 @@ app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
         } catch (e) { /* nếu all-stocks fail → breadth vẫn tính được phần market */ }
 
         let result;
+        // ?withStocks=1 → include danh sách mã CP trên/dưới đường (cho click detail)
+        const withStocks = req.query.withStocks === '1' || req.query.withStocks === 'true';
+        const trimStocks = (obj) => {
+            if (!withStocks && obj && obj.byPeriod) {
+                for (const p of Object.keys(obj.byPeriod)) {
+                    delete obj.byPeriod[p].aboveStocks;
+                    delete obj.byPeriod[p].belowStocks;
+                }
+            }
+        };
         if (scope === 'industry' && industryCode) {
             result = ichiB.computeIchimokuBreadth({ periods, symbolIcb2 });
             // Lọc chỉ ngành được chọn
             const ind = result.industries[industryCode];
+            trimStocks(ind);
+            trimStocks(result.market);
             result = {
                 success: !!ind,
                 scope: 'industry',
@@ -3373,6 +3385,10 @@ app.get('/api/ichimoku-breadth', requireAuth, async (req, res) => {
             };
         } else {
             result = ichiB.computeIchimokuBreadth({ periods, symbolIcb2 });
+            trimStocks(result.market);
+            if (result.industries) {
+                for (const code of Object.keys(result.industries)) trimStocks(result.industries[code]);
+            }
             result.scope = 'market';
         }
         res.json(result);

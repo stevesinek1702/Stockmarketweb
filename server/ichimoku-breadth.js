@@ -93,7 +93,7 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
     };
     const industries = {};
     for (const p of periods) {
-        market.byPeriod[p] = { above: 0, below: 0, coverage: 0 };
+        market.byPeriod[p] = { above: 0, below: 0, coverage: 0, aboveStocks: [], belowStocks: [] };
     }
 
     for (const sym of Object.keys(symbols)) {
@@ -112,7 +112,7 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
             if (code && ICB2_MAP[code]) {
                 if (!industries[code]) {
                     industries[code] = { name: ICB2_MAP[code], total: 0, byPeriod: {} };
-                    for (const p of periods) industries[code].byPeriod[p] = { above: 0, below: 0, coverage: 0 };
+                    for (const p of periods) industries[code].byPeriod[p] = { above: 0, below: 0, coverage: 0, aboveStocks: [], belowStocks: [] };
                 }
                 indAcc = industries[code];
                 indAcc.total++;
@@ -123,12 +123,23 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
             const tenkan = tenkanOfCloses(closes, p);
             if (tenkan != null && tenkan > 0) {
                 market.byPeriod[p].coverage++;
-                if (close > tenkan) market.byPeriod[p].above++;
-                else market.byPeriod[p].below++;
+                const isAbove = close > tenkan;
+                if (isAbove) {
+                    market.byPeriod[p].above++;
+                    market.byPeriod[p].aboveStocks.push({ symbol: sym, close, line: Math.round(tenkan * 100) / 100 });
+                } else {
+                    market.byPeriod[p].below++;
+                    market.byPeriod[p].belowStocks.push({ symbol: sym, close, line: Math.round(tenkan * 100) / 100 });
+                }
                 if (indAcc) {
                     indAcc.byPeriod[p].coverage++;
-                    if (close > tenkan) indAcc.byPeriod[p].above++;
-                    else indAcc.byPeriod[p].below++;
+                    if (isAbove) {
+                        indAcc.byPeriod[p].above++;
+                        indAcc.byPeriod[p].aboveStocks.push({ symbol: sym, close, line: Math.round(tenkan * 100) / 100 });
+                    } else {
+                        indAcc.byPeriod[p].below++;
+                        indAcc.byPeriod[p].belowStocks.push({ symbol: sym, close, line: Math.round(tenkan * 100) / 100 });
+                    }
                 }
             }
         }

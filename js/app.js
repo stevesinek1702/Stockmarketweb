@@ -4458,7 +4458,8 @@ async function loadIchimokuBreadth() {
     const industryCode = document.getElementById('ichi-industry')?.value || '';
     result.innerHTML = '<p style="color:var(--text-muted);">⏳ Đang tính breadth trên toàn thị trường...</p>';
     try {
-        const params = new URLSearchParams({ periods: periods.join(','), scope });
+        // withStocks=1 → include danh sách CP trên/dưới (cho click detail)
+        const params = new URLSearchParams({ periods: periods.join(','), scope, withStocks: '1' });
         if (scope === 'industry') params.set('industryCode', industryCode);
         const resp = await fetch(`${window.StockAPI.SERVER_BASE}/api/ichimoku-breadth?${params}`, { credentials: 'same-origin' });
         const data = await resp.json();
@@ -4476,17 +4477,28 @@ function renderIchimokuBreadth(data, scope) {
     const result = document.getElementById('ichi-breadth-result');
     const periods = data.periods;
     const fmt = n => (n != null ? n.toLocaleString('vi-VN') : '—');
+    // Click vào ô số → popup danh sách CP trên/dưới đường
+    const clickable = (stocks, label) => stocks && stocks.length
+        ? `<a href="#" onclick="showIchimokuStocks(${JSON.stringify(stocks).replace(/"/g,'&quot;')},'${label}');return false;" style="color:inherit;text-decoration:underline dotted;cursor:pointer;">`
+        : '';
+    const clickableEnd = stocks => stocks && stocks.length ? '</a>' : '';
 
     // Bảng market
-    let html = '<h4 style="margin:8px 0;">🌐 Toàn Thị Trường</h4>';
+    let html = '<h4 style="margin:8px 0;">🌐 Toàn Thị Trường <span style="font-size:0.75rem;color:var(--text-muted);font-weight:normal;">(click số để xem mã CP)</span></h4>';
     html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="text-align:left;">';
     html += '<th style="padding:6px 8px;">Đường Tenkan</th>';
     periods.forEach(p => html += `<th style="padding:6px 8px;text-align:center;">T${p}</th>`);
     html += '</tr></thead><tbody>';
     html += '<tr><td style="padding:6px 8px;">Số CP trên đường</td>';
-    periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-green);"><b>${fmt(data.market.byPeriod[p]?.above)}</b></td>`);
+    periods.forEach(p => {
+        const s = data.market.byPeriod[p];
+        html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-green);">${clickable(s?.aboveStocks,'CP trên T'+p+' (Toàn TT)')}<b>${fmt(s?.above)}</b>${clickableEnd(s?.aboveStocks)}</td>`;
+    });
     html += '</tr><tr><td style="padding:6px 8px;">Số CP dưới đường</td>';
-    periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-red);"><b>${fmt(data.market.byPeriod[p]?.below)}</b></td>`);
+    periods.forEach(p => {
+        const s = data.market.byPeriod[p];
+        html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-red);">${clickable(s?.belowStocks,'CP dưới T'+p+' (Toàn TT)')}<b>${fmt(s?.below)}</b>${clickableEnd(s?.belowStocks)}</td>`;
+    });
     html += '</tr><tr style="background:var(--bg-card-hover);"><td style="padding:6px 8px;"><b>% CP trên đường</b></td>';
     periods.forEach(p => {
         const pct = data.market.byPeriod[p]?.pctAbove;
@@ -4498,43 +4510,72 @@ function renderIchimokuBreadth(data, scope) {
     html += '</tr></tbody></table>';
     html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;">Tổng ${data.market.total} mã. ${data.meta?.note || ''}</p>`;
 
-    // Bảng ngành (chỉ khi scope=market)
-    if (scope === 'market' && data.industries) {
-        const inds = Object.entries(data.industries)
+    // Bảng ngành (hiện tất cả, không collapse — theo yêu cầu user)
+    const indSource = scope === 'industry' && data.industry
+        ? { [data.industryCode]: data.industry }
+        : (data.industries || {});
+    if (Object.keys(indSource).length) {
+        const inds = Object.entries(indSource)
             .map(([code, d]) => ({ code, ...d }))
             .sort((a, b) => (b.byPeriod[periods[0]]?.pctAbove || 0) - (a.byPeriod[periods[0]]?.pctAbove || 0));
-        html += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.88rem;">📊 Breadth theo ngành (xếp theo % trên T' + periods[0] + ')</summary>';
-        html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-top:8px;"><thead><tr style="text-align:left;">';
+        html += '<h4 style="margin:14px 0 6px;">📊 Breadth theo ngành <span style="font-size:0.75rem;color:var(--text-muted);font-weight:normal;">(xếp theo % trên T' + periods[0] + ' — click số xem mã)</span></h4>';
+        html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.8rem;"><thead><tr style="text-align:left;">';
         html += '<th style="padding:5px 8px;">Ngành</th><th style="padding:5px 8px;text-align:center;">Số mã</th>';
-        periods.forEach(p => html += `<th style="padding:5px 8px;text-align:center;">T${p} %trên</th>`);
+        periods.forEach(p => html += `<th style="padding:5px 8px;text-align:center;">T${p} trên/dưới</th>`);
         html += '</tr></thead><tbody>';
         inds.forEach(ind => {
             html += `<tr><td style="padding:5px 8px;">${ind.name}</td><td style="padding:5px 8px;text-align:center;color:var(--text-muted);">${ind.total}</td>`;
             periods.forEach(p => {
-                const pct = ind.byPeriod[p]?.pctAbove ?? 0;
+                const bp = ind.byPeriod[p] || {};
+                const pct = bp.pctAbove ?? 0;
                 const color = pct >= 60 ? 'var(--accent-green)' : (pct <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
-                html += `<td style="padding:5px 8px;text-align:center;color:${color};">${pct}%</td>`;
+                const aboveC = clickable(bp.aboveStocks, ind.name + ' trên T' + p);
+                const belowC = clickable(bp.belowStocks, ind.name + ' dưới T' + p);
+                html += `<td style="padding:5px 8px;text-align:center;">
+                    <span style="color:var(--accent-green);">${aboveC}<b>${bp.above ?? 0}</b>${clickableEnd(bp.aboveStocks)}</span>
+                    <span style="color:var(--text-muted);">/</span>
+                    <span style="color:var(--accent-red);">${belowC}<b>${bp.below ?? 0}</b>${clickableEnd(bp.belowStocks)}</span>
+                    <div style="font-size:0.72rem;color:${color};">${pct}%</div>
+                </td>`;
             });
             html += '</tr>';
         });
-        html += '</tbody></table></details>';
-    } else if (scope === 'industry' && data.industry) {
-        const ind = data.industry;
-        html += `<h4 style="margin:12px 0 4px;">🏭 ${data.industryName}</h4>`;
-        html += `<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="padding:6px 8px;text-align:left;">Đường</th>`;
-        periods.forEach(p => html += `<th style="padding:6px 8px;text-align:center;">T${p}</th>`);
-        html += '</tr></thead><tbody>';
-        html += '<tr><td style="padding:6px 8px;">CP trên đường</td>';
-        periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-green);">${fmt(ind.byPeriod[p]?.above)}</td>`);
-        html += '</tr><tr><td style="padding:6px 8px;">% trên đường</td>';
-        periods.forEach(p => {
-            const pct = ind.byPeriod[p]?.pctAbove ?? 0;
-            html += `<td style="padding:6px 8px;text-align:center;"><b>${pct}%</b></td>`;
-        });
-        html += `</tr></tbody></table><p style="font-size:0.78rem;color:var(--text-muted);">Tổng ${ind.total} mã trong ngành.</p>`;
+        html += '</tbody></table>';
     }
     result.innerHTML = html;
 }
+
+/**
+ * Popup danh sách CP trên/dưới đường Tenkan (khi click vào ô số).
+ */
+function showIchimokuStocks(stocks, label) {
+    const existing = document.getElementById('ichi-stocks-modal');
+    if (existing) existing.remove();
+    const fmt = n => (n != null ? Number(n).toLocaleString('vi-VN') : '—');
+    const rows = stocks.slice(0, 50).map(s => `<tr>
+        <td style="padding:3px 8px;"><b>${s.symbol}</b></td>
+        <td style="padding:3px 8px;text-align:right;">${fmt(s.close)}</td>
+        <td style="padding:3px 8px;text-align:right;color:var(--text-muted);">${fmt(s.line)}</td>
+    </tr>`).join('');
+    const modal = document.createElement('div');
+    modal.id = 'ichi-stocks-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    modal.innerHTML = `<div style="background:var(--bg-card);border-radius:10px;padding:18px;max-width:480px;width:90%;max-height:80vh;overflow:auto;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h4 style="margin:0;">📋 ${label} <span style="font-size:0.8rem;color:var(--text-muted);">(${stocks.length} mã${stocks.length>50?', 50 đầu':''})</span></h4>
+            <button onclick="this.closest('#ichi-stocks-modal').remove()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);">×</button>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+            <thead><tr style="text-align:left;color:var(--text-muted);font-size:0.75rem;">
+                <th style="padding:4px 8px;">Mã</th><th style="padding:4px 8px;text-align:right;">Giá</th><th style="padding:4px 8px;text-align:right;">Tenkan</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+    </div>`;
+    document.body.appendChild(modal);
+}
+window.showIchimokuStocks = showIchimokuStocks;
 
 /** Load Ichimoku cho 1 mã: 5 đường + Kumo + nhận định. */
 async function loadIchimokuStock() {
