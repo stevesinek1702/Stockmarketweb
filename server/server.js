@@ -4576,10 +4576,10 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
                     const scored = allNews
                         .filter(n => n && (n.title || n.ten))
                         .map(n => {
-                            const text = (n.title || '') + ' ' + (n.summary || n.mota || '') + ' ' + (n.category || '');
+                            const desc = n.summary || n.description || n.mota || '';
                             let score = 0;
                             if (kw.test(n.title || '')) score += 3;
-                            if (kw.test(n.summary || n.mota || '')) score += 1;
+                            if (kw.test(desc)) score += 1;
                             if (macroCats.test(n.category || '')) score += 2;
                             return { n, score };
                         })
@@ -4588,7 +4588,7 @@ app.post('/api/ai/market-report', requireAuth, async (req, res) => {
                         .slice(0, 15);
                     const filtered = scored.map(x => ({
                         ten: x.n.title || x.n.ten,
-                        tomTat: (x.n.summary || x.n.mota || '').slice(0, 250),
+                        tomTat: (x.n.summary || x.n.description || x.n.mota || '').slice(0, 250),
                         danhMuc: x.n.category,
                         nguon: x.n.source || x.n.nguon,
                         ngay: x.n.pubDate || x.n.ngay || x.n.date
