@@ -1722,7 +1722,12 @@ const MABreadthState = {
     colors: { ...MA_COLORS_DEFAULT },  // màu hiện tại (user có thể đổi)
     loaded: false,
     initialized: false,
-    dateDebounce: null
+    dateDebounce: null,
+    // Drawing tools: đường ngang/chéo user vẽ lên chart
+    drawingMode: null,   // 'h' | 'trend' | null (đang vẽ loại nào)
+    drawColor: '#ff5e5e',
+    pendingTrend: null,  // điểm đầu khi đang vẽ trendline: {x, y}
+    drawings: null       // {[scope]: [{id, type:'h'|'trend', color, xMin?, xMax?, yMin?, yMax?}]}
 };
 
 /** Load prefs từ localStorage. */
@@ -1806,6 +1811,7 @@ function formatMADate(iso) {
 
 /** Khởi tạo MA breadth section (gọi khi switch sang tab industry lần đầu). */
 function initMABreadth() {
+    console.log('[MA Breadth] initMABreadth được gọi, initialized=', MABreadthState.initialized);
     if (MABreadthState.initialized) return;
     MABreadthState.initialized = true;
 
@@ -1868,6 +1874,9 @@ function initMABreadth() {
     if (refreshBtn) refreshBtn.addEventListener('click', onMABreadthRefresh);
     const buildBtn = document.getElementById('ma-breadth-build');
     if (buildBtn) buildBtn.addEventListener('click', onMABreadthBuild);
+
+    // Drawing tools (đường ngang / chéo để đo đáy, kẻ trend)
+    initMABreadthDrawing();
 
     // Trigger load đầu tiên
     loadMABreadth();
@@ -2068,7 +2077,10 @@ function renderMABreadthChart() {
                             return `${ctx.dataset.label}: ${ctx.parsed.y} CP (${pct}%)`;
                         }
                     }
-                }
+                },
+                // Drawing tools: đường ngang/chéo user vẽ (chartjs-plugin-annotation).
+                // annotations sinh động từ localStorage mỗi lần render.
+                annotation: { annotations: maBreadthBuildAnnotations() }
             },
             scales: {
                 x: {
@@ -2100,6 +2112,328 @@ function renderMABreadthChart() {
                     title: { display: true, text: 'VNINDEX', color: '#ddd' }
                 }
             }
+        }
+    });
+}
+
+/* ============================================================
+ *  DRAWING TOOLS cho MA Breadth chart
+ *  - Vẽ đường ngang (click 1 điểm) / chéo trendline (click 2 điểm)
+ *  - Kéo để dịch (plugin annotation draggable)
+ *  - Right-click lên đường để xóa; ESC hủy chế độ vẽ
+ *  - Lưu localStorage theo scope; đổi ngày/ngành vẫn giữ nếu còn trong data
+ * ============================================================ */
+
+const MA_BREADTH_DRAWINGS_KEY = 'vnstock_ma_breadth_drawings';
+
+/** Lấy / khởi tạo map drawings cho scope hiện tại. */
+function maBreadthGetDrawings() {
+    if (!MABreadthState.drawings) {
+        try {
+            MABreadthState.drawings = JSON.parse(localStorage.getItem(MA_BREADTH_DRAWINGS_KEY)) || {};
+        } catch { MABreadthState.drawings = {}; }
+    }
+    const scope = MABreadthState.scope;
+    if (!MABreadthState.drawings[scope]) MABreadthState.drawings[scope] = [];
+    return MABreadthState.drawings[scope];
+}
+
+function maBreadthSaveDrawings() {
+    try {
+        localStorage.setItem(MA_BREADTH_DRAWINGS_KEY, JSON.stringify(MABreadthState.drawings || {}));
+    } catch { /* quota đầy thì bỏ qua */ }
+}
+
+/** Sinh annotation config từ MABreadthState.drawings cho scope hiện tại.
+ *  Trục X là category axis → xMin/xMax của annotation phải là INDEX trong data,
+ *  nên convert date → index ở đây. Lọc bỏ những đường ngoài phạm vi data. */
+function maBreadthBuildAnnotations() {
+    const data = MABreadthState.data || [];
+    if (!data.length) return {};
+    const dateIdx = new Map(data.map((d, i) => [d.date, i]));
+    const firstDate = data[0].date;
+    const lastDate = data[data.length - 1].date;
+    const drawings = maBreadthGetDrawings();
+    const ann = {};
+    drawings.forEach(d => {
+        // Đường ngang: chỉ cần Y. axis y1 → gán scale y1 để vẽ đúng hệ trục VNINDEX.
+        if (d.type === 'h') {
+            ann['draw_' + d.id] = {
+                type: 'line',
+                yMin: d.yMin, yMax: d.yMin,
+                scaleID: d.axis === 'y1' ? 'y1' : 'y',
+                borderColor: d.color, borderWidth: 2,
+                label: { display: true, content: String(d.yMin), position: 'end',
+                         backgroundColor: d.color, color: '#111', font: { size: 10, weight: 'bold' } },
+                draggable: true
+            };
+        } else if (d.type === 'trend') {
+            // Chỉ vẽ nếu ít nhất 1 đầu nằm trong khoảng ngày data
+            const xMinIn = d.xMin >= firstDate && d.xMin <= lastDate;
+            const xMaxIn = d.xMax >= firstDate && d.xMax <= lastDate;
+            if (!xMinIn && !xMaxIn) return;
+            const i1 = dateIdx.has(d.xMin) ? dateIdx.get(d.xMin) : 0;
+            const i2 = dateIdx.has(d.xMax) ? dateIdx.get(d.xMax) : data.length - 1;
+            ann['draw_' + d.id] = {
+                type: 'line',
+                xMin: i1, xMax: i2,
+                yMin: d.yMin, yMax: d.yMax,
+                scaleID: d.axis === 'y1' ? 'y1' : 'y',
+                borderColor: d.color, borderWidth: 2,
+                label: { display: false },
+                draggable: true
+            };
+        }
+    });
+    return ann;
+}
+
+/** Thêm drawing mới + persist + re-render annotation (không cần fetch lại data). */
+function maBreadthAddDrawing(drawing) {
+    drawing.id = Date.now() + Math.floor(Math.random() * 1000);
+    const list = maBreadthGetDrawings();
+    list.push(drawing);
+    maBreadthSaveDrawings();
+    maBreadthRefreshAnnotations();
+}
+
+/** Xóa 1 drawing theo id. */
+function maBreadthRemoveDrawing(id) {
+    const list = maBreadthGetDrawings();
+    const i = list.findIndex(d => d.id === id);
+    if (i >= 0) {
+        list.splice(i, 1);
+        maBreadthSaveDrawings();
+        maBreadthRefreshAnnotations();
+    }
+}
+
+/** Xóa tất cả drawing của scope hiện tại. */
+function maBreadthClearDrawings() {
+    const scope = MABreadthState.scope;
+    if (MABreadthState.drawings) MABreadthState.drawings[scope] = [];
+    maBreadthSaveDrawings();
+    maBreadthRefreshAnnotations();
+}
+
+/** Sync ngược từ annotation (sau khi user kéo) về MABreadthState.drawings + persist.
+ *  Plugin draggable chỉ cập nhật object annotation, không ghi về state của ta,
+ *  nên phải đọc lại yMin/yMax (và index→date cho trend) rồi lưu. */
+function maBreadthSyncFromAnnotations() {
+    const chart = MABreadthState.chart;
+    if (!chart || !chart.options.plugins || !chart.options.plugins.annotation) return;
+    const annotations = chart.options.plugins.annotation.annotations || {};
+    const data = MABreadthState.data || [];
+    const list = maBreadthGetDrawings();
+    let changed = false;
+    Object.entries(annotations).forEach(([key, a]) => {
+        const id = parseInt(key.replace('draw_', ''));
+        const d = list.find(x => x.id === id);
+        if (!d) return;
+        if (d.type === 'h') {
+            if (a.yMin !== d.yMin) { d.yMin = Math.round(a.yMin * 100) / 100; changed = true; }
+        } else if (d.type === 'trend') {
+            // annotation xMin/xMax là index → convert lại thành date
+            const i1 = Math.max(0, Math.min(data.length - 1, Math.round(a.xMin)));
+            const i2 = Math.max(0, Math.min(data.length - 1, Math.round(a.xMax)));
+            const newDateMin = data[i1] ? data[i1].date : d.xMin;
+            const newDateMax = data[i2] ? data[i2].date : d.xMax;
+            const ny1 = Math.round(a.yMin * 100) / 100;
+            const ny2 = Math.round(a.yMax * 100) / 100;
+            if (newDateMin !== d.xMin || newDateMax !== d.xMax || ny1 !== d.yMin || ny2 !== d.yMax) {
+                d.xMin = newDateMin; d.xMax = newDateMax; d.yMin = ny1; d.yMax = ny2; changed = true;
+            }
+        }
+    });
+    if (changed) maBreadthSaveDrawings();
+}
+
+/** Cập nhật annotation mà không destroy chart (sau khi thêm/xóa/kéo). */
+function maBreadthRefreshAnnotations() {
+    const chart = MABreadthState.chart;
+    if (!chart || !chart.options.plugins || !chart.options.plugins.annotation) return;
+    chart.options.plugins.annotation.annotations = maBreadthBuildAnnotations();
+    chart.update('none');
+}
+
+/** Hiện trạng thái vẽ ở ô status. */
+function maBreadthSetStatus(text) {
+    const el = document.getElementById('ma-draw-status');
+    if (el) el.textContent = text || '';
+}
+
+/** Toggle nút active. */
+function maBreadthSetActiveBtn(mode) {
+    document.querySelectorAll('.ma-draw-btn').forEach(b => b.classList.remove('active'));
+    const canvas = document.getElementById('ma-breadth-chart');
+    if (mode) {
+        MABreadthState.drawingMode = mode;
+        const btnId = mode === 'h' ? 'ma-draw-h' : 'ma-draw-trend';
+        const btn = document.getElementById(btnId);
+        if (btn) btn.classList.add('active');
+        if (canvas) canvas.style.cursor = 'crosshair';
+    } else {
+        MABreadthState.drawingMode = null;
+        MABreadthState.pendingTrend = null;
+        if (canvas) canvas.style.cursor = '';
+        maBreadthSetStatus('');
+    }
+}
+
+/** Lấy giá trị (x=date, y=value, axis) tại vị trí click trên canvas. */
+function maBreadthGetClickPoint(evt) {
+    const chart = MABreadthState.chart;
+    if (!chart) return null;
+    const rect = chart.canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    // index trên trục X
+    const xScale = chart.scales.x;
+    const yScale = chart.scales.y;       // trục trái (số CP)
+    const y1Scale = chart.scales.y1;     // trục phải (VNINDEX)
+    if (x < xScale.left || x > xScale.right || y < xScale.top || y > xScale.bottom) return null;
+    const idx = Math.round(xScale.getValueForPixel(x));
+    const data = MABreadthState.data || [];
+    if (idx < 0 || idx >= data.length) return null;
+    const date = data[idx].date;
+    const yVal = yScale.getValueForPixel(y);
+    // Xác định trục gần nhất (trái=số CP, phải=VNINDEX): chọn trục có pixel khớp nhất.
+    let axis = 'y';
+    let yOut = yVal;
+    if (y1Scale && y1Scale.options.display) {
+        const y1Val = y1Scale.getValueForPixel(y);
+        const errLeft = Math.abs(y - yScale.getPixelForValue(yVal));
+        const errRight = Math.abs(y - y1Scale.getPixelForValue(y1Val));
+        if (errRight < errLeft) { axis = 'y1'; yOut = y1Val; }
+    }
+    return { idx, date, y: yOut, axis };
+}
+
+/** Click handler trên canvas — đặt điểm tùy theo mode. */
+function maBreadthOnCanvasClick(evt) {
+    if (!MABreadthState.drawingMode) return;
+    const pt = maBreadthGetClickPoint(evt);
+    if (!pt) return;
+    const color = (document.getElementById('ma-draw-color') || {}).value || MABreadthState.drawColor;
+
+    if (MABreadthState.drawingMode === 'h') {
+        // Đường ngang: chỉ cần Y. axis y → trục trái; y1 → trục phải (hiếm khi user muốn).
+        const yRounded = Math.round(pt.y * 100) / 100;
+        maBreadthAddDrawing({ type: 'h', color, yMin: yRounded, axis: pt.axis });
+        maBreadthSetActiveBtn(null);
+    } else if (MABreadthState.drawingMode === 'trend') {
+        if (!MABreadthState.pendingTrend) {
+            MABreadthState.pendingTrend = pt;
+            maBreadthSetStatus('● Đã chọn điểm 1 — click điểm 2 (hoặc ESC để hủy)');
+        } else {
+            const p1 = MABreadthState.pendingTrend;
+            // Sắp xếp theo thời gian: p1 = sớm hơn
+            let a = p1, b = pt;
+            if (p1.date > pt.date) { a = pt; b = p1; }
+            maBreadthAddDrawing({
+                type: 'trend', color,
+                xMin: a.date, xMax: b.date,
+                yMin: Math.round(a.y * 100) / 100,
+                yMax: Math.round(b.y * 100) / 100,
+                axis: a.axis
+            });
+            MABreadthState.pendingTrend = null;
+            maBreadthSetActiveBtn(null);
+        }
+    }
+}
+
+/** Right-click lên annotation → xóa đường đó. */
+function maBreadthOnAnnotationContextmenu(evt) {
+    const chart = MABreadthState.chart;
+    if (!chart || !chart.options.plugins || !chart.options.plugins.annotation) return false;
+    const annotations = chart.options.plugins.annotation.annotations || {};
+    // Dò thủ công: annotation nào chứa pixel click thì xóa.
+    const rect = chart.canvas.getBoundingClientRect();
+    const px = evt.clientX - rect.left;
+    const py = evt.clientY - rect.top;
+    const xScale = chart.scales.x, yScale = chart.scales.y, y1Scale = chart.scales.y1;
+    let removed = false;
+    Object.entries(annotations).forEach(([key, a]) => {
+        if (removed) return;
+        let hit = false;
+        const axis = (a.scaleID === 'y1' && y1Scale) ? y1Scale : yScale;
+        if (a.type === 'line' && a.xMin == null) {
+            // đường ngang
+            const lineY = axis.getPixelForValue(a.yMin);
+            if (Math.abs(py - lineY) <= 6) hit = true;
+        } else if (a.type === 'line' && a.xMin != null) {
+            // đường chéo: xMin/xMax là index (đã convert trong build), đo khoảng cách đến đoạn thẳng
+            const x1 = xScale.getPixelForValue(a.xMin);
+            const x2 = xScale.getPixelForValue(a.xMax);
+            const y1 = axis.getPixelForValue(a.yMin);
+            const y2 = axis.getPixelForValue(a.yMax);
+            if (distToSeg(px, py, x1, y1, x2, y2) <= 6) hit = true;
+        }
+        if (hit) {
+            const id = parseInt(key.replace('draw_', ''));
+            maBreadthRemoveDrawing(id);
+            removed = true;
+        }
+    });
+    return removed;
+}
+
+// Helper: khoảng cách điểm đến đoạn thẳng
+function distToSeg(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/** Bind toolbar + canvas events. Gọi 1 lần trong initMABreadth(). */
+function initMABreadthDrawing() {
+    const canvas = document.getElementById('ma-breadth-chart');
+    const btnH = document.getElementById('ma-draw-h');
+    const btnTrend = document.getElementById('ma-draw-trend');
+    const btnClear = document.getElementById('ma-draw-clear');
+    const colorEl = document.getElementById('ma-draw-color');
+    // Log chẩn đoán: xác nhận code vẽ mới đã load (mở F12 Console để check)
+    console.log('[Draw] initMABreadthDrawing — toolbar found:', {
+        btnH: !!btnH, btnTrend: !!btnTrend, btnClear: !!btnClear, color: !!colorEl
+    });
+
+    if (btnH) btnH.addEventListener('click', () => {
+        if (MABreadthState.drawingMode === 'h') { maBreadthSetActiveBtn(null); return; }
+        maBreadthSetActiveBtn('h');
+        maBreadthSetStatus('📏 Click 1 điểm trên chart để vẽ đường ngang');
+    });
+    if (btnTrend) btnTrend.addEventListener('click', () => {
+        if (MABreadthState.drawingMode === 'trend') { maBreadthSetActiveBtn(null); return; }
+        maBreadthSetActiveBtn('trend');
+        maBreadthSetStatus('📉 Click điểm 1, rồi click điểm 2');
+    });
+    if (btnClear) btnClear.addEventListener('click', () => {
+        if (confirm('Xóa tất cả đường đã vẽ trên chart này?')) maBreadthClearDrawings();
+    });
+    if (colorEl) colorEl.addEventListener('input', () => { MABreadthState.drawColor = colorEl.value; });
+
+    if (canvas) {
+        canvas.addEventListener('click', maBreadthOnCanvasClick);
+        canvas.addEventListener('contextmenu', (evt) => {
+            if (maBreadthOnAnnotationContextmenu(evt)) {
+                evt.preventDefault(); // chặn menu mặc định nếu đã xóa được đường
+            }
+        });
+        // Sau khi kéo annotation (draggable) → sync ngược về state để persist
+        canvas.addEventListener('pointerup', () => {
+            setTimeout(maBreadthSyncFromAnnotations, 0);
+        });
+    }
+    // ESC hủy chế độ vẽ
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && MABreadthState.drawingMode) {
+            maBreadthSetActiveBtn(null);
+            maBreadthSetStatus('Đã hủy');
+            setTimeout(() => maBreadthSetStatus(''), 1200);
         }
     });
 }

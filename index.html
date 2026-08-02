@@ -7,7 +7,7 @@
     <title>VN Stock Market Data | Dữ Liệu Thị Trường Chứng Khoán Việt Nam</title>
     <meta name="description"
         content="Trang web phân tích dữ liệu thị trường chứng khoán Việt Nam - Bảng giá, Dòng tiền, Breakout Trendline">
-    <link rel="stylesheet" href="css/style.css?v=20260723a">
+    <link rel="stylesheet" href="css/style.css?v=20260802c">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <!-- Gridstack.js - Drag & Drop / Resize dashboard panels -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
@@ -841,6 +841,18 @@
                         <button id="ma-breadth-build" class="btn-secondary" title="Tải lại toàn bộ lịch sử (lần đầu ~1 phút)">📅 Tải dữ liệu lịch sử</button>
                     </div>
                     <span class="ma-breadth-meta" id="ma-breadth-meta"></span>
+                </div>
+                <!-- Drawing tools: vẽ đường ngang / chéo lên chart để đo đáy, kẻ trend -->
+                <div class="ma-draw-toolbar" id="ma-draw-toolbar">
+                    <span class="ma-draw-title">✏️ Vẽ đường:</span>
+                    <button type="button" class="ma-draw-btn" id="ma-draw-h" title="Đường ngang: click 1 điểm trên chart">📏 Đường ngang</button>
+                    <button type="button" class="ma-draw-btn" id="ma-draw-trend" title="Đường chéo (trendline): click 2 điểm">📉 Đường chéo</button>
+                    <label class="ma-draw-color-lbl" title="Màu đường vẽ">🎨
+                        <input type="color" id="ma-draw-color" class="ma-color-picker" value="#ff5e5e">
+                    </label>
+                    <button type="button" class="ma-draw-btn ma-draw-clear" id="ma-draw-clear" title="Xóa tất cả đường đã vẽ">🗑️ Xóa hết</button>
+                    <span class="ma-draw-hint">Right-click lên đường để xóa 1 đường</span>
+                    <span class="ma-draw-status" id="ma-draw-status"></span>
                 </div>
                 <div class="ma-breadth-empty" id="ma-breadth-empty" style="display:none;"></div>
                 <div class="ma-breadth-chart-container">
@@ -1716,7 +1728,7 @@
     <script type="module" src="js/tv-adapter.js"></script>
     <script src="js/tv-indicators.js"></script>
     <script src="js/tv-chart.js"></script>
-    <script src="js/app.js?v=20260802a"></script>
+    <script src="js/app.js?v=20260802c"></script>
     <script src="js/grid-manager.js"></script>
     <!-- TradingView Widget Script -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
