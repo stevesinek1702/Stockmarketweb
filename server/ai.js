@@ -18,7 +18,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const TOKENROUTER_API_KEY = process.env.TOKENROUTER_API_KEY || '';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const DEEPSEEK_MODEL = 'deepseek-chat';
+const DEEPSEEK_MODEL = 'deepseek-v4-pro';  // DeepSeek V4 Pro (1M context, JSON + tool calls)
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GEMINI_MODEL = 'gemini-2.0-flash';
 const TOKENROUTER_URL = 'https://api.tokenrouter.com/v1/chat/completions';
