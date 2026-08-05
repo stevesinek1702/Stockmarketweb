@@ -348,6 +348,7 @@ const CACHE_TTL_MS = {
 //       cache 60s + scheduler warm 55s (xem scheduler.js REFRESH_TARGETS).
 const EOD_KEYS = [
     'industry-flow',
+    'industry-top-flow',
     'investor-flow',
     'foreign-flow',
     'investor-detail',
@@ -356,7 +357,7 @@ const EOD_KEYS = [
 // Subset EOD keys có toDate/date trong response → validate toDate trước khi trả cache.
 // Khi toDate trong cache < hôm nay (VN) → coi như miss → fetch data mới.
 // Tránh serve data hôm qua cho ngày hôm nay (lúc đầu ngày khi Fiintrade chưa update).
-const EOD_KEYS_WITH_DATE = ['industry-flow', 'investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
+const EOD_KEYS_WITH_DATE = ['industry-flow', 'industry-top-flow', 'investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
 function isEODKey(key) {
     return EOD_KEYS.some(k => key === k || key.startsWith(k + ':') || key.startsWith(k));
 }
@@ -389,7 +390,7 @@ async function setCachedResponse(key, data) {
         // cho hôm nay, vd trước 15h VN) → cache TTL ngắn (15 phút) để retry sớm.
         // Khi toDate = hôm nay → cache 24h (data ổn định cả ngày).
         if (shouldValidateToDate(key)) {
-            const toDate = data.toDate || (data.today && data.today.date) || null;
+            const toDate = data.toDate || (data.today && data.today.date) || data.date || null;
             const today = require('./cache').vnToday();
             if (toDate && String(toDate).slice(0, 10) !== today) {
                 console.log(`⏳ [cache-eod] ${key}: toDate ${toDate} ≠ today ${today} → cache TTL ngắn 15 phút (đợi Fiintrade update)`);
@@ -2667,6 +2668,22 @@ app.get('/api/industry-top-flow', async (req, res) => {
     const industryCode = req.query.code;
     const top = parseInt(req.query.top) || 5;
 
+    // ── EOD smart-cache: dòng tiền per-mã là data EOD (đổi 1 lần/ngày cuối phiên).
+    // Trước đây KHÔNG cache → mỗi lần user mở = N requests fiintrade (N=số mã ngành,
+    // có thể 125-324 mã) → vài nghìn calls/ngày → bị chặn IP. Giờ cache 24h, validate toDate.
+    // ?force=1 → bypass cache (nút refresh thủ công khi cần data mới).
+    const force = req.query.force === '1' || req.query.refresh === '1';
+    if (industryCode) {
+        const cacheKey = `industry-top-flow:${industryCode}:${top}`;
+        if (!force) {
+            const cached = await getCachedResponse(cacheKey, 60000);
+            if (cached) {
+                console.log(`📊 Returning cached ${cacheKey} data`);
+                return res.json(cached);
+            }
+        }
+    }
+
     const ICB2_MAP = {
         '0500':'Dầu khí','1300':'Hóa chất','1700':'Tài nguyên cơ bản','2300':'Xây dựng và VLXD',
         '2700':'Sản phẩm & DV công nghiệp','3300':'Ôtô và linh kiện','3500':'Thực phẩm và đồ uống',
@@ -2735,7 +2752,7 @@ app.get('/api/industry-top-flow', async (req, res) => {
 
         console.log(`✅ [industry-top-flow] ${ICB2_MAP[industryCode]}: days=${days}, topBuy=${topBuy.length}, topSell=${topSell.length}, date=${date}`);
 
-        res.json({
+        const responseData = {
             success: true,
             industryCode,
             industryName: ICB2_MAP[industryCode],
@@ -2747,7 +2764,10 @@ app.get('/api/industry-top-flow', async (req, res) => {
             topBuy,
             topSell,
             allStocks: sorted
-        });
+        };
+        // Cache EOD 24h (validate toDate → sang ngày mới tự fetch lại)
+        await setCachedResponse(`industry-top-flow:${industryCode}:${top}`, responseData);
+        res.json(responseData);
     } catch (error) {
         console.error('Industry top flow error:', error);
         res.status(500).json({ success: false, error: error.message });
