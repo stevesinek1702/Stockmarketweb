@@ -28,7 +28,10 @@ const FII_HEADERS = {
 };
 
 // Chỉ cho phép forward tới fiintrade (chống open proxy abuse)
-const ALLOWED_HOSTS = ['wl-market.fiintrade.vn', 'wl-core.fiintrade.vn'];
+// wl-market: dòng tiền ngành, GetStatisticInvestor, TopMover
+// wl-core:   master data (organCode map)
+// wl-technical: GetPriceData (dòng tiền per-mã) — BỔ SUNG fix 403 bảng Dòng Tiền Thông Minh
+const ALLOWED_HOSTS = ['wl-market.fiintrade.vn', 'wl-core.fiintrade.vn', 'wl-technical.fiintrade.vn'];
 
 export default {
   async fetch(request) {
