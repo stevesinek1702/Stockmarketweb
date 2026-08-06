@@ -27,7 +27,9 @@
     // (vd: lucCau từ volume-based → value-weighted, thêm liquidCount,
     // thêm custom themes Cá tra/Tôm/Vingroup).
     // Cache cũ (v khác) tự bị bỏ qua → user luôn render data cấu trúc mới.
-    var CACHE_SCHEMA_VERSION = 3;
+    // v4: bỏ cache investor-detail:today rỗng (lúc Worker proxy bị 403 → data rỗng bị
+    //     swrDaily giữ cả ngày → bảng "1 Ngày" trống).
+    var CACHE_SCHEMA_VERSION = 4;
 
     function lsKey(key) { return PREFIX + key; }
 
