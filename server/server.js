@@ -351,13 +351,17 @@ const EOD_KEYS = [
     'industry-top-flow',
     'investor-flow',
     'foreign-flow',
-    'investor-detail',
     'top-net-stocks'
 ];
 // Subset EOD keys có toDate/date trong response → validate toDate trước khi trả cache.
 // Khi toDate trong cache < hôm nay (VN) → coi như miss → fetch data mới.
 // Tránh serve data hôm qua cho ngày hôm nay (lúc đầu ngày khi Fiintrade chưa update).
-const EOD_KEYS_WITH_DATE = ['industry-flow', 'industry-top-flow', 'investor-flow', 'foreign-flow', 'investor-detail', 'stock-investor-flow'];
+const EOD_KEYS_WITH_DATE = ['industry-flow', 'industry-top-flow', 'investor-flow', 'foreign-flow'];
+
+// NOTE: 'investor-detail' (Mua Bán Ròng Khớp Lệnh) và 'stock-investor-flow' (Dòng tiền
+// thông minh theo mã) KHÔNG thuộc EOD — data đổi realtime trong phiên (GT mua/bán khớp lệnh).
+// Trước đây liệt kê nhầm trong EOD_KEYS → cache 24h → bảng đứng cả ngày. Giờ dùng cache
+// TTL ngắn (60s) để refresh mỗi phút trong phiên, không bị "đứng".
 function isEODKey(key) {
     return EOD_KEYS.some(k => key === k || key.startsWith(k + ':') || key.startsWith(k));
 }
