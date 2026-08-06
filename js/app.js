@@ -4817,6 +4817,31 @@ function renderIchimokuBreadth(data, scope) {
         : '';
     const clickableEnd = stocks => stocks && stocks.length ? '</a>' : '';
 
+    // Format % breadth cho 3 thời điểm (today/yesterday/lastWeek) + mũi tên xu hướng.
+    // histByP = { today: {pctAbove}, yesterday: {...}, lastWeek: {...} } cho 1 period.
+    // Trả HTML: "55% ↗ 48%" (today vs yesterday), nhỏ hơn = hôm qua, mờ hơn = tuần trước.
+    const fmtPctTrend = (histByP) => {
+        if (!histByP) return '—';
+        const t = histByP.today ?? null;
+        const y = histByP.yesterday ?? null;
+        const w = histByP.lastWeek ?? null;
+        if (t == null) return '—';
+        const color = t >= 60 ? 'var(--accent-green)' : (t <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
+        // Mũi tên: today vs yesterday
+        let arrow = '';
+        if (y != null) {
+            if (t > y) arrow = ' <span style="color:var(--accent-green);font-size:0.85em;">↗</span>';
+            else if (t < y) arrow = ' <span style="color:var(--accent-red);font-size:0.85em;">↘</span>';
+            else arrow = ' <span style="color:var(--text-muted);font-size:0.85em;">→</span>';
+        }
+        // Hôm qua + tuần trước (mờ hơn, nhỏ hơn)
+        const prevTxt = (y != null || w != null)
+            ? ` <span style="font-size:0.72em;color:var(--text-muted);">(${y != null ? y + '%' : '—'} / ${w != null ? w + '%' : '—'})</span>`
+            : '';
+        return `<b style="color:${color};">${t}%</b>${arrow}${prevTxt}`;
+    };
+    const h = data.history; // { dates, market: { today: {p: {pctAbove}}, ... }, industries: {...} }
+
     // Bảng market
     let html = '<h4 style="margin:8px 0;">🌐 Toàn Thị Trường <span style="font-size:0.75rem;color:var(--text-muted);font-weight:normal;">(click số để xem mã CP)</span></h4>';
     html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr style="text-align:left;">';
@@ -4833,16 +4858,21 @@ function renderIchimokuBreadth(data, scope) {
         const s = data.market.byPeriod[p];
         html += `<td style="padding:6px 8px;text-align:center;color:var(--accent-red);">${clickable(s?.belowStocks,'CP dưới T'+p+' (Toàn TT)')}<b>${fmt(s?.below)}</b>${clickableEnd(s?.belowStocks)}</td>`;
     });
-    html += '</tr><tr style="background:var(--bg-card-hover);"><td style="padding:6px 8px;"><b>% CP trên đường</b></td>';
+    html += '</tr><tr style="background:var(--bg-card-hover);"><td style="padding:6px 8px;"><b>% CP trên đường</b><div style="font-size:0.7rem;font-weight:normal;color:var(--text-muted);">hôm nay (hôm qua / tuần trước)</div></td>';
     periods.forEach(p => {
-        const pct = data.market.byPeriod[p]?.pctAbove;
-        const color = pct >= 60 ? 'var(--accent-green)' : (pct <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
-        html += `<td style="padding:6px 8px;text-align:center;"><b style="color:${color};">${pct ?? 0}%</b></td>`;
+        const hp = h && h.market ? { today: h.market.today?.[p]?.pctAbove, yesterday: h.market.yesterday?.[p]?.pctAbove, lastWeek: h.market.lastWeek?.[p]?.pctAbove } : null;
+        const titleParts = [];
+        if (h?.dates?.today) titleParts.push('Hôm nay ' + h.dates.today);
+        if (h?.dates?.yesterday) titleParts.push('Hôm qua ' + h.dates.yesterday);
+        if (h?.dates?.lastWeek) titleParts.push('Tuần trước ' + h.dates.lastWeek);
+        html += `<td style="padding:6px 8px;text-align:center;" title="${titleParts.join(' · ')}">${fmtPctTrend(hp)}</td>`;
     });
     html += '</tr><tr><td style="padding:6px 8px;color:var(--text-muted);">Số mã đủ data</td>';
     periods.forEach(p => html += `<td style="padding:6px 8px;text-align:center;color:var(--text-muted);">${fmt(data.market.byPeriod[p]?.coverage)}</td>`);
     html += '</tr></tbody></table>';
-    html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;">Tổng ${data.market.total} mã. ${data.meta?.note || ''}</p>`;
+    // Ghi chú ngày cụ thể 3 thời điểm
+    const noteDates = h?.dates ? `(Hôm nay ${h.dates.today || '?'} · Hôm qua ${h.dates.yesterday || '?'} · Tuần trước ${h.dates.lastWeek || '?'})` : '';
+    html += `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;">Tổng ${data.market.total} mã. ${noteDates}</p>`;
 
     // Bảng ngành (hiện tất cả, không collapse — theo yêu cầu user)
     const indSource = scope === 'industry' && data.industry
@@ -4865,11 +4895,25 @@ function renderIchimokuBreadth(data, scope) {
                 const color = pct >= 60 ? 'var(--accent-green)' : (pct <= 40 ? 'var(--accent-red)' : 'var(--text-primary)');
                 const aboveC = clickable(bp.aboveStocks, ind.name + ' trên T' + p);
                 const belowC = clickable(bp.belowStocks, ind.name + ' dưới T' + p);
+                // Breadth hôm qua / tuần trước cho ngành này (nếu có history)
+                const ih = h && h.industries && h.industries[ind.code];
+                const pctY = ih ? ih.yesterday?.[p]?.pctAbove : null;
+                const pctW = ih ? ih.lastWeek?.[p]?.pctAbove : null;
+                let arrow = '';
+                if (pctY != null) {
+                    if (pct > pctY) arrow = ' <span style="color:var(--accent-green);">↗</span>';
+                    else if (pct < pctY) arrow = ' <span style="color:var(--accent-red);">↘</span>';
+                    else arrow = ' <span style="color:var(--text-muted);">→</span>';
+                }
+                const prevTxt = (pctY != null || pctW != null)
+                    ? `<div style="font-size:0.66rem;color:var(--text-muted);">${pctY != null ? pctY + '%' : '—'} / ${pctW != null ? pctW + '%' : '—'}</div>`
+                    : '';
                 html += `<td style="padding:5px 8px;text-align:center;">
                     <span style="color:var(--accent-green);">${aboveC}<b>${bp.above ?? 0}</b>${clickableEnd(bp.aboveStocks)}</span>
                     <span style="color:var(--text-muted);">/</span>
                     <span style="color:var(--accent-red);">${belowC}<b>${bp.below ?? 0}</b>${clickableEnd(bp.belowStocks)}</span>
-                    <div style="font-size:0.72rem;color:${color};">${pct}%</div>
+                    <div style="font-size:0.72rem;color:${color};">${pct}%${arrow}</div>
+                    ${prevTxt}
                 </td>`;
             });
             html += '</tr>';

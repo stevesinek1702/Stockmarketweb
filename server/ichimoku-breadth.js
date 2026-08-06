@@ -73,6 +73,27 @@ function tenkanOfCloses(closes, period) {
 }
 
 /**
+ * Tenkan tại 1 index cụ thể (để tính breadth cho ngày hôm qua / tuần trước).
+ * = (max + min của closes[i-period+1 .. i]) / 2.
+ * @param {number[]} closes
+ * @param {number} i  index kết thúc (inclusive)
+ * @param {number} period
+ * @returns {number|null} null nếu không đủ data (i-period+1 < 0)
+ */
+function tenkanAt(closes, i, period) {
+    if (!Array.isArray(closes) || period <= 0) return null;
+    const start = i - period + 1;
+    if (start < 0 || i >= closes.length) return null;
+    let hi = -Infinity, lo = Infinity;
+    for (let j = start; j <= i; j++) {
+        const v = closes[j];
+        if (v > hi) hi = v;
+        if (v < lo) lo = v;
+    }
+    return (hi + lo) / 2;
+}
+
+/**
  * Tính breadth Ichimoku: với mỗi period, đếm số mã có close HIỆN TẠI > Tenkan(period).
  *
  * @param {Object} opts
@@ -86,39 +107,75 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
     const data = _loadClose();
     const symbols = data.symbols || {};
 
+    // 3 thời điểm cần tính breadth: today (-1), yesterday (-2), lastWeek (-6 = 5 phiên trước)
+    // historyConfig[key] = { idx (offset từ cuối), label }
+    const HISTORY_POINTS = [
+        { key: 'today', offset: 1 },
+        { key: 'yesterday', offset: 2 },
+        { key: 'lastWeek', offset: 6 }
+    ];
+
     // Khởi tạo accumulator
     const market = {
         total: 0,
         byPeriod: {}
     };
     const industries = {};
+    // history accumulator: { market: { today: {byPeriod}, yesterday: {...}, lastWeek: {...} }, industries: {...} }
+    const history = { market: {}, industries: {} };
+    for (const hp of HISTORY_POINTS) {
+        history.market[hp.key] = {};
+        for (const p of periods) history.market[hp.key][p] = { above: 0, below: 0, coverage: 0 };
+    }
     for (const p of periods) {
         market.byPeriod[p] = { above: 0, below: 0, coverage: 0, aboveStocks: [], belowStocks: [] };
     }
 
+    // Lưu date của mỗi thời điểm (lấy từ symbol đại diện)
+    const historyDates = {};
+
     for (const sym of Object.keys(symbols)) {
         const sd = symbols[sym];
         const closes = sd && Array.isArray(sd.closes) ? sd.closes : null;
+        const dates = sd && Array.isArray(sd.dates) ? sd.dates : null;
         if (!closes || closes.length === 0) continue;
         const close = closes[closes.length - 1];
-        if (!close || close <= 0) continue; // skip mã không giao dịch
+        if (!close || close <=  0) continue; // skip mã không giao dịch
 
         market.total++;
 
         // Phần ngành (chỉ nếu có map)
         let indAcc = null;
+        let indHistoryAcc = null;
         if (symbolIcb2) {
             const code = symbolIcb2[sym];
             if (code && ICB2_MAP[code]) {
                 if (!industries[code]) {
                     industries[code] = { name: ICB2_MAP[code], total: 0, byPeriod: {} };
                     for (const p of periods) industries[code].byPeriod[p] = { above: 0, below: 0, coverage: 0, aboveStocks: [], belowStocks: [] };
+                    // history cho ngành này
+                    history.industries[code] = {};
+                    for (const hp of HISTORY_POINTS) {
+                        history.industries[code][hp.key] = {};
+                        for (const p of periods) history.industries[code][hp.key][p] = { above: 0, below: 0, coverage: 0 };
+                    }
                 }
                 indAcc = industries[code];
+                indHistoryAcc = history.industries[code];
                 indAcc.total++;
             }
         }
 
+        // Lưu date các thời điểm (1 lần từ symbol đầu đủ data)
+        if (dates && Object.keys(historyDates).length < HISTORY_POINTS.length) {
+            for (const hp of HISTORY_POINTS) {
+                if (!historyDates[hp.key] && dates.length >= hp.offset) {
+                    historyDates[hp.key] = dates[dates.length - hp.offset];
+                }
+            }
+        }
+
+        // Breadth TODAY (giữ nguyên logic cũ + list mã cho popup)
         for (const p of periods) {
             const tenkan = tenkanOfCloses(closes, p);
             if (tenkan != null && tenkan > 0) {
@@ -143,6 +200,28 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
                 }
             }
         }
+
+        // Breadth HISTORICAL (yesterday, lastWeek) — chỉ đếm, không cần list mã
+        for (const hp of HISTORY_POINTS) {
+            if (hp.key === 'today') continue; // today đã tính ở trên
+            const i = closes.length - hp.offset;
+            if (i < 0) continue;
+            const closeAt = closes[i];
+            if (!closeAt || closeAt <= 0) continue;
+            for (const p of periods) {
+                const tenkan = tenkanAt(closes, i, p);
+                if (tenkan != null && tenkan > 0) {
+                    history.market[hp.key][p].coverage++;
+                    if (closeAt > tenkan) history.market[hp.key][p].above++;
+                    else history.market[hp.key][p].below++;
+                    if (indHistoryAcc) {
+                        indHistoryAcc[hp.key][p].coverage++;
+                        if (closeAt > tenkan) indHistoryAcc[hp.key][p].above++;
+                        else indHistoryAcc[hp.key][p].below++;
+                    }
+                }
+            }
+        }
     }
 
     // Tính % cho dễ render
@@ -157,12 +236,43 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
             m.pctAbove = pct(m.above, m.coverage);
         }
     }
+    // % cho historical
+    for (const hp of HISTORY_POINTS) {
+        for (const p of periods) {
+            const m = history.market[hp.key][p];
+            m.pctAbove = pct(m.above, m.coverage);
+        }
+        for (const code of Object.keys(history.industries)) {
+            const m = history.industries[code][hp.key][p];
+            m.pctAbove = pct(m.above, m.coverage);
+        }
+    }
+    // Copy today từ market.byPeriod (đã tính đầy đủ ở trên) vào history.market.today
+    // để frontend dùng 1 nguồn thống nhất cho 3 thời điểm.
+    for (const p of periods) {
+        history.market.today[p] = {
+            above: market.byPeriod[p].above,
+            below: market.byPeriod[p].below,
+            coverage: market.byPeriod[p].coverage,
+            pctAbove: market.byPeriod[p].pctAbove
+        };
+    }
+    for (const code of Object.keys(industries)) {
+        for (const p of periods) {
+            history.industries[code].today[p] = {
+                above: industries[code].byPeriod[p].above,
+                below: industries[code].byPeriod[p].below,
+                coverage: industries[code].byPeriod[p].coverage,
+                pctAbove: industries[code].byPeriod[p].pctAbove
+            };
+        }
+    }
 
     // Lấy ngày gần nhất từ 1 symbol đại diện
-    let lastDate = null;
+    let lastDate = historyDates.today || null;
     for (const sym of Object.keys(symbols)) {
         const d = symbols[sym].dates;
-        if (Array.isArray(d) && d.length) { lastDate = d[d.length - 1]; break; }
+        if (Array.isArray(d) && d.length) { if (!lastDate) lastDate = d[d.length - 1]; break; }
     }
 
     return {
@@ -170,6 +280,11 @@ function computeIchimokuBreadth({ periods = DEFAULT_PERIODS, symbolIcb2 = null }
         periods,
         market,
         industries,
+        history: {
+            dates: historyDates,  // { today, yesterday, lastWeek } — ngày cụ thể từng thời điểm
+            market: history.market,
+            industries: history.industries
+        },
         meta: {
             symbolCount: market.total,
             lastDate,
