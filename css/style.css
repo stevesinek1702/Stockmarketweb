@@ -221,6 +221,22 @@ h1, h2, h3,
 .nav {
     display: flex;
     gap: var(--spacing-xs);
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color, #2a2a55) transparent;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+}
+.nav::-webkit-scrollbar {
+    height: 3px;
+}
+.nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+.nav::-webkit-scrollbar-thumb {
+    background: var(--border-color, #2a2a55);
+    border-radius: 3px;
 }
 
 .nav-btn {
@@ -232,6 +248,8 @@ h1, h2, h3,
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: var(--transition-fast);
 }
 
