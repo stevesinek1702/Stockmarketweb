@@ -1,0 +1,11 @@
+{
+  "trendTemplate": 0.25,
+  "adx": 0.15,
+  "vcp": 0.15,
+  "rs": 0.15,
+  "maAlignment": 0.1,
+  "macd": 0.08,
+  "pocketPivot": 0.05,
+  "distMA20": 0.04,
+  "squeeze": 0.03
+}

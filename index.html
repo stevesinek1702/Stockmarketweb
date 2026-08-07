@@ -35,9 +35,7 @@
                 <button class="nav-btn" data-tab="breakout">Breakout</button>
                 <button class="nav-btn" data-tab="potential-stocks">⭐ CP Tiềm Năng</button>
                 <button class="nav-btn" data-tab="news">📰 Tin Tức</button>
-                <button class="nav-btn" data-tab="ai-report">🤖 Báo Cáo AI</button>
-                <button class="nav-btn" data-tab="week-report">📅 Báo Cáo Tuần</button>
-                <button class="nav-btn" data-tab="month-report">🗓️ Báo Cáo Tháng</button>
+                <button class="nav-btn" data-tab="reports">📋 Báo Cáo</button>
                 <button class="nav-btn" data-tab="technical">📊 Kỹ Thuật (Ichimoku + Elliott)</button>
                 <button class="nav-btn" data-tab="sector-ai">🎯 AI Đánh Giá Ngành</button>
   <button class="nav-btn" data-tab="stock-analysis">🔍 Phân Tích CP</button>
@@ -1400,106 +1398,115 @@
             </div>
         </section>
 
-        <!-- 🤖 Báo Cáo AI — Tóm tắt thị trường hôm nay (DeepSeek + Gemini) -->
-        <section class="tab-content" id="ai-report">
-            <div class="card full-width">
-                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
-                    <h3>🤖 Báo Cáo Thị Trường AI</h3>
-                    <button class="btn-secondary" id="ai-report-generate" title="AI phân tích toàn bộ data dashboard → viết báo cáo">🤖 Tạo Báo Cáo</button>
-                    <button class="btn-secondary" id="ai-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
-                    <span id="ai-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
-                </div>
-                <!-- ⚙️ Cấu hình AI (collapsible) — Provider + API Key + Prompt -->
-                <details class="ai-settings-panel" id="ai-settings-details">
-                    <summary class="ai-settings-summary">⚙️ Cấu hình AI (Provider + API Key + Prompt)</summary>
-                    <div class="ai-settings-body">
-                        <div class="ai-settings-row">
-                            <label class="ai-field">
-                                <span class="ai-field-label">Provider ưu tiên</span>
-                                <select id="ai-provider">
-                                    <option value="auto">🤖 Auto (GLM-5.2 → DeepSeek → Gemini)</option>
-                                    <option value="glm">GLM-5.2 (TokenRouter, miễn phí)</option>
-                                    <option value="gemini">Gemini</option>
-                                    <option value="deepseek">DeepSeek</option>
-                                </select>
-                            </label>
-                            <label class="ai-field">
-                                <span class="ai-field-label">TokenRouter API Key (GLM-5.2)</span>
-                                <input type="password" id="ai-key-tokenrouter" placeholder="sk-ayf... (để trống = dùng key chung)" autocomplete="off">
-                            </label>
-                            <label class="ai-field">
-                                <span class="ai-field-label">DeepSeek API Key</span>
-                                <input type="password" id="ai-key-deepseek" placeholder="sk-... (để trống = dùng key chung)" autocomplete="off">
-                            </label>
-                            <label class="ai-field">
-                                <span class="ai-field-label">Gemini API Key</span>
-                                <input type="password" id="ai-key-gemini" placeholder="AIza... hoặc AQ.Ab... (để trống = dùng key chung)" autocomplete="off">
-                            </label>
-                        </div>
-                        <label class="ai-field ai-field-prompt">
-                            <span class="ai-field-label">
-                                System Prompt
-                                <span style="display:flex;gap:6px;">
-                                    <button type="button" class="ai-preset-btn" id="ai-save-prompt" title="Lưu prompt lên hệ thống">💾 Lưu Prompt</button>
-                                    <button type="button" class="ai-preset-btn" id="ai-reset-prompt" title="Khôi phục prompt mặc định">↺ Mặc định</button>
+        <!-- 📋 Báo Cáo — Gộp AI + Tuần + Tháng -->
+        <section class="tab-content" id="reports">
+            <div class="report-subtabs">
+                <button class="report-subtab active" data-report="ai-report">🤖 Báo Cáo AI</button>
+                <button class="report-subtab" data-report="week-report">📅 Báo Cáo Tuần</button>
+                <button class="report-subtab" data-report="month-report">🗓️ Báo Cáo Tháng</button>
+            </div>
+
+            <!-- 🤖 Báo Cáo AI Panel -->
+            <div class="report-panel active" id="ai-report">
+                <div class="card full-width">
+                    <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                        <h3>🤖 Báo Cáo Thị Trường AI</h3>
+                        <button class="btn-secondary" id="ai-report-generate" title="AI phân tích toàn bộ data dashboard → viết báo cáo">🤖 Tạo Báo Cáo</button>
+                        <button class="btn-secondary" id="ai-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
+                        <span id="ai-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                    </div>
+                    <!-- ⚙️ Cấu hình AI (collapsible) — Provider + API Key + Prompt -->
+                    <details class="ai-settings-panel" id="ai-settings-details">
+                        <summary class="ai-settings-summary">⚙️ Cấu hình AI (Provider + API Key + Prompt)</summary>
+                        <div class="ai-settings-body">
+                            <div class="ai-settings-row">
+                                <label class="ai-field">
+                                    <span class="ai-field-label">Provider ưu tiên</span>
+                                    <select id="ai-provider">
+                                        <option value="auto">🤖 Auto (GLM-5.2 → DeepSeek → Gemini)</option>
+                                        <option value="glm">GLM-5.2 (TokenRouter, miễn phí)</option>
+                                        <option value="gemini">Gemini</option>
+                                        <option value="deepseek">DeepSeek</option>
+                                    </select>
+                                </label>
+                                <label class="ai-field">
+                                    <span class="ai-field-label">TokenRouter API Key (GLM-5.2)</span>
+                                    <input type="password" id="ai-key-tokenrouter" placeholder="sk-ayf... (để trống = dùng key chung)" autocomplete="off">
+                                </label>
+                                <label class="ai-field">
+                                    <span class="ai-field-label">DeepSeek API Key</span>
+                                    <input type="password" id="ai-key-deepseek" placeholder="sk-... (để trống = dùng key chung)" autocomplete="off">
+                                </label>
+                                <label class="ai-field">
+                                    <span class="ai-field-label">Gemini API Key</span>
+                                    <input type="password" id="ai-key-gemini" placeholder="AIza... hoặc AQ.Ab... (để trống = dùng key chung)" autocomplete="off">
+                                </label>
+                            </div>
+                            <label class="ai-field ai-field-prompt">
+                                <span class="ai-field-label">
+                                    System Prompt
+                                    <span style="display:flex;gap:6px;">
+                                        <button type="button" class="ai-preset-btn" id="ai-save-prompt" title="Lưu prompt lên hệ thống">💾 Lưu Prompt</button>
+                                        <button type="button" class="ai-preset-btn" id="ai-reset-prompt" title="Khôi phục prompt mặc định">↺ Mặc định</button>
+                                    </span>
                                 </span>
-                            </span>
-                            <textarea id="ai-system-prompt" rows="8" placeholder="Để trống = dùng prompt mặc định. Hoặc paste prompt tùy chỉnh của bạn..."></textarea>
-                        </label>
-                        <div class="ai-settings-actions">
-                            <button class="btn-secondary" id="ai-save-settings">💾 Lưu Cấu Hình</button>
-                            <span id="ai-settings-status" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                                <textarea id="ai-system-prompt" rows="8" placeholder="Để trống = dùng prompt mặc định. Hoặc paste prompt tùy chỉnh của bạn..."></textarea>
+                            </label>
+                            <div class="ai-settings-actions">
+                                <button class="btn-secondary" id="ai-save-settings">💾 Lưu Cấu Hình</button>
+                                <span id="ai-settings-status" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                            </div>
+                            <p class="ai-settings-hint">
+                                🔑 <strong>User tự nhập API key riêng</strong> hoặc dùng key admin cấp (nếu admin đã set qua /admin).
+                                Để trống key = dùng key chung (env). Bạn thấy được full key đang dùng.
+                                <br>Prompt để trống = dùng mặc định. Provider "Auto" = thử Gemini trước, lỗi thì DeepSeek.
+                            </p>
                         </div>
-                        <p class="ai-settings-hint">
-                            🔑 <strong>User tự nhập API key riêng</strong> hoặc dùng key admin cấp (nếu admin đã set qua /admin).
-                            Để trống key = dùng key chung (env). Bạn thấy được full key đang dùng.
-                            <br>Prompt để trống = dùng mặc định. Provider "Auto" = thử Gemini trước, lỗi thì DeepSeek.
-                        </p>
-                    </div>
-                </details>
-                <div id="ai-report-body">
-                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
-                        <div style="font-size:3rem;margin-bottom:16px;">📊</div>
-                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo thị trường tự động bằng AI</p>
-                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo"</strong> để AI phân tích VNINDEX, lực cầu, dòng tiền, breadth, breakout và viết báo cáo tóm tắt.</p>
+                    </details>
+                    <div id="ai-report-body">
+                        <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                            <div style="font-size:3rem;margin-bottom:16px;">📊</div>
+                            <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo thị trường tự động bằng AI</p>
+                            <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo"</strong> để AI phân tích VNINDEX, lực cầu, dòng tiền, breadth, breakout và viết báo cáo tóm tắt.</p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- 📅 Báo Cáo Tuần Tab -->
-        <section class="tab-content" id="week-report">
-            <div class="card full-width">
-                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
-                    <h3>📅 Báo Cáo Thị Trường Tuần</h3>
-                    <button class="btn-secondary" id="week-report-generate" title="AI tổng kết 5 phiên gần nhất">🤖 Tạo Báo Cáo Tuần</button>
-                    <button class="btn-secondary" id="week-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
-                    <span id="week-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
-                </div>
-                <div id="week-report-body">
-                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
-                        <div style="font-size:3rem;margin-bottom:16px;">📅</div>
-                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tuần bằng AI</p>
-                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tuần"</strong> để AI tổng kết 5 phiên: xu hướng VNINDEX, breadth, dòng tiền tích lũy, ngành dẫn dặt + triển vọng tuần tới.</p>
+            <!-- 📅 Báo Cáo Tuần Panel -->
+            <div class="report-panel" id="week-report">
+                <div class="card full-width">
+                    <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                        <h3>📅 Báo Cáo Thị Trường Tuần</h3>
+                        <button class="btn-secondary" id="week-report-generate" title="AI tổng kết 5 phiên gần nhất">🤖 Tạo Báo Cáo Tuần</button>
+                        <button class="btn-secondary" id="week-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
+                        <span id="week-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                    </div>
+                    <div id="week-report-body">
+                        <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                            <div style="font-size:3rem;margin-bottom:16px;">📅</div>
+                            <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tuần bằng AI</p>
+                            <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tuần"</strong> để AI tổng kết 5 phiên: xu hướng VNINDEX, breadth, dòng tiền tích lũy, ngành dẫn dắt + triển vọng tuần tới.</p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- 🗓️ Báo Cáo Tháng Tab -->
-        <section class="tab-content" id="month-report">
-            <div class="card full-width">
-                <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
-                    <h3>🗓️ Báo Cáo Thị Trường Tháng</h3>
-                    <button class="btn-secondary" id="month-report-generate" title="AI tổng kết ~20 phiên gần nhất">🤖 Tạo Báo Cáo Tháng</button>
-                    <button class="btn-secondary" id="month-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
-                    <span id="month-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
-                </div>
-                <div id="month-report-body">
-                    <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
-                        <div style="font-size:3rem;margin-bottom:16px;">🗓️</div>
-                        <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tháng bằng AI</p>
-                        <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tháng"</strong> để AI tổng kết ~20 phiên: xu hướng tháng, độ rộng thị trường, dịch chuyển ngành, dòng tiền lớn + triển vọng tháng tới.</p>
+            <!-- 🗓️ Báo Cáo Tháng Panel -->
+            <div class="report-panel" id="month-report">
+                <div class="card full-width">
+                    <div class="card-header" style="flex-wrap:wrap;gap:10px;align-items:center;">
+                        <h3>🗓️ Báo Cáo Thị Trường Tháng</h3>
+                        <button class="btn-secondary" id="month-report-generate" title="AI tổng kết ~20 phiên gần nhất">🤖 Tạo Báo Cáo Tháng</button>
+                        <button class="btn-secondary" id="month-report-copy" title="Copy báo cáo dạng text" style="display:none;">📋 Copy</button>
+                        <span id="month-report-meta" style="font-size:0.8rem;color:var(--text-muted);"></span>
+                    </div>
+                    <div id="month-report-body">
+                        <div style="text-align:center;color:var(--text-muted);padding:60px 20px;">
+                            <div style="font-size:3rem;margin-bottom:16px;">🗓️</div>
+                            <p style="font-size:1.05rem;margin-bottom:8px;">Báo cáo tổng kết tháng bằng AI</p>
+                            <p style="font-size:0.85rem;">Nhấn <strong>"🤖 Tạo Báo Cáo Tháng"</strong> để AI tổng kết ~20 phiên: xu hướng tháng, độ rộng thị trường, dịch chuyển ngành, dòng tiền lớn + triển vọng tháng tới.</p>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -5621,17 +5621,15 @@ function switchTab(tabId) {
         loadNews();
     }
 
-    // Load AI report khi switch sang tab ai-report (lazy-load, dùng cache nếu có)
-    if (tabId === 'ai-report') {
-        try { loadAISettings(); loadAIReport(false); } catch (e) { console.error('AI report load error:', e); }
-    }
-
-    // Load báo cáo tuần/tháng khi switch sang tab (lazy-load, dùng cache nếu có)
-    if (tabId === 'week-report') {
-        try { loadWeeklyReport(false); } catch (e) { console.error('Week report load error:', e); }
-    }
-    if (tabId === 'month-report') {
-        try { loadMonthlyReport(false); } catch (e) { console.error('Month report load error:', e); }
+    // Gộp 3 báo cáo: reports tab → lazy-load sub-tab đang active
+    if (tabId === 'reports') {
+        try {
+            var activeSub = document.querySelector('.report-subtab.active');
+            var reportId = activeSub ? activeSub.dataset.report : 'ai-report';
+            if (reportId === 'ai-report') { loadAISettings(); loadAIReport(false); }
+            else if (reportId === 'week-report') { loadWeeklyReport(false); }
+            else if (reportId === 'month-report') { loadMonthlyReport(false); }
+        } catch (e) { console.error('Reports load error:', e); }
     }
 
     // Init tab Kỹ thuật khi switch sang lần đầu
@@ -5725,6 +5723,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingText: '⏳ Đang tổng kết tháng...',
         placeholderText: 'Đang tổng kết dữ liệu cả tháng...'
     });
+
+    // Sub-tab switching cho Reports
+    document.querySelectorAll('.report-subtab').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.report-subtab').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            document.querySelectorAll('.report-panel').forEach(function(p) { p.classList.remove('active'); });
+            var target = document.getElementById(btn.dataset.report);
+            if (target) target.classList.add('active');
+            var reportId = btn.dataset.report;
+            try {
+                if (reportId === 'ai-report') { loadAISettings(); loadAIReport(false); }
+                else if (reportId === 'week-report') { loadWeeklyReport(false); }
+                else if (reportId === 'month-report') { loadMonthlyReport(false); }
+            } catch (e) { console.error('Report sub-tab load error:', e); }
+        });
+    });
+
     setupSectorAIEvents();
     setupIndustryTableSort();
 });
