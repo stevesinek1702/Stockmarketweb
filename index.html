@@ -40,7 +40,8 @@
                 <button class="nav-btn" data-tab="month-report">🗓️ Báo Cáo Tháng</button>
                 <button class="nav-btn" data-tab="technical">📊 Kỹ Thuật (Ichimoku + Elliott)</button>
                 <button class="nav-btn" data-tab="sector-ai">🎯 AI Đánh Giá Ngành</button>
-  <button class="nav-btn" data-tab="paper-trade">💼 Paper Trade</button>
+  <button class="nav-btn" data-tab="stock-analysis">🔍 Phân Tích CP</button>
+            <button class="nav-btn" data-tab="paper-trade">💼 Paper Trade</button>
 
             </nav>
             <div class="header-actions">
@@ -1689,6 +1690,54 @@
                 </div>
             </div>
         </section>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             TAB: Phân Tích Cổ Phiếu (Stock Analysis)
+             ═══════════════════════════════════════════════════════════ -->
+        <section class="tab-content" id="stock-analysis">
+            <!-- Search Bar -->
+            <div class="sa-search-wrapper" id="sa-search-wrapper">
+                <div class="sa-search-row">
+                    <div class="sa-search-input-wrap">
+                        <span class="sa-search-icon">🔍</span>
+                        <input type="text" id="sa-search-input" class="sa-search-input" placeholder="Gõ mã hoặc tên cổ phiếu..." autocomplete="off">
+                        <div class="sa-ac-dropdown" id="sa-ac-dropdown"></div>
+                    </div>
+                    <button class="sa-analyze-btn" id="sa-analyze-btn">Phân Tích</button>
+                    <button class="sa-refresh-btn" id="sa-refresh-btn" title="Làm mới dữ liệu">↻</button>
+                </div>
+                <div class="sa-recent-wrap" id="sa-recent-tags"></div>
+            </div>
+
+            <!-- Main Layout -->
+            <div class="sa-layout" id="sa-layout">
+                <!-- Left: Chart -->
+                <div class="sa-chart-area" id="sa-chart-area">
+                    <div class="sa-chart-topbar" id="sa-chart-topbar"></div>
+                    <div class="sa-chart-container" id="sa-chart-container"></div>
+                </div>
+
+                <!-- Right: Info Column -->
+                <div class="sa-info-col" id="sa-info-col">
+                    <div class="sa-score-card" id="sa-score-card"></div>
+                    <div class="sa-signal-card" id="sa-signal-card"></div>
+                    <div class="sa-ta-card" id="sa-ta-card"></div>
+                </div>
+            </div>
+
+            <!-- Middle Row: Ichimoku + Elliott -->
+            <div class="sa-middle-row" id="sa-middle-row">
+                <div class="sa-ichimoku-card" id="sa-ichimoku-card"></div>
+                <div class="sa-elliott-card" id="sa-elliott-card"></div>
+            </div>
+
+            <!-- Investor Flow -->
+            <div class="sa-flow-card" id="sa-flow-card"></div>
+
+            <!-- Quote Strip -->
+            <div class="sa-quote-strip" id="sa-quote-strip"></div>
+        </section>
+
     </main>
 
     <!-- Footer -->
@@ -1729,6 +1778,7 @@
     <script src="js/tv-indicators.js"></script>
     <script src="js/tv-chart.js"></script>
     <script src="js/app.js?v=20260802c"></script>
+    <script src="js/stock-analysis.js"></script>
     <script src="js/grid-manager.js"></script>
     <!-- TradingView Widget Script -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>

@@ -5667,6 +5667,11 @@ function switchTab(tabId) {
     if (tabId === 'paper-trade') {
         try { loadPaperTrade(); } catch (e) { console.error('Paper trade load error:', e); }
     }
+
+    // Init Phân Tích Cổ Phiếu khi switch sang tab stock-analysis (lazy-load)
+    if (tabId === 'stock-analysis') {
+        try { if (!window._stockAnalysisInit) { window._stockAnalysisInit = true; StockAnalysis.init(); } } catch (e) { console.error('Stock analysis init error:', e); }
+    }
 }
 
 // Initialize app when DOM is ready

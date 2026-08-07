@@ -31,6 +31,15 @@ const API = {
         SEPA_SCORE: '/api/sepa-score',
         TA_DETAIL: '/api/ta',
         TA_META: '/api/ta-meta',
+        // Signal + per-stock analysis
+        SIGNAL: '/api/signal',
+        SIGNALS: '/api/signals',
+        ICHIMOKU: '/api/ichimoku',
+        ELLIOTT: '/api/elliott',
+        SECTOR_STRENGTH: '/api/sector-strength',
+        STOCK_INVESTOR_FLOW: '/api/stock-investor-flow',
+        ALL_STOCKS: '/api/all-stocks',
+        AI_STOCK_PICKER: '/api/ai/stock-picker',
         // Broker + autoexec (Subsystem #5/#6)
         BROKER_STATUS: '/api/broker/status',
         BROKER_PORTFOLIO: '/api/broker/portfolio',
@@ -794,6 +803,7 @@ const dataFetcher = new StockDataFetcher();
 // Export utility functions
 window.StockAPI = {
     SERVER_BASE,
+    SERVER: API.SERVER,
     dataFetcher,
     MockData,
     formatCurrency,
