@@ -76,6 +76,11 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       TOKENROUTER_API_KEY: ${TOKENROUTER_API_KEY:-}
+      # Nous Hermes / Nemotron (OpenRouter free) — Trading Agent + lệnh /ai Telegram
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Telegram Bot — thông báo tín hiệu + chat commands (/ai, /check, /signals)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       # Fiintrade proxy (Cloudflare Worker) — bypass block IP VPS datacenter
       FIINTRADE_PROXY_URL: ${FIINTRADE_PROXY_URL:-}
     # MỞ CỔNG 8080 TỚI HOST (không đụng cổng 80/443 của nginx host)
