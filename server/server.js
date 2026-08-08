@@ -4859,99 +4859,102 @@ app.post('/api/ai/trading-agent', requireAuth, async (req, res) => {
         const question = String(req.body?.question || 'Đánh giá cổ phiếu này').trim();
         if (!symbol) return res.status(400).json({ success: false, error: 'Thiếu symbol' });
 
-        // Gather all stock data in parallel
-        const port = PORT;
-        const headers = { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '' };
-        const fetchInternal = async (path) => {
-            try {
-                const resp = await axios.get(`http://localhost:${port}${path}`, { headers, timeout: 20000 });
-                return resp.data;
-            } catch (e) { return null; }
-        };
-
-        const [sepa, signal, ichimoku, elliott, quote, financials, flow] = await Promise.all([
-            fetchInternal(`/api/sepa-score/${symbol}`),
-            fetchInternal(`/api/signal/${symbol}`),
-            fetchInternal(`/api/ichimoku/${symbol}`),
-            fetchInternal(`/api/elliott/${symbol}`),
-            fetchInternal(`/api/quotes?symbols=${symbol}`),
-            fetchInternal(`/api/financials/${symbol}?count=8`),
-            fetchInternal(`/api/stock-investor-flow?symbol=${symbol}`)
-        ]);
-
-        // Build compact context
+        // ── Gather stock data TRỰC TIẾP (không qua HTTP internal — tránh auth issues) ──
         const ctx = { symbol, question };
 
-        // Quote
-        const q = Array.isArray(quote) ? quote[0] : (quote && quote[0]) || {};
-        ctx.quote = {
-            price: q.PriceCurrent || q.price || null,
-            change: q.PriceChange, changePct: q.PricePercentChange,
-            volume: q.TotalVolume, value: q.TotalValue,
-            high: q.PriceHigh, low: q.PriceLow, open: q.PriceOpen,
-            pe: q.PriceToEarning, pb: q.PriceToBook, roe: q.RoE, eps: q.Eps,
-            name: q.Name, exchange: q.Exchange
-        };
+        // 1. Quote (P/E, P/B, ROE, EPS) — FireAnt trực tiếp
+        try {
+            const cookie = await getFireAntCookieWithHeal();
+            const quoteUrl = `${API_CONFIG.fireant.base}/Markets/Quotes?symbols=${symbol}`;
+            const quotes = await fetchAPI(quoteUrl, { ...API_CONFIG.fireant.headers, Cookie: cookie, 'Accept-Encoding': 'gzip, deflate' });
+            const q = Array.isArray(quotes) ? quotes[0] : null;
+            if (q) {
+                ctx.quote = {
+                    price: q.PriceCurrent, change: q.PriceChange, changePct: q.PricePercentChange,
+                    volume: q.TotalVolume, value: q.TotalValue,
+                    high: q.PriceHigh, low: q.PriceLow, open: q.PriceOpen,
+                    pe: q.PriceToEarning, pb: q.PriceToBook, roe: q.RoE, eps: q.Eps,
+                    name: q.Name, exchange: q.Exchange
+                };
+            }
+        } catch (e) { console.warn('[trading-agent] quote fail:', e.message); }
 
-        // SEPA + TA
-        if (sepa && sepa.success) {
-            ctx.sepa = { score: sepa.score, grade: sepa.grade, breakdown: sepa.breakdown };
-            ctx.ta = sepa.ta || null;
-        }
-        // Signal
-        if (signal && signal.success) {
-            ctx.signal = signal.signal || null;
-        }
-        // Ichimoku
-        if (ichimoku && ichimoku.success) {
-            ctx.ichimoku = { verdict: ichimoku.interpretation?.verdict || ichimoku.current?.verdict, score: ichimoku.interpretation?.score };
-        }
-        // Elliott
-        if (elliott && elliott.success) {
-            ctx.elliott = { pattern: elliott.pattern || elliott.wavePattern, wave: elliott.currentWave || elliott.wave, bias: elliott.verdict };
-        }
-        // Financials (quarterly)
-        if (financials && financials.success && financials.metrics) {
-            ctx.financials = financials.metrics.slice(0, 8);
-        }
-        // Investor flow (last 5 sessions)
-        if (flow && flow.success && Array.isArray(flow.data)) {
-            ctx.investorFlow = flow.data.slice(-5).map(d => ({
-                date: d.date, close: d.close,
-                foreign: d.nuocNgoai, institutional: d.toChuc, proprietary: d.tuDoanh
-            }));
-        }
+        // 2. SEPA + TA (local price-history, không cần HTTP)
+        try {
+            const { getHistory } = require('./ta/price-history');
+            const { computeTA } = require('./ta');
+            const { computeSEPA } = require('./scoring');
+            const { rsRating } = require('./scoring/rs');
+            const { generateSignal } = require('./signals');
+            const h = getHistory(symbol);
+            if (h && h.ohlc && h.ohlc.length >= 50) {
+                const ta = computeTA(h);
+                if (ta) {
+                    const vnindex = getHistory('VNINDEX');
+                    const bench = vnindex ? (vnindex.closes || vnindex.ohlc.map(x => x.c)) : null;
+                    const closes = h.ohlc.map(x => x.c);
+                    const price = closes[closes.length - 1];
+                    const rs = rsRating(closes, bench);
+                    const sr = computeSEPA(ta, { rsRating: rs });
+                    ctx.sepa = { score: sr.score, grade: sr.grade, breakdown: sr.breakdown };
+                    ctx.ta = ta;
+                    const sig = generateSignal(sr, ta, price);
+                    if (sig) ctx.signal = sig;
+                }
+            }
+        } catch (e) { console.warn('[trading-agent] TA fail:', e.message); }
 
-        // Resolve AI provider + keys (user settings → env fallback)
-        const userId = req.user?.id;
-        let userSettings = { provider: 'auto' };
-        if (userId) {
-            try {
-                const pg = require('./pg');
-                const row = await pg.query('SELECT provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key FROM user_ai_settings WHERE user_id = $1', [userId]);
-                if (row.rows[0]) userSettings = row.rows[0];
-            } catch (e) { /* use defaults */ }
-        }
+        // 3. Ichimoku (local compute)
+        try {
+            const ichimoku = require('./ta/ichimoku');
+            const { getHistory } = require('./ta/price-history');
+            const h = getHistory(symbol);
+            if (h && h.ohlc && h.ohlc.length >= 120) {
+                const result = ichimoku.compute(h.ohlc);
+                if (result) ctx.ichimoku = { verdict: result.verdict, score: result.score, price: result.current?.close };
+            }
+        } catch (e) { console.warn('[trading-agent] ichimoku fail:', e.message); }
 
+        // 4. Financials (quarterly) — qua fireant-financials module
+        try {
+            const finResult = await fireantFinancials.getFinancials(symbol, 8, 1);
+            if (finResult && finResult.data) {
+                ctx.financials = fireantFinancials.extractKeyMetrics(finResult.data).slice(0, 8);
+            }
+        } catch (e) { console.warn('[trading-agent] financials fail:', e.message); }
+
+        // 5. Investor flow (Fiintrade)
+        try {
+            const flowData = await fiintrade.getStockInvestorFlow(symbol, 'Daily');
+            if (flowData && Array.isArray(flowData.points)) {
+                ctx.investorFlow = flowData.points.slice(-5).map(d => ({
+                    date: d.date, close: d.close,
+                    foreign: d.nuocNgoai, institutional: d.toChuc, proprietary: d.tuDoanh
+                }));
+            }
+        } catch (e) { console.warn('[trading-agent] flow fail:', e.message); }
+
+        console.log(`[trading-agent] ${symbol}: quote=${!!ctx.quote} sepa=${!!ctx.sepa} ichimoku=${!!ctx.ichimoku} fin=${!!ctx.financials} flow=${!!ctx.investorFlow}`);
+
+        // ── AI phân tích ──
         const messages = [
             { role: 'system', content: aiModule.TRADING_AGENT_PROMPT },
             { role: 'user', content: `Câu hỏi: ${question}\n\nDữ liệu ${symbol}:\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`` }
         ];
 
-        // Fallback chain: try Hermes (if OpenRouter key) → GLM → DeepSeek → Gemini
+        // Fallback chain: Hermes (OpenRouter) → GLM → DeepSeek
         const errors = [];
         let analysisText = null;
         let providerUsed = null;
 
-        const attempts = [];
-        if (userSettings.tokenrouter_api_key || aiModule.hermesChat) {
-            attempts.push({ name: 'hermes', fn: async () => {
-                if (!process.env.OPENROUTER_API_KEY && !userSettings.openrouter_api_key) throw new Error('No OpenRouter key');
+        const attempts = [
+            { name: 'hermes', fn: async () => {
+                if (!process.env.OPENROUTER_API_KEY) throw new Error('No OpenRouter key');
                 return aiModule.hermesChat(messages, process.env.OPENROUTER_API_KEY);
-            }});
-        }
-        attempts.push({ name: 'glm', fn: async () => aiModule.tokenrouterChat(messages, userSettings.tokenrouter_api_key || undefined) });
-        attempts.push({ name: 'deepseek', fn: async () => aiModule.deepseekChat(messages, userSettings.deepseek_api_key || undefined) });
+            }},
+            { name: 'glm', fn: async () => aiModule.tokenrouterChat(messages, process.env.TOKENROUTER_API_KEY || undefined) },
+            { name: 'deepseek', fn: async () => aiModule.deepseekChat(messages, process.env.DEEPSEEK_API_KEY || undefined) }
+        ];
 
         for (const attempt of attempts) {
             try {
