@@ -20,6 +20,7 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const BASE_URL = BOT_TOKEN ? 'https://api.telegram.org/bot' + BOT_TOKEN : '';
 
 let _lastUpdateId = 0;
+let _last409Logged = 0;
 let _pollingInterval = null;
 let _commandHandlers = {}; // có thể register từ server.js
 
@@ -117,7 +118,15 @@ async function pollOnce() {
             }
         }
     } catch (e) {
-        if (e.code !== 'ECONNABORTED') {
+        if (e.response && e.response.status === 409) {
+            // 409 = có process khác đang polling. Backoff 30s rồi thử lại.
+            // Không spam log — chỉ log 1 lần rồi im.
+            if (!_last409Logged || Date.now() - _last409Logged > 60000) {
+                console.warn('[Telegram] 409 conflict — process khác đang polling, backoff 30s...');
+                _last409Logged = Date.now();
+            }
+            await new Promise(function (r) { setTimeout(r, 30000); });
+        } else if (e.code !== 'ECONNABORTED') {
             console.error('[Telegram] poll error:', e.message);
         }
     }
