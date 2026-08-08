@@ -25,7 +25,7 @@ const GEMINI_MODEL = 'gemini-2.0-flash';
 const TOKENROUTER_URL = 'https://api.tokenrouter.com/v1/chat/completions';
 const TOKENROUTER_MODEL = 'z-ai/glm-5.2-free';  // GLM-5.2 (free tier trên TokenRouter)
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const HERMES_MODEL = 'nousresearch/hermes-3-llama-3.1-405b:free';  // Nous Hermes 3 (free tier trên OpenRouter)
+const HERMES_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';  // Nemotron 120B (free tier OpenRouter, mạnh cho tiếng Việt)
 
 const AI_TIMEOUT = 120000; // 120s — GLM-5.2 nhanh khi tắt reasoning (5-30s)
 

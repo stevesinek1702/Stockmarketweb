@@ -167,7 +167,11 @@ function registerDefaultCommands(internalFetch) {
     // /help — danh sách lệnh
     onCommand('help', async function () {
         return '<b>🤖 VN Stock Bot — Lệnh</b>\n\n' +
-            '/check <b>FPT</b> — Phân tích nhanh 1 cổ phiếu\n' +
+            '<b>Phân tích AI:</b>\n' +
+            '/ai <b>FPT</b> — AI phân tích toàn diện (Hermes)\n' +
+            '/ai <b>FPT</b> có nên mua không? — AI trả lời câu hỏi\n\n' +
+            '<b>Dữ liệu nhanh:</b>\n' +
+            '/check <b>FPT</b> — SEPA score + TA nhanh\n' +
             '/signals — Tín hiệu SEPA (BUY/WATCH)\n' +
             '/top — Top cổ phiếu tiềm năng\n' +
             '/breakout — Cổ phiếu phá đỉnh/đáy\n' +
@@ -199,6 +203,37 @@ function registerDefaultCommands(internalFetch) {
                 '<b>Xu hướng:</b> ' + esc(ta.trendTemplate || ta.maAlignment || '--');
         } catch (e) {
             return '❌ Lỗi: ' + esc(e.message);
+        }
+    });
+
+    // /ai FPT [câu hỏi] — AI phân tích toàn diện bằng Hermes/Nemotron
+    onCommand('ai', async function (args, chatId) {
+        var symbol = (args[0] || '').toUpperCase().trim();
+        if (!symbol) return 'Cú pháp: <code>/ai FPT</code> hoặc <code>/ai FPT có nên mua không?</code>';
+        var question = args.length > 1 ? args.slice(1).join(' ') : 'Đánh giá tổng quan cổ phiếu này';
+
+        // Thông báo đang phân tích
+        await sendMessage('🤖 <b>Hermes AI đang phân tích ' + esc(symbol) + '...</b>\n⏳ Vui lòng đợi 15-30s', { chatId: chatId });
+
+        try {
+            // Gọi trading-agent endpoint qua internal POST
+            var axios = require('axios');
+            var port = process.env.PORT || 3000;
+            var resp = await axios.post('http://localhost:' + port + '/api/ai/trading-agent', {
+                symbol: symbol,
+                question: question
+            }, {
+                headers: { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '', 'Content-Type': 'application/json' },
+                timeout: 120000
+            });
+            var data = resp.data;
+            if (data && data.success && data.analysis) {
+                await sendLongMessage(data.analysis, chatId);
+                return null; // đã gửi qua sendLongMessage
+            }
+            return '❌ AI không trả được kết quả: ' + esc(data ? data.error : 'unknown');
+        } catch (e) {
+            return '❌ Lỗi AI: ' + esc(e.response ? (e.response.data ? e.response.data.error : e.response.status) : e.message);
         }
     });
 
@@ -278,13 +313,63 @@ function formatNum(v) {
     return n.toLocaleString('vi-VN');
 }
 
+/**
+ * Convert Markdown → Telegram HTML (đơn giản: strip ##, **bold**, - bullets).
+ * Telegram chỉ hỗ trợ subset HTML (b,i,code,pre — không có h1/h2/ul/li).
+ */
+function mdToTelegramHtml(md) {
+    if (!md) return '';
+    var html = esc(md);
+    // **bold** → <b>bold</b>
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    // ## heading → <b>heading</b>
+    html = html.replace(/^##\s+(.+)$/gm, '\n<b>$1</b>');
+    // ### heading → <b>heading</b>
+    html = html.replace(/^###\s+(.+)$/gm, '<b>$1</b>');
+    // `code` → <code>code</code>
+    html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+    // Bullet lines starting with - → keep as-is (Telegram shows plain)
+    return html;
+}
+
+/**
+ * Gửi phân tích AI dài — chia thành nhiều tin nhắn nếu quá 4000 ký tự.
+ */
+async function sendLongMessage(text, chatId) {
+    var html = mdToTelegramHtml(text);
+    // Telegram giới hạn 4096 ký tự/message
+    var MAX = 3500;
+    if (html.length <= MAX) {
+        return sendMessage(html, { chatId: chatId });
+    }
+    // Chia theo paragraph
+    var parts = [];
+    var current = '';
+    var paragraphs = html.split('\n');
+    for (var i = 0; i < paragraphs.length; i++) {
+        if ((current + '\n' + paragraphs[i]).length > MAX) {
+            if (current) parts.push(current);
+            current = paragraphs[i];
+        } else {
+            current = current ? current + '\n' + paragraphs[i] : paragraphs[i];
+        }
+    }
+    if (current) parts.push(current);
+    for (var j = 0; j < parts.length; j++) {
+        await sendMessage(parts[j], { chatId: chatId });
+        if (j < parts.length - 1) await new Promise(function (r) { setTimeout(r, 300); });
+    }
+}
+
 module.exports = {
     isEnabled: isEnabled,
     sendMessage: sendMessage,
     sendHTML: sendHTML,
+    sendLongMessage: sendLongMessage,
     onCommand: onCommand,
     startPolling: startPolling,
     stopPolling: stopPolling,
     registerDefaultCommands: registerDefaultCommands,
-    esc: esc
+    esc: esc,
+    mdToTelegramHtml: mdToTelegramHtml
 };
