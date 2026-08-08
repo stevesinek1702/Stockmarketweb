@@ -604,6 +604,7 @@
     // ── Loading / Empty State ────────────────────────────────────────────────
     function showLoadingState(symbol) {
         state._lastFinancials = null; // reset financials cache for new symbol
+        resetAgentChat(); // reset AI chat for new symbol
         // Info column skeletons
         var infoCol = $('#sa-info-col');
         if (infoCol) {
@@ -1196,6 +1197,121 @@
         }
     }
 
+    // ── Trading Agent: AI chat ────────────────────────────────────────────────
+    async function askTradingAgent(question) {
+        var symbol = state.currentSymbol;
+        if (!symbol) return;
+
+        var chatBox = $('#sa-agent-chat');
+        var empty = $('#sa-agent-empty');
+        var input = $('#sa-agent-input');
+        var sendBtn = $('#sa-agent-send');
+
+        // Hide empty state
+        if (empty) empty.style.display = 'none';
+
+        // Append user message
+        appendAgentMsg(chatBox, 'user', esc(question));
+        if (input) input.value = '';
+        if (sendBtn) sendBtn.disabled = true;
+
+        // Typing indicator
+        var typing = document.createElement('div');
+        typing.className = 'sa-agent-typing';
+        typing.id = 'sa-agent-typing';
+        typing.innerHTML = '<span>🤖 Đang phân tích</span><span class="sa-agent-typing-dots"><span></span><span></span><span></span></span>';
+        chatBox.appendChild(typing);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            var base = window.StockAPI.SERVER_BASE;
+            var resp = await fetch(base + '/api/ai/trading-agent', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: symbol, question: question })
+            });
+            var data = await resp.json();
+
+            // Remove typing
+            var t = $('#sa-agent-typing');
+            if (t) t.remove();
+
+            if (data && data.success) {
+                // Parse markdown if available, else escape
+                var html = (typeof marked !== 'undefined' && marked.parse) ? marked.parse(data.analysis) : esc(data.analysis);
+                appendAgentMsg(chatBox, 'ai', html);
+            } else {
+                appendAgentMsg(chatBox, 'ai', '❌ ' + esc(data?.error || 'Lỗi không xác định'));
+            }
+        } catch (e) {
+            var t2 = $('#sa-agent-typing');
+            if (t2) t2.remove();
+            appendAgentMsg(chatBox, 'ai', '❌ Lỗi kết nối: ' + esc(e.message));
+        } finally {
+            if (sendBtn) sendBtn.disabled = false;
+        }
+    }
+
+    function appendAgentMsg(chatBox, role, html) {
+        var msg = document.createElement('div');
+        msg.className = 'sa-agent-msg ' + role;
+        msg.innerHTML = html;
+        chatBox.appendChild(msg);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function resetAgentChat() {
+        var chatBox = $('#sa-agent-chat');
+        var empty = $('#sa-agent-empty');
+        if (chatBox) {
+            // Remove all messages, keep empty state
+            chatBox.innerHTML = '';
+            var newEmpty = document.createElement('div');
+            newEmpty.className = 'sa-agent-empty';
+            newEmpty.id = 'sa-agent-empty';
+            newEmpty.innerHTML = '<div class="sa-agent-empty-icon">🤖</div>' +
+                '<div>Hỏi AI bất cứ điều gì về cổ phiếu này</div>' +
+                '<div class="sa-agent-suggestions">' +
+                '<button class="sa-agent-suggest" data-q="Đánh giá tổng quan cổ phiếu này">📊 Đánh giá tổng quan</button>' +
+                '<button class="sa-agent-suggest" data-q="Có nên mua ở giá hiện tại không?">💰 Có nên mua không?</button>' +
+                '<button class="sa-agent-suggest" data-q="Phân tích rủi ro và điểm yếu">⚠️ Rủi ro &amp; điểm yếu</button>' +
+                '<button class="sa-agent-suggest" data-q="Dự báo xu hướng ngắn hạn và trung hạn">📈 Dự báo xu hướng</button>' +
+                '</div>';
+            chatBox.appendChild(newEmpty);
+        }
+    }
+
+    function setupAgentEvents() {
+        var sendBtn = $('#sa-agent-send');
+        var input = $('#sa-agent-input');
+        var chatBox = $('#sa-agent-chat');
+
+        if (sendBtn) {
+            sendBtn.addEventListener('click', function () {
+                var q = input && input.value.trim();
+                if (q) askTradingAgent(q);
+            });
+        }
+        if (input) {
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    var q = input.value.trim();
+                    if (q) askTradingAgent(q);
+                }
+            });
+        }
+        // Suggestion buttons (delegated, since they get re-created on reset)
+        if (chatBox) {
+            chatBox.addEventListener('click', function (e) {
+                var btn = e.target.closest('.sa-agent-suggest');
+                if (btn && btn.dataset.q) {
+                    askTradingAgent(btn.dataset.q);
+                }
+            });
+        }
+    }
+
     // ── Init ──────────────────────────────────────────────────────────────────
     function init() {
         var searchInput = $('#sa-search-input');
@@ -1248,6 +1364,7 @@
 
         renderRecentTags();
         showEmptyState();
+        setupAgentEvents();
     }
 
     // ── Export ───────────────────────────────────────────────────────────────

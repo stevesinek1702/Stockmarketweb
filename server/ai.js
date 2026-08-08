@@ -16,6 +16,7 @@ const axios = require('axios');
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const TOKENROUTER_API_KEY = process.env.TOKENROUTER_API_KEY || '';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-v4-pro';  // DeepSeek V4 Pro (1M context, JSON + tool calls)
@@ -23,6 +24,8 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemi
 const GEMINI_MODEL = 'gemini-2.0-flash';
 const TOKENROUTER_URL = 'https://api.tokenrouter.com/v1/chat/completions';
 const TOKENROUTER_MODEL = 'z-ai/glm-5.2-free';  // GLM-5.2 (free tier trên TokenRouter)
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const HERMES_MODEL = 'nousresearch/hermes-3-llama-3.1-405b:free';  // Nous Hermes 3 (free tier trên OpenRouter)
 
 const AI_TIMEOUT = 120000; // 120s — GLM-5.2 nhanh khi tắt reasoning (5-30s)
 
@@ -269,6 +272,44 @@ async function tokenrouterChat(messages, apiKey) {
 }
 
 /**
+ * Gọi Nous Hermes (qua OpenRouter — OpenAI-compatible).
+ * Hermes 3 405B free tier, hoặc Hermes 2 Mixtral rẻ.
+ * @param {Array} messages  [{role:'system'|'user'|'assistant', content:'...'}]
+ * @param {string} [apiKey]  override env key
+ * @returns {Promise<string>} text response
+ */
+async function hermesChat(messages, apiKey) {
+    const key = apiKey || OPENROUTER_API_KEY;
+    if (!key) {
+        throw new Error('OPENROUTER_API_KEY chưa cấu hình (đăng ký tại openrouter.ai)');
+    }
+    try { require('./cache').apiCounter.bump('hermes').catch(() => {}); } catch (e) {}
+    const res = await axios.post(
+        OPENROUTER_URL,
+        {
+            model: HERMES_MODEL,
+            messages,
+            temperature: 0.3,
+            max_tokens: 3000,
+            stream: false
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://vnstock.local',
+                'X-Title': 'VN Stock Market'
+            },
+            timeout: AI_TIMEOUT
+        }
+    );
+    const msg = res.data?.choices?.[0]?.message;
+    const text = msg?.content || '';
+    if (!text) throw new Error('Hermes/OpenRouter trả content rỗng');
+    return text;
+}
+
+/**
  * Sinh báo cáo thị trường từ context JSON.
  * Provider preference:
  *   'auto'  = GLM-5.2 → DeepSeek → Gemini (fallback chain)
@@ -368,8 +409,40 @@ ${label.yeuCau}`;
  * Kiểm tra AI có sẵn sàng không (ít nhất 1 key được cấu hình).
  */
 function isAvailable() {
-    return !!(TOKENROUTER_API_KEY || DEEPSEEK_API_KEY || GEMINI_API_KEY);
+    return !!(TOKENROUTER_API_KEY || DEEPSEEK_API_KEY || GEMINI_API_KEY || OPENROUTER_API_KEY);
 }
+
+// ── Trading Agent prompt: phân tích 1 cổ phiếu toàn diện ───────────────────
+const TRADING_AGENT_PROMPT = `Bạn là Trading Agent — chuyên gia phân tích cổ phiếu Việt Nam, kết hợp phân tích kỹ thuật (TA) và cơ bản (FA).
+
+Nhiệm vụ: Dựa trên dữ liệu được cung cấp, trả lời câu hỏi của nhà đầu tư về 1 cổ phiếu cụ thể.
+
+Quy tắc:
+1. Trả lời NGẮN GỌN, SÚC ÍCH — dùng Markdown (## tiêu đề, **bold**, - bullet).
+2. Luôn dẫn SỐ LIỆU CỤ THỂ từ data (giá, SEPA score, RSI, P/E, doanh thu, EPS...).
+3. Đưa ra KHUYẾN NGHỊ rõ ràng: MUA / BÁN / GIỮ / CHỜ — kèm lý do.
+4. Nếu tín hiệu mâu thuẫn (TA tốt nhưng FA xấu, hoặc ngược lại) → nêu rõ trade-off.
+5. Đề xuất entry, stop loss, target cụ thể nếu có thể.
+6. Cảnh báo RỦI RO nếu có (RSI quá cao, nợ cao, dòng tiền âm...).
+7. KHÔNG bịa số liệu — chỉ dùng data được cung cấp.
+8. Tiếng Việt, thuật ngữ tài chính giữ nguyên.
+
+Format trả lời:
+## 📊 Đánh giá tổng quan
+[Kết luận 1-2 câu: mua/bán/giữ/chờ + lý do chính]
+
+## 📈 Phân tích kỹ thuật
+[SEPA score, trend, RSI, MACD, MA, Ichimoku, Elliott...]
+
+## 💰 Phân tích cơ bản
+[P/E, P/B, ROE, EPS, doanh thu, lợi nhuận, biên lợi nhuận...]
+
+## 🎯 Khuyến nghị
+- Hành động: MUA/BÁN/GIỮ/CHỜ
+- Entry: ...
+- Stop Loss: ...
+- Target: ...
+- Rủi ro: ...`;
 
 // ═══════════════════════════════════════════════════════════════════════
 // AI STOCK PICKER (Hybrid: thuật toán pre-rank → LLM reasoning + giải thích)
@@ -522,6 +595,7 @@ module.exports = {
     deepseekChat,
     geminiChat,
     tokenrouterChat,
+    hermesChat,
     generateMarketReport,
     generateStockPicks,
     parsePickerJSON,
@@ -529,5 +603,6 @@ module.exports = {
     SYSTEM_PROMPT,
     WEEKLY_PROMPT,
     MONTHLY_PROMPT,
-    PICKER_SYSTEM_PROMPT
+    PICKER_SYSTEM_PROMPT,
+    TRADING_AGENT_PROMPT
 };

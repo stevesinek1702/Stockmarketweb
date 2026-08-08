@@ -1751,6 +1751,30 @@
 
             <!-- Intraday Chart (mới) -->
             <div class="sa-intraday-card" id="sa-intraday-card"></div>
+
+            <!-- Trading Agent: AI chat phân tích -->
+            <div class="sa-agent-card" id="sa-agent-card">
+                <div class="sa-agent-header">
+                    <h4>🤖 Trading Agent</h4>
+                    <span class="sa-agent-sub">AI phân tích toàn diện — hỏi đáp về cổ phiếu</span>
+                </div>
+                <div class="sa-agent-chat" id="sa-agent-chat">
+                    <div class="sa-agent-empty" id="sa-agent-empty">
+                        <div class="sa-agent-empty-icon">🤖</div>
+                        <div>Hỏi AI bất cứ điều gì về cổ phiếu này</div>
+                        <div class="sa-agent-suggestions" id="sa-agent-suggestions">
+                            <button class="sa-agent-suggest" data-q="Đánh giá tổng quan cổ phiếu này">📊 Đánh giá tổng quan</button>
+                            <button class="sa-agent-suggest" data-q="Có nên mua ở giá hiện tại không?">💰 Có nên mua không?</button>
+                            <button class="sa-agent-suggest" data-q="Phân tích rủi ro và điểm yếu">⚠️ Rủi ro &amp; điểm yếu</button>
+                            <button class="sa-agent-suggest" data-q="Dự báo xu hướng ngắn hạn và trung hạn">📈 Dự báo xu hướng</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="sa-agent-input-row">
+                    <input type="text" id="sa-agent-input" class="sa-agent-input" placeholder="Nhập câu hỏi về cổ phiếu..." autocomplete="off">
+                    <button class="sa-agent-send" id="sa-agent-send">Gửi</button>
+                </div>
+            </div>
         </section>
 
     </main>

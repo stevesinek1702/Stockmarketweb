@@ -4848,6 +4848,133 @@ app.post('/api/ai/stock-picker', requireAuth, async (req, res) => {
 });
 
 /**
+ * POST /api/ai/trading-agent — Trading Agent phân tích 1 cổ phiếu.
+ * Body: { symbol: 'FPT', question: 'Có nên mua không?' }
+ * Gathers: SEPA score + TA + signal + ichimoku + elliott + quote (P/E,P/B,ROE,EPS)
+ *          + financials (quarterly) + investor flow → gửi cho LLM phân tích.
+ */
+app.post('/api/ai/trading-agent', requireAuth, async (req, res) => {
+    try {
+        const symbol = String(req.body?.symbol || '').toUpperCase().trim();
+        const question = String(req.body?.question || 'Đánh giá cổ phiếu này').trim();
+        if (!symbol) return res.status(400).json({ success: false, error: 'Thiếu symbol' });
+
+        // Gather all stock data in parallel
+        const port = PORT;
+        const headers = { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '' };
+        const fetchInternal = async (path) => {
+            try {
+                const resp = await axios.get(`http://localhost:${port}${path}`, { headers, timeout: 20000 });
+                return resp.data;
+            } catch (e) { return null; }
+        };
+
+        const [sepa, signal, ichimoku, elliott, quote, financials, flow] = await Promise.all([
+            fetchInternal(`/api/sepa-score/${symbol}`),
+            fetchInternal(`/api/signal/${symbol}`),
+            fetchInternal(`/api/ichimoku/${symbol}`),
+            fetchInternal(`/api/elliott/${symbol}`),
+            fetchInternal(`/api/quotes?symbols=${symbol}`),
+            fetchInternal(`/api/financials/${symbol}?count=8`),
+            fetchInternal(`/api/stock-investor-flow?symbol=${symbol}`)
+        ]);
+
+        // Build compact context
+        const ctx = { symbol, question };
+
+        // Quote
+        const q = Array.isArray(quote) ? quote[0] : (quote && quote[0]) || {};
+        ctx.quote = {
+            price: q.PriceCurrent || q.price || null,
+            change: q.PriceChange, changePct: q.PricePercentChange,
+            volume: q.TotalVolume, value: q.TotalValue,
+            high: q.PriceHigh, low: q.PriceLow, open: q.PriceOpen,
+            pe: q.PriceToEarning, pb: q.PriceToBook, roe: q.RoE, eps: q.Eps,
+            name: q.Name, exchange: q.Exchange
+        };
+
+        // SEPA + TA
+        if (sepa && sepa.success) {
+            ctx.sepa = { score: sepa.score, grade: sepa.grade, breakdown: sepa.breakdown };
+            ctx.ta = sepa.ta || null;
+        }
+        // Signal
+        if (signal && signal.success) {
+            ctx.signal = signal.signal || null;
+        }
+        // Ichimoku
+        if (ichimoku && ichimoku.success) {
+            ctx.ichimoku = { verdict: ichimoku.interpretation?.verdict || ichimoku.current?.verdict, score: ichimoku.interpretation?.score };
+        }
+        // Elliott
+        if (elliott && elliott.success) {
+            ctx.elliott = { pattern: elliott.pattern || elliott.wavePattern, wave: elliott.currentWave || elliott.wave, bias: elliott.verdict };
+        }
+        // Financials (quarterly)
+        if (financials && financials.success && financials.metrics) {
+            ctx.financials = financials.metrics.slice(0, 8);
+        }
+        // Investor flow (last 5 sessions)
+        if (flow && flow.success && Array.isArray(flow.data)) {
+            ctx.investorFlow = flow.data.slice(-5).map(d => ({
+                date: d.date, close: d.close,
+                foreign: d.nuocNgoai, institutional: d.toChuc, proprietary: d.tuDoanh
+            }));
+        }
+
+        // Resolve AI provider + keys (user settings → env fallback)
+        const userId = req.user?.id;
+        let userSettings = { provider: 'auto' };
+        if (userId) {
+            try {
+                const pg = require('./pg');
+                const row = await pg.query('SELECT provider, deepseek_api_key, gemini_api_key, tokenrouter_api_key FROM user_ai_settings WHERE user_id = $1', [userId]);
+                if (row.rows[0]) userSettings = row.rows[0];
+            } catch (e) { /* use defaults */ }
+        }
+
+        const messages = [
+            { role: 'system', content: aiModule.TRADING_AGENT_PROMPT },
+            { role: 'user', content: `Câu hỏi: ${question}\n\nDữ liệu ${symbol}:\n\`\`\`json\n${JSON.stringify(ctx, null, 2)}\n\`\`\`` }
+        ];
+
+        // Fallback chain: try Hermes (if OpenRouter key) → GLM → DeepSeek → Gemini
+        const errors = [];
+        let analysisText = null;
+        let providerUsed = null;
+
+        const attempts = [];
+        if (userSettings.tokenrouter_api_key || aiModule.hermesChat) {
+            attempts.push({ name: 'hermes', fn: async () => {
+                if (!process.env.OPENROUTER_API_KEY && !userSettings.openrouter_api_key) throw new Error('No OpenRouter key');
+                return aiModule.hermesChat(messages, process.env.OPENROUTER_API_KEY);
+            }});
+        }
+        attempts.push({ name: 'glm', fn: async () => aiModule.tokenrouterChat(messages, userSettings.tokenrouter_api_key || undefined) });
+        attempts.push({ name: 'deepseek', fn: async () => aiModule.deepseekChat(messages, userSettings.deepseek_api_key || undefined) });
+
+        for (const attempt of attempts) {
+            try {
+                analysisText = await attempt.fn();
+                providerUsed = attempt.name;
+                break;
+            } catch (e) {
+                errors.push(`${attempt.name}: ${e.message}`);
+            }
+        }
+
+        if (!analysisText) {
+            return res.status(503).json({ success: false, error: 'Tất cả AI provider đều lỗi: ' + errors.join('; ') });
+        }
+
+        res.json({ success: true, symbol, analysis: analysisText, provider: providerUsed });
+    } catch (error) {
+        console.error('[trading-agent] error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/admin/refresh-fundamentals — fetch FireAnt quotes → extract + cache
  * P/E, P/B, ROE, EPS vào fundamentals.json. Được scheduler gọi EOD mỗi ngày.
  * (Internal — bypass auth qua X-Internal-Secret.) Fundamentals đổi chậm nên 1 lần/ngày đủ.

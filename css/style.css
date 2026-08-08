@@ -6556,6 +6556,179 @@ button.scanning::after {
     font-size: 0.85rem;
 }
 
+/* ============================================
+   STOCK ANALYSIS — Trading Agent Chat
+   ============================================ */
+.sa-agent-card {
+    background: var(--bg-card, #1a1a35);
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: var(--spacing-lg, 16px);
+    display: flex;
+    flex-direction: column;
+}
+.sa-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color, #2a2a55);
+}
+.sa-agent-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary, #fff);
+}
+.sa-agent-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted, #6666aa);
+}
+.sa-agent-chat {
+    min-height: 120px;
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color, #2a2a55) transparent;
+}
+.sa-agent-empty {
+    text-align: center;
+    color: var(--text-muted, #6666aa);
+    font-size: 0.85rem;
+    padding: 20px 0;
+}
+.sa-agent-empty-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+.sa-agent-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 12px;
+}
+.sa-agent-suggest {
+    padding: 5px 12px;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 16px;
+    background: transparent;
+    color: var(--text-secondary, #9999bb);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sa-agent-suggest:hover {
+    border-color: var(--accent-blue, #2eaaff);
+    color: var(--accent-blue, #2eaaff);
+    background: var(--accent-blue-bg, rgba(46,170,255,0.1));
+}
+.sa-agent-msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+.sa-agent-msg.user {
+    align-self: flex-end;
+    background: var(--accent-blue-bg, rgba(46,170,255,0.15));
+    border: 1px solid rgba(46,170,255,0.3);
+    color: var(--text-primary, #fff);
+}
+.sa-agent-msg.ai {
+    align-self: flex-start;
+    background: var(--bg-secondary, #12122a);
+    border: 1px solid var(--border-color, #2a2a55);
+    color: var(--text-primary, #fff);
+}
+.sa-agent-msg.ai h2,
+.sa-agent-msg.ai h3 {
+    font-size: 0.95rem;
+    margin: 8px 0 4px;
+    color: var(--accent-blue, #2eaaff);
+}
+.sa-agent-msg.ai strong { color: var(--accent-green, #2ee68a); }
+.sa-agent-msg.ai ul,
+.sa-agent-msg.ai ol { padding-left: 18px; margin: 4px 0; }
+.sa-agent-msg.ai code {
+    background: rgba(0,0,0,0.3);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+}
+.sa-agent-msg.ai p { margin: 4px 0; }
+.sa-agent-typing {
+    align-self: flex-start;
+    padding: 10px 14px;
+    background: var(--bg-secondary, #12122a);
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 12px;
+    color: var(--text-muted, #6666aa);
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.sa-agent-typing-dots {
+    display: inline-flex;
+    gap: 3px;
+}
+.sa-agent-typing-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted, #6666aa);
+    animation: sa-bounce 1.2s infinite;
+}
+.sa-agent-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.sa-agent-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes sa-bounce {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+}
+.sa-agent-input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color, #2a2a55);
+}
+.sa-agent-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-secondary, #12122a);
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 8px;
+    color: var(--text-primary, #fff);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.sa-agent-input:focus {
+    border-color: var(--accent-blue, #2eaaff);
+}
+.sa-agent-send {
+    padding: 10px 20px;
+    background: var(--gradient-blue, linear-gradient(135deg, #2eaaff, #1a6fd6));
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+.sa-agent-send:hover { opacity: 0.85; }
+.sa-agent-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ==========================================
    REPORT SUB-TABS (Gộp AI + Tuần + Tháng)
    ========================================== */
