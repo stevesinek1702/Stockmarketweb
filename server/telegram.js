@@ -104,9 +104,9 @@ async function pollOnce() {
     try {
         var resp = await axios.post(BASE_URL + '/getUpdates', {
             offset: _lastUpdateId + 1,
-            timeout: 30,
+            timeout: 25,
             limit: 10
-        }, { timeout: 35000 });
+        }, { timeout: 30000 });
 
         var updates = resp.data && resp.data.result;
         if (Array.isArray(updates)) {
@@ -133,27 +133,32 @@ async function pollOnce() {
 }
 
 /**
- * Bắt đầu polling loop (long-poll). Chỉ chạy nếu bot đã được cấu hình.
- * @param {number} intervalMs  Khoảng thời gian giữa các poll (default 2000)
+ * Bắt đầu polling loop. Dùng recursive setTimeout (KHÔNG dùng setInterval)
+ * để tránh stacking khi long-poll 30s chạy lâu hơn interval.
+ * Chỉ chạy nếu bot đã được cấu hình.
  */
-function startPolling(intervalMs) {
+function startPolling() {
     if (!isEnabled()) {
         console.log('ℹ️ [Telegram] Bot chưa cấu hình (TELEGRAM_BOT_TOKEN/CHAT_ID) — bỏ qua polling');
         return;
     }
     if (_pollingInterval) return;
-    intervalMs = intervalMs || 2000;
 
-    // Poll ngay lần đầu
-    pollOnce();
+    console.log('🤖 [Telegram] Bot polling started');
 
-    _pollingInterval = setInterval(pollOnce, intervalMs);
-    console.log('🤖 [Telegram] Bot polling started (interval=' + intervalMs + 'ms)');
+    // Recursive: poll → đợi hoàn tất → poll tiếp (không bao giờ chồng chéo)
+    async function loop() {
+        if (!_pollingInterval) return; // stopped
+        await pollOnce();
+        if (!_pollingInterval) return; // stopped during poll
+        _pollingInterval = setTimeout(loop, 1000);
+    }
+    _pollingInterval = setTimeout(loop, 0); // start ngay
 }
 
 function stopPolling() {
     if (_pollingInterval) {
-        clearInterval(_pollingInterval);
+        clearTimeout(_pollingInterval);
         _pollingInterval = null;
         console.log('🤖 [Telegram] Bot polling stopped');
     }
