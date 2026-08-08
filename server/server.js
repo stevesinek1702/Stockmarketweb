@@ -12,6 +12,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { scanPotential, getCachedSignals } = require('./potential-scanner');
 const fiintrade = require('./fiintrade');
+const fireantFinancials = require('./fireant-financials');
 const aiModule = require('./ai');
 const breadthHistory = require('./breadth-history');
 const { authenticate } = require('./auth');
@@ -3576,9 +3577,37 @@ app.get('/api/ta-meta', (req, res) => {
     }
 });
 
-// ==========================================
-// SEPA SCORING ENDPOINTS (Subsystem #2)
-// ==========================================
+/**
+ * GET /api/financials/:symbol — Báo cáo kết quả kinh doanh theo quý (restv2 FireAnt).
+ * Query: count (số quý, default 8), type (1=quarterly, 2=annual, default 1)
+ * Cache 6 giờ. Lần đầu chậm (~20s: Playwright login + fetch).
+ */
+app.get('/api/financials/:symbol', async (req, res) => {
+    try {
+        const symbol = String(req.params.symbol || '').toUpperCase().trim();
+        const count = Math.min(parseInt(req.query.count) || 8, 40); // max 40 quý
+        const type = req.query.type === '2' ? 2 : 1;
+        if (!symbol) return res.status(400).json({ success: false, error: 'Thiếu symbol' });
+
+        const result = await fireantFinancials.getFinancials(symbol, count, type);
+        if (!result) {
+            return res.status(502).json({ success: false, error: 'Không lấy được dữ liệu tài chính (FireAnt token hoặc login lỗi)' });
+        }
+        const metrics = fireantFinancials.extractKeyMetrics(result.data);
+        res.json({
+            success: true,
+            symbol: symbol,
+            type: type,
+            count: count,
+            metrics: metrics,
+            fetchedAt: result.fetchedAt,
+            cached: Date.now() - result.fetchedAt > 60000
+        });
+    } catch (e) {
+        console.error('Financials endpoint error:', e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 
 /**
  * GET /api/sepa-score/:symbol — composite score 0-100 + breakdown chi tiết.
@@ -4960,6 +4989,28 @@ async function bootstrap() {
             autoexec.startLoop(signalFetcher);
         } catch (e) {
             console.warn('⚠️  Auto-exec loop không khởi động được:', e.message);
+        }
+
+        // ── Telegram Bot (#7) — polling + thông báo tín hiệu ──────────────────
+        try {
+            const telegram = require('./telegram');
+            // internalFetch: gọi API nội bộ qua HTTP (không qua network ngoài)
+            const internalFetch = async (path) => {
+                try {
+                    const resp = await axios.get('http://localhost:' + PORT + path, {
+                        headers: { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '' },
+                        timeout: 15000
+                    });
+                    return resp.data;
+                } catch (e) { return null; }
+            };
+            telegram.registerDefaultCommands(internalFetch);
+            telegram.startPolling();
+            if (telegram.isEnabled()) {
+                telegram.sendHTML('🤖 <b>VN Stock Bot đã online!</b>\nGõ /help để xem danh sách lệnh.').catch(() => {});
+            }
+        } catch (e) {
+            console.warn('⚠️  Telegram bot không khởi động được:', e.message);
         }
 
         // ── Khởi động quét cổ phiếu tiềm năng ban đầu (sau 5 giây để server ổn định) ────────────────

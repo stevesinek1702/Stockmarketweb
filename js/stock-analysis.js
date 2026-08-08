@@ -65,7 +65,8 @@
         chartEl: null,
         mainCreated: {},
         subPaneIds: {},
-        indicators: { main: ['MA'], sub: ['VOL', 'MACD'] }
+        indicators: { main: ['MA'], sub: ['VOL', 'MACD'] },
+        finQuarters: 8
     };
 
     // ── Helpers ─────────────────────────────────────────────────────────────
@@ -574,7 +575,7 @@
             renderHeaderStrip(quoteData, symbol);
             renderFundamentals(quoteData, chartStats);
 
-            // Fetch investor flow + intraday in parallel
+            // Fetch investor flow + intraday + financials in parallel
             var flowPromise = (function () {
                 return fetch(base + window.StockAPI.SERVER.STOCK_INVESTOR_FLOW + '?symbol=' + symbol + '&_t=' + Date.now(), { credentials: 'same-origin' })
                     .then(function (r) { return r.json(); })
@@ -589,7 +590,9 @@
                     .catch(function (e) { console.warn('Intraday fetch failed:', e); });
             })();
 
-            await Promise.all([flowPromise, intradayPromise]);
+            var finPromise = fetchFinancials(symbol, state.finQuarters);
+
+            await Promise.all([flowPromise, intradayPromise, finPromise]);
 
         } catch (err) {
             console.error('loadAnalysis error:', err);
@@ -600,6 +603,7 @@
 
     // ── Loading / Empty State ────────────────────────────────────────────────
     function showLoadingState(symbol) {
+        state._lastFinancials = null; // reset financials cache for new symbol
         // Info column skeletons
         var infoCol = $('#sa-info-col');
         if (infoCol) {
@@ -625,6 +629,9 @@
         // Intraday skeleton
         var intra = $('#sa-intraday-card');
         if (intra) intra.innerHTML = '<div class="sa-card-skeleton" style="height:180px;"></div>';
+        // Financials skeleton
+        var finCard = $('#sa-financials-card');
+        if (finCard) finCard.innerHTML = '<div class="sa-card-skeleton" style="height:200px;"></div>';
     }
 
     function showEmptyState() {
@@ -638,6 +645,7 @@
         var hs = $('#sa-header-strip'); if (hs) hs.innerHTML = '';
         var fund = $('#sa-fundamentals'); if (fund) fund.innerHTML = '';
         var intra = $('#sa-intraday-card'); if (intra) intra.innerHTML = '';
+        var finCard = $('#sa-financials-card'); if (finCard) finCard.innerHTML = '';
         var midRow = $('#sa-middle-row'); if (midRow) midRow.innerHTML = '';
         var flow = $('#sa-flow-card'); if (flow) flow.innerHTML = '';
     }
@@ -1070,6 +1078,121 @@
                 var ro = new ResizeObserver(function () { draw(); });
                 try { ro.observe(canvas.parentElement); state._intradayRO = ro; state._intradayRO._el = canvas.parentElement; } catch (e) { /* ignore */ }
             }
+        }
+    }
+
+    // ── Render: Financial Statements Table (quarterly revenue/profit/EPS) ────
+    function formatBillion(v) {
+        if (v == null || !Number.isFinite(Number(v))) return '--';
+        var n = Number(v);
+        if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(1) + ' tỷ';
+        if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(0) + ' tr';
+        return n.toLocaleString('vi-VN');
+    }
+
+    function formatMargin(v) {
+        if (v == null || !Number.isFinite(Number(v))) return '--';
+        return Number(v).toFixed(1) + '%';
+    }
+
+    function renderFinancials(data) {
+        var card = $('#sa-financials-card');
+        if (!card) return;
+
+        var metrics = data && data.metrics;
+        if (!metrics || !metrics.length) {
+            card.innerHTML = '<div class="sa-fin-header"><h4>📊 Báo cáo tài chính</h4></div>' +
+                '<div class="sa-fin-loading">Không có dữ liệu tài chính</div>';
+            return;
+        }
+
+        // Periods as columns (most recent first)
+        var periods = metrics.map(function (m) { return m.period; }).slice(0, state.finQuarters);
+
+        // Toggle buttons for quarter count
+        var toggleHtml = '<div class="sa-fin-controls">' +
+            [4, 8, 16].map(function (n) {
+                return '<button class="sa-fin-tab' + (state.finQuarters === n ? ' active' : '') + '" data-quarters="' + n + '">' + n + ' quý</button>';
+            }).join('') +
+            '</div>';
+
+        var cacheNote = data.cached ? '' : ' <span style="color:var(--text-muted);font-size:0.7rem;">(vừa cập nhật)</span>';
+
+        // Build table: rows = metrics, columns = periods
+        var rows = [
+            { label: 'Doanh thu', key: 'netSale', fmt: formatBillion },
+            { label: 'LN gộp', key: 'grossProfit', fmt: formatBillion },
+            { label: 'Biên LN gộp', key: 'grossMargin', fmt: formatMargin },
+            { label: 'LNST', key: 'profitAfterTax', fmt: formatBillion },
+            { label: 'Biên ròng', key: 'netMargin', fmt: formatMargin },
+            { label: 'EPS', key: 'eps', fmt: function (v) { return v != null ? formatNumber(v) : '--'; } },
+            { label: 'EBITDA', key: 'ebitda', fmt: formatBillion }
+        ];
+
+        var headerHtml = '<tr><th>Chỉ tiêu</th>' +
+            periods.map(function (p) { return '<th>' + esc(p) + '</th>'; }).join('') + '</tr>';
+
+        var bodyHtml = rows.map(function (row) {
+            var cells = periods.map(function (p, i) {
+                var m = metrics[i];
+                if (!m) return '<td>--</td>';
+                var val = m[row.key];
+                var cls = '';
+                if (row.key === 'profitAfterTax' || row.key === 'grossProfit' || row.key === 'netSale' || row.key === 'ebitda') {
+                    cls = val > 0 ? 'sa-fin-pos' : val < 0 ? 'sa-fin-neg' : '';
+                }
+                return '<td class="' + cls + '">' + row.fmt(val) + '</td>';
+            }).join('');
+            return '<tr><td>' + esc(row.label) + '</td>' + cells + '</tr>';
+        }).join('');
+
+        card.innerHTML = '<div class="sa-fin-header">' +
+            '<h4>📊 Báo cáo KQKD theo quý' + cacheNote + '</h4>' +
+            toggleHtml +
+            '</div>' +
+            '<div class="sa-fin-table-wrap"><table class="sa-fin-table"><thead>' + headerHtml + '</thead><tbody>' + bodyHtml + '</tbody></table></div>';
+
+        // Wire toggle buttons
+        var controls = card.querySelector('.sa-fin-controls');
+        if (controls) {
+            controls.addEventListener('click', function (e) {
+                var btn = e.target.closest('.sa-fin-tab');
+                if (!btn) return;
+                var n = parseInt(btn.dataset.quarters);
+                if (n === state.finQuarters) return;
+                state.finQuarters = n;
+                // Re-render with stored data if available, else fetch
+                if (state._lastFinancials && state._lastFinancials.metrics && state._lastFinancials.metrics.length >= n) {
+                    renderFinancials(state._lastFinancials);
+                } else {
+                    fetchFinancials(state.currentSymbol, n);
+                }
+            });
+        }
+    }
+
+    async function fetchFinancials(symbol, quarters) {
+        quarters = quarters || state.finQuarters;
+        var card = $('#sa-financials-card');
+        if (card && !state._lastFinancials) {
+            card.innerHTML = '<div class="sa-fin-header"><h4>📊 Báo cáo tài chính</h4></div>' +
+                '<div class="sa-fin-loading">⏳ Đang tải dữ liệu tài chính (lần đầu có thể mất 20-30s)...</div>';
+        }
+        try {
+            var base = window.StockAPI.SERVER_BASE;
+            var resp = await fetch(base + window.StockAPI.SERVER.FINANCIALS + '/' + symbol + '?count=' + quarters + '&_t=' + Date.now(), { credentials: 'same-origin' });
+            var data = await resp.json();
+            if (data && data.success) {
+                state._lastFinancials = data;
+                renderFinancials(data);
+            } else {
+                if (card) card.innerHTML = '<div class="sa-fin-header"><h4>📊 Báo cáo tài chính</h4></div>' +
+                    '<div class="sa-fin-loading">Không có dữ liệu tài chính cho ' + esc(symbol) + '</div>';
+            }
+        } catch (e) {
+            console.warn('Financials fetch failed:', e);
+            if (card) card.innerHTML = '<div class="sa-fin-header"><h4>📊 Báo cáo tài chính</h4></div>' +
+                '<div class="sa-fin-loading">Lỗi tải dữ liệu tài chính</div>';
         }
     }
 

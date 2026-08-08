@@ -39,6 +39,7 @@ const API = {
         SECTOR_STRENGTH: '/api/sector-strength',
         STOCK_INVESTOR_FLOW: '/api/stock-investor-flow',
         INTRADAY: '/api/intraday-quotes',
+        FINANCIALS: '/api/financials',
         ALL_STOCKS: '/api/all-stocks',
         AI_STOCK_PICKER: '/api/ai/stock-picker',
         // Broker + autoexec (Subsystem #5/#6)

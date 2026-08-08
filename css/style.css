@@ -6462,6 +6462,100 @@ button.scanning::after {
     height: 180px;
 }
 
+/* ============================================
+   STOCK ANALYSIS — Financial Statements Table
+   ============================================ */
+.sa-financials-card {
+    background: var(--bg-card, #1a1a35);
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: var(--spacing-lg, 16px);
+}
+.sa-fin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color, #2a2a55);
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.sa-fin-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-primary, #fff);
+}
+.sa-fin-controls {
+    display: flex;
+    gap: 4px;
+}
+.sa-fin-tab {
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    border: 1px solid var(--border-color, #2a2a55);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary, #9999bb);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.sa-fin-tab.active {
+    background: var(--accent-blue-bg, rgba(46,170,255,0.15));
+    border-color: var(--accent-blue, #2eaaff);
+    color: var(--accent-blue, #2eaaff);
+}
+.sa-fin-tab:hover:not(.active) {
+    color: var(--text-primary, #fff);
+    border-color: var(--text-muted, #6666aa);
+}
+.sa-fin-table-wrap {
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.sa-fin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+.sa-fin-table th {
+    text-align: right;
+    padding: 8px 10px;
+    color: var(--text-muted, #6666aa);
+    font-weight: 600;
+    font-size: 0.72rem;
+    border-bottom: 1px solid var(--border-color, #2a2a55);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.sa-fin-table th:first-child {
+    text-align: left;
+}
+.sa-fin-table td {
+    text-align: right;
+    padding: 7px 10px;
+    color: var(--text-secondary, #9999bb);
+    border-bottom: 1px solid rgba(42, 42, 85, 0.4);
+}
+.sa-fin-table td:first-child {
+    text-align: left;
+    color: var(--text-primary, #fff);
+    font-weight: 500;
+}
+.sa-fin-table tbody tr:hover {
+    background: rgba(46, 170, 255, 0.04);
+}
+.sa-fin-pos { color: var(--accent-green, #2ee68a) !important; font-weight: 600; }
+.sa-fin-neg { color: var(--accent-red, #ff5c78) !important; }
+.sa-fin-loading {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--text-muted, #6666aa);
+    font-size: 0.85rem;
+}
+
 /* ==========================================
    REPORT SUB-TABS (Gộp AI + Tuần + Tháng)
    ========================================== */
