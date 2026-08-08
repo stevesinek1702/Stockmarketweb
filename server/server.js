@@ -5124,20 +5124,27 @@ async function bootstrap() {
         // ── Telegram Bot (#7) — polling + thông báo tín hiệu ──────────────────
         try {
             const telegram = require('./telegram');
-            // internalFetch: gọi API nội bộ qua HTTP (không qua network ngoài)
-            const internalFetch = async (path) => {
-                try {
-                    const resp = await axios.get('http://localhost:' + PORT + path, {
-                        headers: { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '' },
-                        timeout: 15000
-                    });
-                    return resp.data;
-                } catch (e) { return null; }
-            };
-            telegram.registerDefaultCommands(internalFetch);
-            telegram.startPolling();
-            if (telegram.isEnabled()) {
-                telegram.sendHTML('🤖 <b>VN Stock Bot đã online!</b>\nGõ /help để xem danh sách lệnh.').catch(() => {});
+            // Chỉ 1 process chạy Telegram polling (tránh 409 conflict trong PM2 cluster)
+            const pm2Instance = parseInt(process.env.NODE_APP_INSTANCE || '0', 10);
+            const isPrimary = pm2Instance === 0;
+            if (isPrimary) {
+                // internalFetch: gọi API nội bộ qua HTTP (không qua network ngoài)
+                const internalFetch = async (path) => {
+                    try {
+                        const resp = await axios.get('http://localhost:' + PORT + path, {
+                            headers: { 'X-Internal-Secret': process.env.INTERNAL_SECRET || '' },
+                            timeout: 15000
+                        });
+                        return resp.data;
+                    } catch (e) { return null; }
+                };
+                telegram.registerDefaultCommands(internalFetch);
+                telegram.startPolling();
+                if (telegram.isEnabled()) {
+                    telegram.sendHTML('🤖 <b>VN Stock Bot đã online!</b>\nGõ /help để xem danh sách lệnh.').catch(() => {});
+                }
+            } else {
+                console.log('ℹ️ [Telegram] Bỏ qua polling — chỉ PM2 instance 0 chạy bot (instance ' + pm2Instance + ')');
             }
         } catch (e) {
             console.warn('⚠️  Telegram bot không khởi động được:', e.message);
