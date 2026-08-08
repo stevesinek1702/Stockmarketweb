@@ -7,7 +7,7 @@
     <title>VN Stock Market Data | Dữ Liệu Thị Trường Chứng Khoán Việt Nam</title>
     <meta name="description"
         content="Trang web phân tích dữ liệu thị trường chứng khoán Việt Nam - Bảng giá, Dòng tiền, Breakout Trendline">
-    <link rel="stylesheet" href="css/style.css?v=20260802c">
+    <link rel="stylesheet" href="css/style.css?v=20260808a">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <!-- Gridstack.js - Drag & Drop / Resize dashboard panels -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
@@ -1715,7 +1715,10 @@
                 <div class="sa-recent-wrap" id="sa-recent-tags"></div>
             </div>
 
-            <!-- Main Layout -->
+            <!-- Header Strip: Identity + Live Price (Fiintrade-style) -->
+            <div class="sa-header-strip" id="sa-header-strip"></div>
+
+            <!-- Main Layout: Chart + Info Column -->
             <div class="sa-layout" id="sa-layout">
                 <!-- Left: Chart -->
                 <div class="sa-chart-area" id="sa-chart-area">
@@ -1731,6 +1734,9 @@
                 </div>
             </div>
 
+            <!-- Fundamentals Grid: P/E, P/B, ROE, EPS, 52w High/Low -->
+            <div class="sa-fundamentals" id="sa-fundamentals"></div>
+
             <!-- Middle Row: Ichimoku + Elliott -->
             <div class="sa-middle-row" id="sa-middle-row">
                 <div class="sa-ichimoku-card" id="sa-ichimoku-card"></div>
@@ -1740,8 +1746,8 @@
             <!-- Investor Flow -->
             <div class="sa-flow-card" id="sa-flow-card"></div>
 
-            <!-- Quote Strip -->
-            <div class="sa-quote-strip" id="sa-quote-strip"></div>
+            <!-- Intraday Chart (mới) -->
+            <div class="sa-intraday-card" id="sa-intraday-card"></div>
         </section>
 
     </main>
@@ -1784,7 +1790,7 @@
     <script src="js/tv-indicators.js"></script>
     <script src="js/tv-chart.js"></script>
     <script src="js/app.js?v=20260802c"></script>
-    <script src="js/stock-analysis.js"></script>
+    <script src="js/stock-analysis.js?v=20260808a"></script>
     <script src="js/grid-manager.js"></script>
     <!-- TradingView Widget Script -->
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>

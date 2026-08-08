@@ -93,6 +93,17 @@
         return d.innerHTML;
     }
 
+    // Trung bình volume từ KLine data bars
+    function avgVol(bars) {
+        if (!Array.isArray(bars) || !bars.length) return null;
+        var sum = 0, n = 0;
+        for (var i = 0; i < bars.length; i++) {
+            var v = bars[i] && bars[i].volume;
+            if (typeof v === 'number' && Number.isFinite(v)) { sum += v; n++; }
+        }
+        return n ? sum / n : null;
+    }
+
     function gradeColor(grade) {
         if (!grade) return '#666';
         var g = grade.toUpperCase();
@@ -467,7 +478,7 @@
             var data = toKline(raw);
             if (!data.length) {
                 container.innerHTML = '<div class="sa-chart-skeleton" style="display:flex;align-items:center;justify-content:center;color:var(--text-muted);">Không có dữ liệu biểu đồ cho ' + esc(symbol) + '</div>';
-                return;
+                return null;
             }
 
             container.innerHTML = '';
@@ -497,10 +508,21 @@
                 try { ro.observe(chartEl); } catch (e) { /* ignore */ }
             }
             setTimeout(function () { if (state.chart) try { state.chart.resize(); } catch (e) { /* ignore */ } }, 100);
+
+            // Tính 52-week high/low từ historical data để hiển thị ở fundamentals card
+            var yearBars = data.slice(-252);
+            if (yearBars.length) {
+                var yearHigh = Math.max.apply(null, yearBars.map(function (d) { return d.high; }));
+                var yearLow = Math.min.apply(null, yearBars.map(function (d) { return d.low; }));
+                return { yearHigh: yearHigh, yearLow: yearLow, avgVol: avgVol(yearBars) };
+            }
+            return null;
         } catch (err) {
             console.error('renderInlineChart error:', err);
             container.innerHTML = '<div class="sa-chart-skeleton" style="display:flex;align-items:center;justify-content:center;color:var(--accent-red);">Lỗi tải biểu đồ: ' + esc(err.message) + '</div>';
+            return null;
         }
+        return null;
     }
 
     // ── Data Loading Orchestrator ───────────────────────────────────────────
@@ -540,20 +562,34 @@
             renderIchimokuSummary(ichimokuData);
             renderElliottSummary(elliottData);
 
-            await chartPromise;
+            var chartStats = await chartPromise; // {yearHigh, yearLow, avgVol} | null
 
-            // Serial fetches (quotes + investor flow)
+            // Serial fetches: quote → header strip + fundamentals, then investor flow + intraday
+            var quoteData = null;
             try {
                 var quoteResp = await fetch(base + window.StockAPI.SERVER.QUOTES + '?symbols=' + symbol + '&_t=' + Date.now(), { credentials: 'same-origin' });
-                var quoteData = await quoteResp.json();
-                renderQuoteStrip(quoteData, symbol);
-            } catch (e) { console.warn('Quote strip fetch failed:', e); }
+                quoteData = await quoteResp.json();
+            } catch (e) { console.warn('Quote fetch failed:', e); }
 
-            try {
-                var flowResp = await fetch(base + window.StockAPI.SERVER.STOCK_INVESTOR_FLOW + '?symbol=' + symbol + '&_t=' + Date.now(), { credentials: 'same-origin' });
-                var flowData = await flowResp.json();
-                renderInvestorFlowChart(flowData);
-            } catch (e) { console.warn('Investor flow fetch failed:', e); }
+            renderHeaderStrip(quoteData, symbol);
+            renderFundamentals(quoteData, chartStats);
+
+            // Fetch investor flow + intraday in parallel
+            var flowPromise = (function () {
+                return fetch(base + window.StockAPI.SERVER.STOCK_INVESTOR_FLOW + '?symbol=' + symbol + '&_t=' + Date.now(), { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { renderInvestorFlowChart(d); })
+                    .catch(function (e) { console.warn('Investor flow fetch failed:', e); });
+            })();
+
+            var intradayPromise = (function () {
+                return fetch(base + window.StockAPI.SERVER.INTRADAY + '?symbol=' + symbol + '&_t=' + Date.now(), { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { renderIntradayChart(d, symbol); })
+                    .catch(function (e) { console.warn('Intraday fetch failed:', e); });
+            })();
+
+            await Promise.all([flowPromise, intradayPromise]);
 
         } catch (err) {
             console.error('loadAnalysis error:', err);
@@ -580,9 +616,15 @@
         // Flow chart skeleton
         var flowCard = $('#sa-flow-card');
         if (flowCard) flowCard.innerHTML = '<div class="sa-card-skeleton" style="height:200px;"></div>';
-        // Quote strip skeleton
-        var strip = $('#sa-quote-strip');
-        if (strip) strip.innerHTML = '<div class="sa-card-skeleton" style="height:36px;"></div>';
+        // Header strip skeleton
+        var headerStrip = $('#sa-header-strip');
+        if (headerStrip) headerStrip.innerHTML = '<div class="sa-card-skeleton" style="height:60px;flex:1;"></div>';
+        // Fundamentals skeleton
+        var fund = $('#sa-fundamentals');
+        if (fund) fund.innerHTML = Array(6).fill('<div class="sa-card-skeleton" style="height:62px;"></div>').join('');
+        // Intraday skeleton
+        var intra = $('#sa-intraday-card');
+        if (intra) intra.innerHTML = '<div class="sa-card-skeleton" style="height:180px;"></div>';
     }
 
     function showEmptyState() {
@@ -593,6 +635,11 @@
             '<div class="sa-empty-text">Nhập mã cổ phiếu để bắt đầu phân tích</div>' +
             '<div class="sa-empty-sub">Gõ mã (VD: FPT, VCB, HPG) vào ô tìm kiếm phía trên</div>' +
             '</div>';
+        var hs = $('#sa-header-strip'); if (hs) hs.innerHTML = '';
+        var fund = $('#sa-fundamentals'); if (fund) fund.innerHTML = '';
+        var intra = $('#sa-intraday-card'); if (intra) intra.innerHTML = '';
+        var midRow = $('#sa-middle-row'); if (midRow) midRow.innerHTML = '';
+        var flow = $('#sa-flow-card'); if (flow) flow.innerHTML = '';
     }
 
     // ── Render: SEPA Score Card ─────────────────────────────────────────────
@@ -845,50 +892,185 @@
         }
     }
 
-    // ── Render: Quote Strip ──────────────────────────────────────────────────
-    function renderQuoteStrip(data, symbol) {
-        var strip = $('#sa-quote-strip');
-        if (!strip) return;
-
-        var q = null;
+    // ── Render: Header Strip (Fiintrade-style identity + price) ──────────────
+    function extractQuote(data, symbol) {
+        if (!data) return null;
         if (Array.isArray(data)) {
-            q = data.find(function (s) { return s.symbol === symbol; }) || data[0];
-        } else if (data && data.success && Array.isArray(data.data)) {
-            q = data.data.find(function (s) { return s.symbol === symbol; }) || data.data[0];
-        } else if (data && data.symbol) {
-            q = data;
+            return data.find(function (s) { return s.Symbol === symbol || s.symbol === symbol; }) || data[0];
         }
+        if (data && data.success && Array.isArray(data.data)) {
+            return data.data.find(function (s) { return s.Symbol === symbol || s.symbol === symbol; }) || data.data[0];
+        }
+        if (data && (data.symbol || data.Symbol)) return data;
+        return null;
+    }
+
+    function renderHeaderStrip(data, symbol) {
+        var strip = $('#sa-header-strip');
+        if (!strip) return;
+        var q = extractQuote(data, symbol);
 
         if (!q) {
-            strip.innerHTML = '<span style="color:var(--text-muted);">Không có dữ liệu giá</span>';
+            strip.innerHTML = '<div class="sa-hs-left"><span class="sa-hs-symbol">' + esc(symbol) + '</span></div>' +
+                '<span style="color:var(--text-muted);font-size:0.85rem;">Không có dữ liệu giá</span>';
             return;
         }
 
-        var price = q.price || q.matchPrice || q.lastPrice || '--';
-        var change = q.change || q.priceChange || 0;
-        var changeP = q.changeP || q.pctChange || q.percentChange || 0;
-        var isUp = Number(change) >= 0;
-        var colorClass = isUp ? 'sa-quote-up' : 'sa-quote-down';
+        var name = q.Name || q.name || q.CompanyName || q.companyName || '';
+        var exchange = q.Exchange || q.exchange || (q.Symbol && q.Symbol.length <= 3 ? 'HOSE' : '');
+        var price = q.PriceCurrent || q.price || q.matchPrice || q.lastPrice || q.PriceClose || '--';
+        var change = q.PriceChange != null ? q.PriceChange : (q.change || q.priceChange || 0);
+        var changeP = q.PricePercentChange != null ? q.PricePercentChange : (q.changeP || q.pctChange || q.percentChange || 0);
+        var refPrice = q.PriceReference || q.refPrice || 0;
+        var isUp = Number(change) > 0;
+        var isDown = Number(change) < 0;
+        var colorClass = isUp ? 'sa-hs-up' : isDown ? 'sa-hs-down' : 'sa-hs-flat';
         var pfx = isUp ? '+' : '';
+        var arrow = isUp ? '▲' : isDown ? '▼' : '—';
 
-        var volume = q.volume || q.totalVolume || q.matchVolume || '--';
-        var value = q.value || q.totalValue || q.matchValue || '--';
-        var foreignNet = q.foreignNet || q.netForeignValue || null;
-
-        var foreignHtml = '';
-        if (foreignNet !== null && foreignNet !== undefined) {
-            var fnNum = Number(foreignNet);
-            var fnColor = fnNum >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
-            foreignHtml = '<span class="sa-quote-item"><span style="color:var(--text-muted);">NN Mua ròng:</span> <span style="color:' + fnColor + ';">' + (fnNum >= 0 ? '+' : '') + formatVND(fnNum) + '</span></span>';
-        }
+        var nameHtml = name ? '<div class="sa-hs-name">' + esc(name) + '</div>' : '';
+        var exHtml = exchange ? '<span class="sa-hs-exchange">' + esc(exchange) + '</span>' : '';
 
         strip.innerHTML =
-            '<span class="sa-quote-item"><span style="color:var(--text-muted);">' + esc(symbol) + '</span></span>' +
-            '<span class="sa-quote-item ' + colorClass + '"><strong>' + formatNumber(price) + '</strong></span>' +
-            '<span class="sa-quote-item ' + colorClass + '">' + pfx + formatNumber(change) + ' (' + pfx + Number(changeP).toFixed(2) + '%)</span>' +
-            '<span class="sa-quote-item"><span style="color:var(--text-muted);">KL:</span> ' + formatNumber(volume) + '</span>' +
-            '<span class="sa-quote-item"><span style="color:var(--text-muted);">GT:</span> ' + formatVND(value) + '</span>' +
-            foreignHtml;
+            '<div class="sa-hs-left">' +
+                '<div>' +
+                    '<div class="sa-hs-symbol">' + esc(symbol) + '</div>' +
+                    nameHtml +
+                    exHtml +
+                '</div>' +
+            '</div>' +
+            '<div class="sa-hs-right">' +
+                '<span class="sa-hs-price ' + colorClass + '">' + formatNumber(price) + '</span>' +
+                '<span class="sa-hs-change ' + colorClass + '">' +
+                    arrow + ' ' + pfx + formatNumber(change) + ' (' + pfx + Number(changeP).toFixed(2) + '%)' +
+                '</span>' +
+            '</div>';
+    }
+
+    // ── Render: Fundamentals Grid (P/E, P/B, ROE, EPS, 52w Hi/Lo) ────────────
+    function renderFundamentals(data, chartStats) {
+        var grid = $('#sa-fundamentals');
+        if (!grid) return;
+        var q = extractQuote(data, state.currentSymbol);
+
+        var pe = q ? (q.PriceToEarning || q.PriceToEarnings || q.pe) : null;
+        var pb = q ? (q.PriceToBook || q.pb) : null;
+        var roe = q ? (q.RoE || q.ROE || q.roe) : null;
+        var eps = q ? (q.Eps || q.EPS || q.eps) : null;
+        var yearHigh = chartStats ? chartStats.yearHigh : null;
+        var yearLow = chartStats ? chartStats.yearLow : null;
+
+        function statCard(label, value, sub) {
+            return '<div class="sa-fund-card">' +
+                '<span class="sa-fund-label">' + esc(label) + '</span>' +
+                '<span class="sa-fund-value">' + (value != null && value !== '--' ? esc(String(value)) : '--') + '</span>' +
+                (sub ? '<span class="sa-fund-sub">' + esc(String(sub)) + '</span>' : '') +
+                '</div>';
+        }
+
+        var roeDisp = roe != null ? (Number(roe).toFixed(1) + '%') : '--';
+        var epsDisp = eps != null ? formatNumber(eps) : '--';
+
+        grid.innerHTML =
+            statCard('P/E', pe != null ? Number(pe).toFixed(1) : '--', 'Lợi nhuận / giá') +
+            statCard('P/B', pb != null ? Number(pb).toFixed(2) : '--', 'Giá / giá trị sổ') +
+            statCard('ROE', roeDisp, 'Tỷ suất VCSH') +
+            statCard('EPS', epsDisp, 'VND / cổ phiếu') +
+            statCard('Đỉnh 52T', yearHigh != null ? formatNumber(yearHigh) : '--', '52 tuần') +
+            statCard('Đáy 52T', yearLow != null ? formatNumber(yearLow) : '--', '52 tuần');
+    }
+
+    // ── Render: Intraday Chart ───────────────────────────────────────────────
+    function renderIntradayChart(data, symbol) {
+        var card = $('#sa-intraday-card');
+        if (!card) return;
+
+        var ticks = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : null);
+
+        if (!ticks || !ticks.length) {
+            card.innerHTML = '<div class="card-header"><h4>⏱ Diễn biến phiên</h4></div>' +
+                '<div style="color:var(--text-muted);padding:12px;text-align:center;">Không có dữ liệu intraday</div>';
+            return;
+        }
+
+        card.innerHTML = '<div class="card-header"><h4>⏱ Diễn biến phiên — ' + esc(symbol) + '</h4></div>' +
+            '<div class="sa-intraday-canvas-wrap"><canvas id="sa-intraday-canvas"></canvas></div>';
+
+        // Render simple line chart trên canvas (intraday price tick)
+        var canvas = document.getElementById('sa-intraday-canvas');
+        if (!canvas || !canvas.getContext) return;
+        var ctx = canvas.getContext('2d');
+        var wrap = canvas.parentElement;
+
+        function draw() {
+            var w = wrap.clientWidth || 600;
+            var h = 180;
+            // HiDPI
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            var prices = ticks.map(function (t) { return Number(t.Price != null ? t.Price : t.price); }).filter(function (v) { return Number.isFinite(v); });
+            if (prices.length < 2) return;
+
+            var minP = Math.min.apply(null, prices);
+            var maxP = Math.max.apply(null, prices);
+            var range = maxP - minP || 1;
+            var padX = 8, padY = 14;
+            var stepX = (w - padX * 2) / (prices.length - 1);
+
+            // Determine color by first vs last
+            var isUp = prices[prices.length - 1] >= prices[0];
+            var lineColor = isUp ? '#2ee68a' : '#ff5c78';
+            var fillColor = isUp ? 'rgba(46,230,138,0.12)' : 'rgba(255,92,120,0.12)';
+
+            // Fill area
+            ctx.beginPath();
+            ctx.moveTo(padX, h - padY);
+            for (var i = 0; i < prices.length; i++) {
+                var x = padX + i * stepX;
+                var y = padY + (1 - (prices[i] - minP) / range) * (h - padY * 2);
+                if (i === 0) ctx.lineTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.lineTo(padX + (prices.length - 1) * stepX, h - padY);
+            ctx.closePath();
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+
+            // Line
+            ctx.beginPath();
+            for (var j = 0; j < prices.length; j++) {
+                var x2 = padX + j * stepX;
+                var y2 = padY + (1 - (prices[j] - minP) / range) * (h - padY * 2);
+                if (j === 0) ctx.moveTo(x2, y2);
+                else ctx.lineTo(x2, y2);
+            }
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Last price label
+            var lastPrice = prices[prices.length - 1];
+            ctx.fillStyle = lineColor;
+            ctx.font = '600 11px Inter, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText(formatNumber(lastPrice), w - padX, padY + 4);
+        }
+
+        draw();
+        // Redraw on resize
+        if (!state._intradayRO || !state._intradayRO._el || state._intradayRO._el !== canvas.parentElement) {
+            if (state._intradayRO && state._intradayRO.disconnect) state._intradayRO.disconnect();
+            if (typeof ResizeObserver !== 'undefined') {
+                var ro = new ResizeObserver(function () { draw(); });
+                try { ro.observe(canvas.parentElement); state._intradayRO = ro; state._intradayRO._el = canvas.parentElement; } catch (e) { /* ignore */ }
+            }
+        }
     }
 
     // ── Init ──────────────────────────────────────────────────────────────────

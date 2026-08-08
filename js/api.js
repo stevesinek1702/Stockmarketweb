@@ -38,6 +38,7 @@ const API = {
         ELLIOTT: '/api/elliott',
         SECTOR_STRENGTH: '/api/sector-strength',
         STOCK_INVESTOR_FLOW: '/api/stock-investor-flow',
+        INTRADAY: '/api/intraday-quotes',
         ALL_STOCKS: '/api/all-stocks',
         AI_STOCK_PICKER: '/api/ai/stock-picker',
         // Broker + autoexec (Subsystem #5/#6)
